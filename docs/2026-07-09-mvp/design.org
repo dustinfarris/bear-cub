@@ -22,7 +22,7 @@ calendars      id, kid_id → kids (null = family), label, ics_url (redact: true
   - Partial unique index on =completions (chore_id, local_date) WHERE undone_at IS NULL= — at most one /current/ completion per chore per day; double-taps cannot double-complete.
   - Deleting a chore cascades its completions. That is an explicit parent choice, distinct from FR-17's "undo never deletes history."
   - Kids are edit-only in v1 (rename, recolor): no create/delete UI, matching the two-kid kiosk layout and the seeded-placeholder roster.
-  - =ics_url= uses Ecto's =redact: true=, so the URL renders as =**redacted**= in inspected structs, changesets, and crash reports by construction.
+  - =ics_url= uses Ecto's =redact: true=, so by construction the URL is omitted from inspected structs and renders as =**redacted**= in inspected changesets and crash reports.
 - *Contexts:* =BearCub.Chores= (kids, chores, completions — pure local CRUD, no network) and =BearCub.Calendars= (calendar CRUD, fetching, parsing — the external integration). They share nothing, fail differently, and never call each other; only the web layer reads both. Calendar trouble structurally cannot touch the tap-to-complete path (FR-20). =BearCub.Routines= is a third /module/ but not a context — a pure, DB-free helper over config (§3).
 
 * 2. Day state is derived, not stored (FR-12, FR-13)
