@@ -133,4 +133,95 @@ defmodule BearCub.ChoresTest do
       assert_raise Ecto.NoResultsError, fn -> Chores.get_chore!(chore.id) end
     end
   end
+
+  describe "completions" do
+    import BearCub.ChoresFixtures
+
+    @tz "America/Los_Angeles"
+
+    defp la(date, time), do: DateTime.new!(date, time, @tz)
+
+    test "complete_chore/3 records the local date and the UTC instant" do
+      chore = chore_fixture()
+
+      assert {:ok, completion} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[23:59:00]), "kiosk")
+
+      # 23:59 PDT (UTC-7) is 06:59 the next day in UTC — local_date still the 10th
+      assert completion.local_date == ~D[2026-07-10]
+      assert completion.completed_at == ~U[2026-07-11 06:59:00Z]
+      assert completion.source == "kiosk"
+      assert completion.undone_at == nil
+    end
+
+    test "complete_chore/3 honors DST — winter is UTC-8" do
+      chore = chore_fixture()
+
+      assert {:ok, completion} =
+               Chores.complete_chore(chore, la(~D[2026-01-10], ~T[22:00:00]), "kiosk")
+
+      assert completion.completed_at == ~U[2026-01-11 06:00:00Z]
+    end
+
+    test "a second complete on the same local day is rejected by the partial index" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert {:error, changeset} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:01]), "kiosk")
+
+      assert %{chore_id: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "undo_chore/2 stamps undone_at and keeps the row (FR-17)" do
+      chore = chore_fixture()
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      assert undone.id == completion.id
+      assert undone.undone_at == ~U[2026-07-10 14:05:00Z]
+    end
+
+    test "undo_chore/2 without a current completion is a no-op error" do
+      chore = chore_fixture()
+
+      assert {:error, :not_completed} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:00:00]))
+    end
+
+    test "undo_chore/2 never reaches back across midnight — yesterday is history" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[22:00:00]), "kiosk")
+
+      assert {:error, :not_completed} = Chores.undo_chore(chore, la(~D[2026-07-11], ~T[00:10:00]))
+    end
+
+    test "complete → undo → complete leaves one current row and full history (FR-8 AC)" do
+      chore = chore_fixture()
+
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:01:00]))
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:02:00]), "kiosk")
+
+      completions = Repo.all(BearCub.Chores.Completion)
+      assert length(completions) == 2
+      assert Enum.count(completions, &is_nil(&1.undone_at)) == 1
+    end
+
+    test "current_completions/1 derives day state — the date change is the reset (D10)" do
+      chore = chore_fixture()
+      other = chore_fixture(kid_fixture(%{position: 1}))
+
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[23:59:00]), "kiosk")
+      {:ok, _undone} = Chores.complete_chore(other, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(other, la(~D[2026-07-10], ~T[08:01:00]))
+
+      chore_id = chore.id
+      assert %{^chore_id => found} = Chores.current_completions(~D[2026-07-10])
+      assert found.id == completion.id
+      refute Map.has_key?(Chores.current_completions(~D[2026-07-10]), other.id)
+
+      # midnight: nothing runs, the query just returns empty for the new date
+      assert Chores.current_completions(~D[2026-07-11]) == %{}
+    end
+  end
 end
