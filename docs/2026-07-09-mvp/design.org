@@ -87,7 +87,7 @@ Ownership is split between the two repos; each owns what it knows:
 - *Network:* HTTP only, bound on LAN + tailnet; =check_origin: false=. The network is the trust boundary (D5), and the kiosk targets the raw LAN IP while parents use the Tailscale name, so origin pinning would only fight legitimate clients. No hardcoded hosts.
 
 * 8. Seeds (§6.5)
-Idempotent bootstrap at boot, after migrations: *if the kids table is empty*, create two placeholder kids ("Kid A" amber, "Kid B" sky); otherwise touch nothing, ever. Production first boot gets kids only — parents rename and build chores through admin. Dev/CI use the same bootstrap plus a demo set of emoji chores via =priv/repo/seeds.exs=. No calendars are seeded; the app renders fine with zero calendars (empty events strip), which is also the CI posture (§6.4: boots and demos on placeholders alone).
+Seeding is a mix script, not boot machinery (D17): =priv/repo/seeds.exs= is idempotent — *if the kids table is empty*, it creates two placeholder kids ("Kid A" amber, "Kid B" sky), plus a demo set of emoji chores when the chores table is empty; otherwise it touches nothing, ever. Dev/CI run it via =mix ecto.setup=. Production never seeds itself: the placeholder kids (renamed through admin) are inserted once at first deploy as a documented Phase-1 step, and from then on the database is backup-owned. No calendars are seeded; the app renders fine with zero calendars (empty events strip), which is also the CI posture (§6.4: boots and demos on placeholders alone).
 
 * 9. Backup & restore (§6.7)
 - *Mechanism:* nightly systemd timer (defined in =nix/module.nix=, configured from the homeassistant repo): =sqlite3 <db> ".backup <snapshot>"= (safe under WAL, no app pause), then =restic backup= of the snapshot to an encrypted B2/S3 repository; =restic forget --prune --keep-daily 14 --keep-weekly 8=. Meets the ≤1-day loss tolerance.
@@ -104,6 +104,7 @@ Idempotent bootstrap at boot, after migrations: *if the kids table is empty*, cr
 - *D14 (2026-07-10) — Nix packaging:* bear-cub ships plain =nix/package.nix= + =nix/module.nix= (non-flake); homeassistant repo pins via =fetchGit= and configures, matching its existing channel-based module pattern. → §7
 - *D15 (2026-07-10) — Kiosk tap throttle:* chore rows use =phx-throttle= (~1 s) so a rapid double-tap cannot complete-then-undo; deliberate undo stays instant. → §5
 - *D16 (2026-07-10) — ICS correctness bar & spike:* =RRULE= + =EXDATE= + =RECURRENCE-ID= must all be honored; Phase 4 opens with a parser spike against the family's real feeds before any calendar UI. → §6
+- *D17 (2026-07-10) — Seeds are a mix script, not a boot hook:* no boot-time bootstrap task; dev/CI seed via =priv/repo/seeds.exs=, and production placeholder rows are inserted once at first deploy (documented QA step). Trades a self-seeding first boot for zero boot machinery. Amends §8.
 
 * 11. Testing strategy
 TDD (red-green-refactor) at both layers:

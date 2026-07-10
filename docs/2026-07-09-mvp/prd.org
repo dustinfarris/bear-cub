@@ -104,7 +104,7 @@ Requirements are numbered for traceability into the design doc and stories. *AC*
 - Single mix release, one systemd unit, packaged as a NixOS module in the existing repo's =nixos/= structure (own imported module, not inlined).
 - Deploy = =git pull && nixos-rebuild switch=; an upgrade requires no manual steps beyond the rebuild (schema changes included).
 - *Config/data split:* service definition and app config (ports, timezone, refresh intervals, etc.) are declarative in git. Kids, routines, chores, and completion history are application data — owned by the database, edited through admin, recovered from backup. Editing a routine never involves git or a rebuild.
-- Seed data exists only to bootstrap: on first boot it creates placeholder kids (dev/CI additionally get demo chores). Seeding is idempotent and never modifies or overwrites existing data.
+- Seed data exists only to bootstrap: placeholder kids are created at setup /(design D17: dev/CI via the seeds script, production once at first deploy)/, with demo chores for dev/CI. Seeding is idempotent and never modifies or overwrites existing data.
 - No hardcoded hosts in app config.
 
 ** 6.6 Stack & decided architecture (restated for traceability)
@@ -145,7 +145,7 @@ Cutover gate: all FRs in scope for v1 pass their acceptance criteria on-device, 
 - *D5 (2026-07-09) — Admin auth:* none in v1; network (tailnet + LAN) is the trust boundary. → FR-26
 - *D6 (2026-07-09) — Kid identity:* admin-managed data (name + color), seeded as placeholders and renamed at setup; no avatars/images in v1; ICS URLs become the only local secret. → FR-27, FR-5a, §6.4
 - *D7 (2026-07-09) — Backup:* the requirement is an automated backup + tested restore playbook; off-box copy recommended; destination/mechanism in design doc. → §6.7
-- *D8–D16:* design-phase decisions (routines as constants, ICS URLs in DB, derived day state, emoji icons, restic backups, Nix packaging, tap throttle, ICS correctness bar) — see the decision log in [[file:design.org][the design doc]].
+- *D8–D17:* design-phase decisions (routines as constants, ICS URLs in DB, derived day state, emoji icons, restic backups, Nix packaging, tap throttle, ICS correctness bar, seeds as a mix script) — see the decision log in [[file:design.org][the design doc]].
 
 --------------
 
