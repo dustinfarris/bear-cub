@@ -25,7 +25,7 @@ beamPackages.mixRelease rec {
     pname = "mix-deps-${pname}";
     inherit src version;
     # TOFU: build once, replace with the "got:" hash nix reports.
-    hash = "sha256-AMUPNSl+vfzKH0DGGeVJWCnrKESVCBzQPxCFZVgqoFg=";
+    hash = "sha256-kSCaV48LV1f4RJ+LLEiqEuZ0g+H9sJKZi9KAULqasfY=";
   };
 
   # exqlite (NIF via elixir_make) calls :filename.basedir(:user_cache, ...),
