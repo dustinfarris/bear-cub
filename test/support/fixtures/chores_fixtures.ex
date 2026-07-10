@@ -13,4 +13,16 @@ defmodule BearCub.ChoresFixtures do
 
     kid
   end
+
+  def chore_fixture(kid \\ nil, attrs \\ %{}) do
+    kid = kid || kid_fixture()
+
+    {:ok, chore} =
+      Chores.create_chore(
+        kid,
+        Enum.into(attrs, %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0})
+      )
+
+    chore
+  end
 end

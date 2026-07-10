@@ -68,4 +68,69 @@ defmodule BearCub.ChoresTest do
       assert %Ecto.Changeset{} = Chores.change_kid(kid)
     end
   end
+
+  describe "chores" do
+    import BearCub.ChoresFixtures
+
+    test "list_chores/2 returns the kid's chores for a routine, ordered by position" do
+      kid = kid_fixture()
+      other_kid = kid_fixture(%{position: 1})
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️", position: 1})
+      first = chore_fixture(kid, %{position: 0})
+      _evening = chore_fixture(kid, %{routine: "evening", position: 0})
+      _other_kids = chore_fixture(other_kid, %{position: 0})
+
+      assert Chores.list_chores(kid, "morning") == [first, second]
+    end
+
+    test "create_chore/2 creates a chore owned by the kid" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert chore.kid_id == kid.id
+      assert chore.icon == "🪥"
+    end
+
+    test "create_chore/2 requires an icon" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", routine: "morning", position: 0}
+
+      assert {:error, changeset} = Chores.create_chore(kid, attrs)
+      assert %{icon: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "create_chore/2 rejects an unknown routine" do
+      kid = kid_fixture()
+      attrs = %{name: "Nap", icon: "😴", routine: "afternoon", position: 0}
+
+      assert {:error, changeset} = Chores.create_chore(kid, attrs)
+      assert %{routine: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "update_chore/2 updates name, icon, and position" do
+      chore = chore_fixture()
+
+      assert {:ok, chore} = Chores.update_chore(chore, %{name: "Floss", icon: "🦷", position: 3})
+      assert chore.name == "Floss"
+      assert chore.icon == "🦷"
+      assert chore.position == 3
+    end
+
+    test "delete_chore/1 deletes the chore" do
+      chore = chore_fixture()
+
+      assert {:ok, _} = Chores.delete_chore(chore)
+      assert_raise Ecto.NoResultsError, fn -> Chores.get_chore!(chore.id) end
+    end
+
+    test "deleting a kid cascades its chores" do
+      kid = kid_fixture()
+      chore = chore_fixture(kid)
+
+      Repo.delete!(kid)
+
+      assert_raise Ecto.NoResultsError, fn -> Chores.get_chore!(chore.id) end
+    end
+  end
 end

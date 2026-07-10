@@ -71,4 +71,38 @@ defmodule BearCub.Chores do
   def change_kid(%Kid{} = kid, attrs \\ %{}) do
     Kid.changeset(kid, attrs)
   end
+
+  alias BearCub.Chores.Chore
+
+  @doc "The kid's chores for one routine, in parent-controlled order."
+  def list_chores(%Kid{} = kid, routine) when routine in ~w(morning evening) do
+    Repo.all(
+      from c in Chore,
+        where: c.kid_id == ^kid.id and c.routine == ^routine,
+        order_by: [asc: c.position, asc: c.id]
+    )
+  end
+
+  def get_chore!(id), do: Repo.get!(Chore, id)
+
+  @doc "Creates a chore owned by `kid`. `kid_id` is never cast from attrs."
+  def create_chore(%Kid{} = kid, attrs) do
+    %Chore{kid_id: kid.id}
+    |> Chore.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_chore(%Chore{} = chore, attrs) do
+    chore
+    |> Chore.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def delete_chore(%Chore{} = chore) do
+    Repo.delete(chore)
+  end
+
+  def change_chore(%Chore{} = chore, attrs \\ %{}) do
+    Chore.changeset(chore, attrs)
+  end
 end
