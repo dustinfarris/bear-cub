@@ -11,6 +11,13 @@ config :bear_cub,
   ecto_repos: [BearCub.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Zone math for the configured local timezone (design §3).
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
+# The kiosk must work with the WAN down (§6.1) — never phone home for
+# tz updates; the compiled-in tables are refreshed by ordinary dep bumps.
+config :tzdata, :autoupdate, :disabled
+
 # Configure the endpoint
 config :bear_cub, BearCubWeb.Endpoint,
   url: [host: "localhost"],

@@ -23,8 +23,32 @@ end
 # One configured timezone for all "today" and window decisions (design §3).
 config :bear_cub, :timezone, System.get_env("BEAR_CUB_TIMEZONE", "America/Los_Angeles")
 
-config :bear_cub, BearCubWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+# Routine active windows (D1/D8, design §3): app config, env-overridable,
+# HH:MM-HH:MM local wall-clock, e.g. BEAR_CUB_MORNING_WINDOW=05:00-17:00.
+# Windows must not span midnight.
+parse_window! = fn var, default ->
+  case System.get_env(var) do
+    nil ->
+      default
+
+    value ->
+      case String.split(value, "-") do
+        [starts, ends] ->
+          {Time.from_iso8601!(starts <> ":00"), Time.from_iso8601!(ends <> ":00")}
+
+        _ ->
+          raise "#{var} must look like 05:00-17:00, got: #{inspect(value)}"
+      end
+  end
+end
+
+config :bear_cub, :routine_windows,
+  morning: parse_window!.("BEAR_CUB_MORNING_WINDOW", {~T[05:00:00], ~T[17:00:00]}),
+  evening: parse_window!.("BEAR_CUB_EVENING_WINDOW", {~T[17:00:00], ~T[23:00:00]})
+
+port = String.to_integer(System.get_env("PORT", "4000"))
+
+config :bear_cub, BearCubWeb.Endpoint, http: [port: port]
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
@@ -60,7 +84,6 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  port = String.to_integer(System.get_env("PORT") || "4000")
   host = System.get_env("PHX_HOST") || "localhost"
 
   # HTTP only, bound on all interfaces (LAN + tailnet). The network is the
