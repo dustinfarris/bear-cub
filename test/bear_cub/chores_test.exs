@@ -224,4 +224,50 @@ defmodule BearCub.ChoresTest do
       assert Chores.current_completions(~D[2026-07-11]) == %{}
     end
   end
+
+  describe "PubSub" do
+    import BearCub.ChoresFixtures
+
+    defp noon, do: DateTime.new!(~D[2026-07-10], ~T[12:00:00], "America/Los_Angeles")
+
+    test "every successful write broadcasts :chores_changed (FR-9)" do
+      :ok = Chores.subscribe()
+
+      {:ok, kid} = Chores.create_kid(%{name: "Kid A", color: "#f59e0b", position: 0})
+      assert_receive :chores_changed
+
+      {:ok, kid} = Chores.update_kid(kid, %{name: "Renamed"})
+      assert_receive :chores_changed
+
+      {:ok, chore} =
+        Chores.create_chore(kid, %{
+          name: "Brush Teeth",
+          icon: "🪥",
+          routine: "morning",
+          position: 0
+        })
+
+      assert_receive :chores_changed
+
+      {:ok, chore} = Chores.update_chore(chore, %{name: "Floss"})
+      assert_receive :chores_changed
+
+      {:ok, _} = Chores.complete_chore(chore, noon(), "kiosk")
+      assert_receive :chores_changed
+
+      {:ok, _} = Chores.undo_chore(chore, noon())
+      assert_receive :chores_changed
+
+      {:ok, _} = Chores.delete_chore(chore)
+      assert_receive :chores_changed
+    end
+
+    test "failed writes broadcast nothing" do
+      kid = kid_fixture()
+      :ok = Chores.subscribe()
+
+      {:error, _} = Chores.create_chore(kid, %{})
+      refute_receive :chores_changed, 50
+    end
+  end
 end

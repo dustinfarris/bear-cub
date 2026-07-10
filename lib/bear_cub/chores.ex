@@ -11,6 +11,24 @@ defmodule BearCub.Chores do
   alias BearCub.Repo
   alias BearCub.Chores.Kid
 
+  @topic "chores"
+
+  @doc """
+  Subscribes the caller to chore-domain changes (FR-9, design §4).
+  Every successful write in this context sends `:chores_changed`;
+  subscribers re-fetch rather than patching state from a payload.
+  """
+  def subscribe do
+    Phoenix.PubSub.subscribe(BearCub.PubSub, @topic)
+  end
+
+  defp broadcast_change({:ok, _} = result) do
+    Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :chores_changed)
+    result
+  end
+
+  defp broadcast_change(result), do: result
+
   @doc "All kids ordered for display: position 0 is the left column."
   def list_kids do
     Repo.all(from k in Kid, order_by: [asc: k.position, asc: k.id])
@@ -24,6 +42,7 @@ defmodule BearCub.Chores do
     %Kid{}
     |> Kid.changeset(attrs)
     |> Repo.insert()
+    |> broadcast_change()
   end
 
   @doc "Updates a kid (rename/recolor — kids are edit-only in v1, design §1)."
@@ -31,6 +50,7 @@ defmodule BearCub.Chores do
     kid
     |> Kid.changeset(attrs)
     |> Repo.update()
+    |> broadcast_change()
   end
 
   def change_kid(%Kid{} = kid, attrs \\ %{}) do
@@ -55,16 +75,19 @@ defmodule BearCub.Chores do
     %Chore{kid_id: kid.id}
     |> Chore.changeset(attrs)
     |> Repo.insert()
+    |> broadcast_change()
   end
 
   def update_chore(%Chore{} = chore, attrs) do
     chore
     |> Chore.changeset(attrs)
     |> Repo.update()
+    |> broadcast_change()
   end
 
   def delete_chore(%Chore{} = chore) do
     Repo.delete(chore)
+    |> broadcast_change()
   end
 
   def change_chore(%Chore{} = chore, attrs \\ %{}) do
@@ -87,6 +110,7 @@ defmodule BearCub.Chores do
       source: source
     })
     |> Repo.insert()
+    |> broadcast_change()
   end
 
   @doc """
@@ -103,6 +127,7 @@ defmodule BearCub.Chores do
         completion
         |> Ecto.Changeset.change(undone_at: to_utc(local_now))
         |> Repo.update()
+        |> broadcast_change()
     end
   end
 
