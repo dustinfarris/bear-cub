@@ -1,0 +1,152 @@
+#+title: Bear Cub — MVP PRD
+
+* 1. Overview
+Bear Cub is a purpose-built family chore and calendar dashboard. Its primary surface is a fridge-mounted tablet kiosk (Fully Kiosk Browser on a Lenovo Idea Tab) where two kids complete daily routines by tapping; its secondary surface is a parent admin UI reachable remotely over Tailscale. It runs as a single self-hosted web application on the home server (M920q, NixOS); the decided stack is recorded in §6.6. Greenfield: no prior system's behavior or data constrains this product.
+
+*Product stance:* generic in data, opinionated in design. The schema hardcodes no family specifics — kids, calendars, and identities are configuration and data — but the UI is designed against exactly one concrete deployment: two kids, two parents, one fridge. Generality stops where it costs simplicity.
+
+* 2. Goals
+1. Kids complete morning and evening routines independently at the fridge, including the pre-reading child, with zero parent mediation on the happy path.
+2. Parents see each kid's progress at a glance from across the kitchen — including after the routine's window has passed, since afternoon privileges hinge on whether the morning routine got done — and manage routines/chores/completions remotely from a phone.
+3. The dashboard works every morning and evening regardless of internet status. Server + tablet on LAN is the only hard dependency.
+4. The /system/ is declarative and version-controlled: service definition and app config live in git, and a rebuild needs only the repos, backup credentials, and a database restore /(design D9: ICS URLs ride in the database)/. Family data (kids, chores, calendars, history) is database-owned, not config.
+5. Accidental taps are harmless: undo is first-class and instant.
+
+* 3. Non-goals (v1)
+- Gamification (points, rewards, badges, streaks)
+- Overdue/nagging states and per-chore due times — routine windows (FR-3) are the only time semantics in v1
+- One-off chores with a scheduled date — all v1 chores are daily recurring (schema shouldn't preclude dated chores later)
+- Chore photos — iconography only
+- Avatars / kid images — identity is name + color in v1; no user-supplied image assets anywhere in the app
+- Weekly parent summaries or reporting UI
+- Tap feedback sounds/animations (celebration effects)
+- Per-kid authentication or identity on the kiosk
+- Support for family shapes other than two-kids-two-parents in the /UI/ (the schema supports N kids; the kiosk layout does not)
+- Writing to Google Calendar (read-only integration)
+- Exposure beyond LAN + tailnet
+
+* 4. Users
+Two logical roles. The system models roles, not individuals — kids and parents are instances supplied by data.
+
+| Role     | Instances (this deployment) | Surface                             | Interaction                                                                                                                                              |
+|----------+-----------------------------+-------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| *Kid*    | 2                           | Kiosk                               | Tap to complete/undo chores; glance at today's events. No login, no per-kid session — column position + identity color identifies whose side is whose. |
+| *Parent* | 2                           | Admin (phone/laptop over Tailscale) | CRUD chores/calendars, reorder, assign, correct completions, reset days. Parents are interchangeable — no per-parent identity or permissions.          |
+
+*Design floor for the Kid role:* a pre-reading child must be able to use the kiosk unassisted. Literacy is never assumed — this is a constraint on the role (driving the accessibility requirements in §5), not a distinct user type.
+
+* 5. Functional requirements
+Requirements are numbered for traceability into the design doc and stories. *AC* = acceptance criteria.
+
+** 5.1 Routines
+- *FR-1* /(design D8)/ Morning and Evening are application constants, not database entities: no routines table, no routine CRUD. Chores reference a routine by slug; active windows live in app config. Evening may be empty of chores at launch.
+- *FR-2* Each routine owns an ordered list of chore assignments per kid. Order is explicit, parent-controlled, and independent per kid.
+- *FR-3* The kiosk displays exactly one active routine at a time, selected automatically by time of day using per-routine active windows. Windows are configurable in app config — =runtime.exs= with env-var overrides (design D8). *Defaults:* Morning 05:00–17:00, Evening 17:00–23:00, local time. Outside all windows, the kiosk shows the nearest upcoming routine, dimmed.
+- *FR-3a* A routine's completion state is checkable at a glance for the rest of the day, not just during its window — parents make afternoon/evening decisions based on whether the morning routine got done. The long Morning default keeps it on screen all afternoon; after the Evening handoff, its final state remains reachable (via the flip, FR-4) until the midnight reset.
+- *FR-4* The kiosk provides a manual flip control to view the other routine; it reverts to automatic selection at the next window boundary (no sticky manual override across days).
+  - *AC:* A parent can flip to Evening at 10am to preview it; next morning the kiosk shows Morning without intervention.
+
+** 5.2 Kiosk
+- *FR-5* Two-column layout, one kid per column: today's calendar events (chronological) above/alongside the active routine's chores. Both kids always visible.
+- *FR-5a* Each column is headed by the kid's name and identity color. Kid identity is admin-managed data (FR-27) — never hardcoded, never config. The color, not the name, is the primary identifier: a pre-reader must know their column without reading it.
+- *FR-6* One screen is the norm, not a hard cap: with up to 5 chores per kid plus today's events, everything is visible and tappable without scrolling in Fully Kiosk's WebView at the Idea Tab's resolution and orientation. Beyond 5 chores, graceful scrolling is acceptable — clipped or broken layout never is.
+  - *AC:* Seed 5 chores per kid plus a representative day of events → nothing clipped, nothing scrollable, on-device.
+- *FR-7* Tap a chore → completed. Completed chores remain visible with an unambiguous done state (color/check/fill — never text-only).
+- *FR-8* Tap a completed chore → un-completed (undo). No confirmation dialogs anywhere on the kiosk.
+  - *AC:* Complete → undo → complete leaves exactly one completion record marked current, with full history retained (FR-17).
+- *FR-9* Live updates: admin changes and taps from either column appear on the kiosk without refresh, within ~2 seconds.
+- *FR-10* Connection loss degrades to last rendered state. Never a blank screen, never a framework error page, never a stuck spinner.
+  - *AC:* Kill the server process while the kiosk is displayed → the kiosk continues showing the last state (a subtle stale indicator is acceptable). Restart server → kiosk recovers automatically without manual reload, including after tablet sleep/wake.
+
+** 5.3 Chores
+- *FR-11* A chore is assigned per kid within a routine; the same logical chore can exist for both kids with fully independent completion state.
+- *FR-12* Routines reset automatically at midnight local time: each new day, every routine's chores start incomplete.
+- *FR-13* The daily reset must not depend on the server being awake at midnight: an outage or reboot spanning midnight self-heals, leaving no missing and no duplicated day.
+- *FR-16* Every chore has an icon (required). The pre-reader path is: recognize icon → tap → see visual done state.
+- *FR-17* Full completion history is retained: kid, chore, timestamp, and undo events. Undo appends history; it never deletes it.
+
+** 5.4 Calendar
+- *FR-18* Three Google Calendars: one per kid + one family calendar, read-only. *Freshness target:* a calendar change appears on the kiosk within ~15 minutes. (Integration approach — server-side ICS polling with local cache, no OAuth — is a decided constraint, recorded in §6.6.)
+- *FR-19* Each kid's column shows their personal events blended with family events in one chronological list; family events appear in both columns and are visually distinct (family color/icon). Today's events only — no tomorrow preview.
+- *FR-20* Calendar is a degradable overlay: Google outage or dead internet serves the last cached copy indefinitely and never affects chore display. If the cache is stale beyond a threshold (design doc sets it; ~2h proposed), the kiosk shows a small, subtle staleness glyph — diagnostic detail belongs in server logs, not on the kiosk.
+  - *AC:* Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events.
+- *FR-21* /(design D9)/ ICS URLs are database data, entered and edited through admin — one or more calendars per kid, plus family calendars. Never in the repo, never in logs; backups are therefore secret-bearing and must be encrypted (§6.7).
+- *FR-22* Event display handles all-day events, timed events, and events spanning midnight sensibly for a "today" view (exact rules defined in design doc; all-day events pin to top of the list — proposed).
+
+** 5.5 Admin
+- *FR-23* /(design D8)/ CRUD for chores: create, edit, delete, reorder (per kid), assign, set icon. Routines are constants — no routine CRUD.
+- *FR-24* Mark/unmark completions on a kid's behalf; reset a kid's day or the whole day.
+- *FR-25* Usable from a phone browser — this is the primary admin form factor, not a shrunken desktop UI.
+- *FR-26* Reachable by both parents over Tailscale; never exposed beyond LAN + tailnet. The admin surface must be unreachable from the kiosk: no navigation path from the kiosk view, and separable enough that Fully Kiosk's URL lock can fence it off. *Decided:* no app-level auth in v1 — the network layer (tailnet + LAN) is the trust boundary. Revisit if guests get LAN access.
+- *FR-27* Kids are data, managed through admin: each kid has a name and an identity color, editable like routines and chores. The kid roster comes from seeded placeholders that parents rename at setup — never from config files or code.
+
+* 6. Non-functional requirements
+** 6.1 Offline & resilience
+- Morning and evening routines fully functional with internet down (chores always; calendar from cache).
+- Kiosk targets the server's LAN IP directly (established decision — not the Tailscale address).
+- The kiosk's live-update connection must recover automatically after tablet sleep/wake and transient network blips; the degraded (connection-down) state is visually quiet, not alarming. The stack's built-in disconnect indicator is fine, restyled to be unobtrusive.
+
+** 6.2 Target environment
+- Must render and behave correctly in Fully Kiosk Browser's Android WebView on the Lenovo Idea Tab — desktop Chrome is not the reference target. On-device QA is a required gate in every phase.
+- Minimal client-side JS; server-rendered UI is the interaction model (§6.6).
+
+** 6.3 Performance
+- Tap-to-visual-feedback under ~300ms on-device on LAN.
+- Server load is negligible by design; no performance engineering beyond not doing anything silly.
+
+** 6.4 Privacy & repo hygiene
+- Public repo. Kid names and ICS URLs never enter git.
+- Kid identities are database data (FR-27), never in git by construction; seed/demo data in git uses placeholder names only.
+- /(design D9)/ ICS URLs live in the database, not on the box: there are no locally supplied application secrets. Backups consequently carry secrets and must be encrypted (§6.7).
+- The app must boot and demo correctly with placeholder identities alone (this is also what CI and development use).
+
+** 6.5 Deployment & config
+- Single mix release, one systemd unit, packaged as a NixOS module in the existing repo's =nixos/= structure (own imported module, not inlined).
+- Deploy = =git pull && nixos-rebuild switch=; an upgrade requires no manual steps beyond the rebuild (schema changes included).
+- *Config/data split:* service definition and app config (ports, timezone, refresh intervals, etc.) are declarative in git. Kids, routines, chores, and completion history are application data — owned by the database, edited through admin, recovered from backup. Editing a routine never involves git or a rebuild.
+- Seed data exists only to bootstrap: on first boot it creates placeholder kids (dev/CI additionally get demo chores). Seeding is idempotent and never modifies or overwrites existing data.
+- No hardcoded hosts in app config.
+
+** 6.6 Stack & decided architecture (restated for traceability)
+- Elixir / Phoenix / LiveView; SQLite via =ecto_sqlite3=; supervised GenServers for periodic work — no job framework in v1. Postgres and Oban (Lite/SQLite engine) remain cheap two-way doors.
+- /(design D10)/ Calendar refresh is the only periodic work, written as idempotent reconciliation run on boot and on interval. Daily rollover needs no job at all: day state is derived from date-scoped queries, so FR-13's self-healing holds by construction.
+- Calendar integration is server-side polling of each calendar's private ICS URL with a local cache; no OAuth. Serve the cache on any fetch failure.
+
+** 6.7 Backup & recovery
+- The database is the sole home of routine/chore definitions and all history — losing it means rebuilding the family's setup by hand.
+- Backups are automated and unattended; no backup that depends on a human remembering happens.
+- *Proposed loss tolerance:* at most one day of edits/completions (i.e., daily backups minimum).
+- The requirement is a *backup & restore playbook*: automated backups plus written, tested restore steps. An off-box copy is strongly recommended (a dead NVMe shouldn't take the only copy) — destination and mechanism are design-doc decisions.
+- Restore is a documented procedure, proven once before cutover (success criterion 4 exercises it).
+
+* 7. Phasing
+Staged rollout: the kiosk goes live for the family only at cutover (end of Phase 5), once the success criteria in §8 are demonstrably met. Each phase ends with on-device tablet QA.
+
+- *Phase 1 — Walking skeleton.* Phoenix app, SQLite schema, NixOS module + systemd unit deployed to the M920q, kiosk route renders static two-column layout on the tablet. /Proves: deploy pipeline and WebView rendering before any features exist./
+- *Phase 2 — Chores core.* Routines, chores, assignments, tap-to-complete, undo, midnight reconciliation, live updates between admin and kiosk.
+- *Phase 3 — Admin.* Phone-usable CRUD, reorder, on-behalf completion, day reset, over Tailscale.
+- *Phase 4 — Calendar overlay.* Calendar fetch/cache, blended per-kid + family event lists, offline cache behavior verified by pulling the WAN.
+- *Phase 5 — Hardening & cutover.* Sleep/wake reconnect QA, connection-loss degradation QA, seed/secrets flow finalized, backup & restore in place per §6.7 (restore proven once), kiosk goes live for daily family use.
+
+Cutover gate: all FRs in scope for v1 pass their acceptance criteria on-device, and success criteria 3–4 in §8 are verified before the family depends on it (criteria 1–2 and 5 are measured after go-live).
+
+* 8. Success criteria
+1. Both kids complete a full week of morning routines with no parent touching the tablet on their behalf (except deliberate corrections via admin).
+2. The pre-reader completes his routine unassisted at least once, observed.
+3. One real internet outage (or a simulated one) passes without anyone noticing at the fridge.
+4. A from-scratch rebuild (fresh NixOS deploy + repos + restic credentials + DB restore) reproduces the working system. /(design D9: ICS URLs ride in the DB restore — no locally supplied secrets.)/
+5. Two weeks after go-live, Bear Cub is still how mornings and evenings actually run. Change requests are expected (and a healthy sign of use); the failure signal is the family routing around it — paper lists, verbal nagging, or the tablet going ignored.
+
+* 9. Resolved questions (decision log)
+- *D1 (2026-07-09) — Routine windows:* defaults confirmed — Morning is active 05:00–17:00, Evening 17:00–23:00, edge-to-edge, and overnight (23:00–05:00) no window is active, so the kiosk shows the next Morning, dimmed. The long Morning window is deliberate: afternoon privilege decisions depend on glancing at morning completion (FR-3a). Windows are configurable (mechanics in design doc). → FR-3, FR-3a
+- *D2 (2026-07-09) — Event horizon:* today only. → FR-19
+- *D3 (2026-07-09) — Content bounds:* no hard chore cap; no-scroll guaranteed at ≤5 chores per kid, graceful scrolling beyond. → FR-6
+- *D4 (2026-07-09) — Stale indicators:* stack's built-in disconnect indicator (quiet) for socket-down; subtle glyph for stale calendar cache; detail in server logs. → FR-20, §6.1
+- *D5 (2026-07-09) — Admin auth:* none in v1; network (tailnet + LAN) is the trust boundary. → FR-26
+- *D6 (2026-07-09) — Kid identity:* admin-managed data (name + color), seeded as placeholders and renamed at setup; no avatars/images in v1; ICS URLs become the only local secret. → FR-27, FR-5a, §6.4
+- *D7 (2026-07-09) — Backup:* the requirement is an automated backup + tested restore playbook; off-box copy recommended; destination/mechanism in design doc. → §6.7
+- *D8–D16:* design-phase decisions (routines as constants, ICS URLs in DB, derived day state, emoji icons, restic backups, Nix packaging, tap throttle, ICS correctness bar) — see the decision log in [[file:design.org][the design doc]].
+
+--------------
+
+/Design doc: [[file:design.org]] — schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, backup playbook./

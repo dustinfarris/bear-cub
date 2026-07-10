@@ -1,4 +1,28 @@
-This is a web application written using the Phoenix web framework.
+Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
+
+## Authoritative docs
+
+- `docs/2026-07-09-mvp/prd.org` — requirements (FR-x), decisions D1–D7
+- `docs/2026-07-09-mvp/design.org` — schema, topology, decisions D8–D14
+
+When code and these docs disagree, the docs win. If a doc must change, amend it in the same commit and log the decision in the design doc's decision log (§10) as the next D-number, with the date it was made (e.g. `- *D17 (2026-07-12) — <title>:* …`).
+
+## Design invariants (do not violate)
+
+- **Routines are app constants** (`:morning`/`:evening` — see `BearCub.Routines`), never DB rows. Windows live in `runtime.exs` (env-overridable). No routines table, no routine CRUD. (D8)
+- **Day state is derived, never stored**: "done" means a `completions` row with `local_date = today AND undone_at IS NULL`. Never add a `completed` flag, a reset job, or midnight machinery. Undo sets `undone_at` — completion rows are never deleted. (D10)
+- **Calendar is a degradable overlay**: `BearCub.Chores` must never depend on `BearCub.Calendars`; calendar failures serve the cached payload and may never affect chore display.
+- **ICS URLs are secrets in the DB**: `redact: true` on the field; never log URLs (log calendar labels), never let them reach git or error output.
+- **Kiosk/admin fence**: the kiosk (`/`) must contain zero links or navigation to `/admin` — Fully Kiosk's URL lock is the only barrier.
+- **All time logic takes a local datetime argument** (configured timezone, default `America/Los_Angeles`) — no `DateTime.utc_now()` buried in domain code, no clock mocking in tests.
+- **Kids and chores are data**, seeded as placeholders only when the kids table is empty; seeding never modifies existing rows. Kid names never enter git (public repo).
+- **Chore icons are emoji strings** (required field) — no icon asset pipeline.
+- The reference render target is **Fully Kiosk's Android WebView on the tablet**, not desktop Chrome; on-device QA gates each phase.
+
+## Implementation conventions
+
+- Scaffold new resources with `mix phx.gen.live` / `mix phx.gen.context`, then reshape toward the design — don't hand-roll contexts, migrations, or PubSub wiring the generators provide.
+- TDD red-green-refactor at both unit and LiveView layers (see design §11 for the test map).
 
 ## Project guidelines
 

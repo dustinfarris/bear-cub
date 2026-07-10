@@ -1,0 +1,113 @@
+#+title: Bear Cub — MVP Design Doc
+
+Companion to [[file:prd.org][the PRD]]. Covers the items the PRD deferred: schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, deployment packaging, and the backup playbook. Decisions made here extend the PRD's decision log as D8–D16 (§10); PRD points they settle carry a =(design Dx)= marker in place.
+
+* 1. Domain model & schema
+SQLite via =ecto_sqlite3=. Four tables:
+
+#+begin_example
+kids           id, name, color (hex), position (0 = left column, 1 = right), timestamps
+chores         id, kid_id → kids, routine ("morning"|"evening"), name,
+               icon (emoji string, required), position (order within kid+routine), timestamps
+completions    id, chore_id → chores, local_date, completed_at (utc),
+               undone_at (utc | null), source ("kiosk"|"admin"), timestamps
+calendars      id, kid_id → kids (null = family), label, ics_url (redact: true),
+               last_payload (raw ICS text), last_fetched_at, last_error, timestamps
+#+end_example
+
+- *No routines table, no assignments table.* Morning and Evening are application constants (D8): no routine CRUD, no routine seeding; adding a third routine someday is a code + config change — an accepted trade for a materially simpler schema. And because FR-11 gives the "same" chore fully independent per-kid state, a chore row /is/ the per-kid assignment — "Brush Teeth" for each kid is two rows. The PRD's chore + assignment concepts collapse into one table with no loss.
+- *Calendars are database data (D9)*, entered and edited through admin — one or more per kid, plus family calendars as =kid_id: null= (rendered in both columns). There is no local-secrets mechanism and no hand-placed /application or family/ secret on the box (infrastructure credentials for backups are a distinct, explicit rebuild input — §9). Rotating a URL is a phone action; every backup contains the secret URLs, so the off-box backup destination must be private — it already held kid names and the family schedule, so this tightens nothing that wasn't already required, but it is now load-bearing.
+- *Icons are emoji.* A required emoji string per chore (🪥 🛏️ 🥣): colorful, pre-reader-recognizable, entered with the phone's native emoji keyboard in admin, zero asset pipeline. (Heroicons rejected: weak chore coverage, monochrome.)
+- *Integrity:*
+  - Partial unique index on =completions (chore_id, local_date) WHERE undone_at IS NULL= — at most one /current/ completion per chore per day; double-taps cannot double-complete.
+  - Deleting a chore cascades its completions. That is an explicit parent choice, distinct from FR-17's "undo never deletes history."
+  - Kids are edit-only in v1 (rename, recolor): no create/delete UI, matching the two-kid kiosk layout and the seeded-placeholder roster.
+  - =ics_url= uses Ecto's =redact: true=, so the URL renders as =**redacted**= in inspected structs, changesets, and crash reports by construction.
+- *Contexts:* =BearCub.Chores= (kids, chores, completions — pure local CRUD, no network) and =BearCub.Calendars= (calendar CRUD, fetching, parsing — the external integration). They share nothing, fail differently, and never call each other; only the web layer reads both. Calendar trouble structurally cannot touch the tap-to-complete path (FR-20). =BearCub.Routines= is a third /module/ but not a context — a pure, DB-free helper over config (§3).
+
+* 2. Day state is derived, not stored (FR-12, FR-13)
+There is no =completed= flag anywhere. Completing a chore inserts a dated fact; the kiosk renders by asking a question:
+
+- /done today?/ — ∃ completions row with =local_date = today AND undone_at IS NULL=
+- *tap* → insert =(chore_id, today, completed_at)=
+- *undo* → set =undone_at= on the current row (row retained — FR-17)
+- *tap again* → insert a fresh row (FR-8's AC: one current record, full history)
+- *midnight* → nothing runs. The date changes, the query returns empty, every chore renders incomplete. FR-13's outage-spanning-midnight self-healing holds by construction: there is no job to miss.
+
+=local_date= is computed from the configured timezone at write time. The only midnight "work" is cosmetic — a long-lived kiosk screen must re-render so the query re-runs (§4, boundary timer). The derived model also means calendar refresh is the app's /only/ periodic work (§6).
+
+* 3. Routine windows & time
+- One configured timezone (default =America/Los_Angeles=, matching the target box; env-overridable via =BEAR_CUB_TIMEZONE=). =tzdata= is added for zone math. Every "today" and window decision takes the current /local/ datetime as an argument, so all edge cases test with plain values — no clock mocking.
+- Windows in =runtime.exs=, env-overridable (e.g. =BEAR_CUB_MORNING_WINDOW=05:00-17:00=):
+
+#+begin_src elixir
+config :bear_cub, :routine_windows,
+  morning: {~T[05:00:00], ~T[17:00:00]},
+  evening: {~T[17:00:00], ~T[23:00:00]}
+#+end_src
+
+- =BearCub.Routines= (pure module): =windows/0=, =current(now)= → ={:active, :morning}= etc., or ={:upcoming, :morning}= overnight (23:00–05:00, D1 — rendered dimmed), and =next_boundary(now)= → next window edge or midnight, whichever is sooner. Display names derive from the slug in a view helper; there is no configurable label.
+
+* 4. LiveView topology & live updates
+- *Surfaces*, fenced for FR-26 by path prefix alone (same app, same server; Fully Kiosk's URL lock pins =/=; zero links from kiosk to admin):
+  - =KioskLive= at =/= — one LiveView, both columns.
+  - =/admin=, phone-first: =Admin.TodayLive= (landing: live per-kid progress, mark/unmark on behalf, reset kid/day — FR-24), =Admin.ChoresLive= (CRUD + reorder per kid/routine), =Admin.KidsLive= (rename/recolor), =Admin.CalendarsLive= (ICS URLs).
+- *Implementation directive:* scaffold resources with =mix phx.gen.live= (context, schema, migration, LiveViews, PubSub notification wiring) and reshape toward this design — bespoke kiosk, phone-first admin — rather than hand-rolling the plumbing.
+- *Live updates (FR-9):* =Phoenix.PubSub=, one topic per domain (="chores"=, ="calendars"=). Context write functions broadcast on success; kiosk and admin views subscribe on mount and re-fetch on message. LAN round-trips are tens of milliseconds; the ~2 s propagation and ~300 ms tap-feedback budgets are met without optimistic UI.
+- *Boundary timer:* on mount, =KioskLive= schedules =Process.send_after(self(), :boundary, ms_until(Routines.next_boundary(now)))=; on fire it recomputes assigns and reschedules. This one mechanism covers the midnight re-render (§2), the automatic Morning→Evening handoff (FR-3), and FR-4's flip reversion — the manual flip is an assign the boundary message clears.
+- *Disconnect & sleep/wake (FR-10, §6.1):* LiveView's client already freezes the DOM at last-rendered state on connection loss (never blank, never an error page) and reconnects automatically with backoff, including after WebView resume. Design work is cosmetic: restyle the stock disconnect indicator into a small dim corner dot (D4). Verified on-device each phase — WebView sleep behavior is precisely what desktop Chrome won't show.
+
+* 5. Kiosk layout (FR-5, FR-5a, FR-6, FR-7)
+Viewport-locked =h-dvh= CSS grid, zero page scroll, two equal columns. Each column is =auto / auto / 1fr= rows:
+
+1. *Header band* — full-width block of the kid's identity color with the name as typography on top. The color block, not the name, is the primary identifier (FR-5a). The routine flip control (FR-4) is a single small icon button in the header area, deliberately styled unlike a chore row.
+2. *Events strip* — compact chronological list: colored dot + time + title. All-day events pinned to top (FR-22). Family events render in both columns, visually distinct: neutral chip + house glyph vs. the kid-color dot (FR-19). "Today" = any event overlapping the local day; events spanning midnight render clipped to today ("until 2:00 PM").
+3. *Chores* — remaining height, equal full-width rows: large emoji (~2.5 rem) + name, minimum ~88 px tap height. At ≤5 chores the =1fr= region divides evenly and everything fits by construction (FR-6); beyond 5, /only this region/ gets =overflow-y: auto= — graceful scroll, never clipping.
+
+States: *done* = row filled with the kid's color plus a large check, emoji still visible (color/fill, never text — FR-7); tap again to undo, no confirmation (FR-8). *Upcoming routine* (overnight or manually flipped) = column content dimmed. *Corner glyphs* (D4): dim dot when the socket is down; small clock glyph when the calendar cache exceeds the staleness threshold.
+
+*Tap throttle (D15):* chore rows carry =phx-throttle= (~1 s). Tap-as-toggle is otherwise a bug amplifier: an excited double-tap (complete → undo in 400 ms) would leave the chore /not done/. The throttle swallows the rapid second tap client-side; deliberate undo — a beat later — still works instantly, so FR-8's spirit is intact. (The partial unique index in §1 guards the double-/complete/ race; this guards the toggle.)
+
+* 6. Calendar pipeline (FR-18…FR-22)
+One supervised GenServer, =BearCub.Calendars.Refresher= — the app's only periodic process:
+
+- *Fetch:* on boot and every 10 minutes (config; inside the ~15-minute freshness target), =Req.get= each calendar's =ics_url=. Success → write =last_payload= + =last_fetched_at= on the row (the cache survives reboot, satisfying FR-20's WAN-unplugged-reboot AC). Failure → keep the old payload, record =last_error=, log detail server-side; the kiosk sees at most the staleness glyph.
+- *Parse:* at fetch time (and once on boot from cached payloads), payloads are parsed and recurring events expanded into concrete instances over a bounded horizon (yesterday → tomorrow, so midnight-spanning and recurring events resolve), held in ETS. Parsing sits behind our own =Calendars.ICS= module: implemented on the =icalendar= hex package if it proves adequate for Google's feeds, hand-rolled if not — fixture-tested against real Google Calendar ICS exports either way, and swappable behind the wrapper.
+- *Correctness bar (D16):* whichever implementation, =RRULE= expansion, =EXDATE= (cancelled instances), and =RECURRENCE-ID= overrides (a single moved/edited instance of a recurring event) *must all be honored* — a kiosk confidently showing a cancelled or un-moved event is worse than showing none. This is the project's largest unknown, so /the first task of Phase 4 is a spike/: pull the family's real ICS feeds, build fixtures from them, and prove the chosen parser against this bar before any calendar UI work.
+- *Serve:* =Calendars.today_events(kid_id, today)= filters ETS — pure and fast; the kiosk's midnight re-render just re-slices. A ="calendars"= broadcast after each refresh that changed anything triggers the kiosk re-fetch.
+- *Hygiene (FR-21):* the Refresher logs calendar labels and error reasons, never URLs — raw =Req= error tuples can embed the URL, so they are not logged verbatim. Schema-level =redact: true= (§1) covers the accidental paths.
+- *Staleness threshold:* config, default 2 h (PRD's proposal adopted).
+
+* 7. Deployment (§6.5)
+Ownership is split between the two repos; each owns what it knows:
+
+- *This repo ships* =nix/package.nix= (the mix release, built with nixpkgs =beamPackages.mixRelease=; assets built in the Nix sandbox with nixpkgs-provided tailwind/esbuild binaries) and =nix/module.nix= (systemd unit + typed options: port, timezone, refresh interval, staleness threshold, backup settings). Build knowledge stays versioned with the code it builds.
+- *The homeassistant repo consumes:* one new sibling module =nixos/bear-cub.nix= — the existing =home-assistant.nix= pattern — pinning this repo with =builtins.fetchGit { url; rev; }=, importing ="${src}/nix/module.nix"=, and setting concrete option values. Deploy = bump the pinned =rev= + =nixos-rebuild switch=; migrations run on boot via the standard release migration hook, so upgrades need nothing else (schema changes included).
+- *Unit:* =DynamicUser= with =StateDirectory=bear-cub=; DB at =/var/lib/bear-cub/bear_cub.db=. =SECRET_KEY_BASE= is auto-generated into the state directory by a pre-start snippet if absent — with ICS URLs in the DB (D9), the box carries /zero/ hand-placed application secrets.
+- *Network:* HTTP only, bound on LAN + tailnet; =check_origin: false=. The network is the trust boundary (D5), and the kiosk targets the raw LAN IP while parents use the Tailscale name, so origin pinning would only fight legitimate clients. No hardcoded hosts.
+
+* 8. Seeds (§6.5)
+Idempotent bootstrap at boot, after migrations: *if the kids table is empty*, create two placeholder kids ("Kid A" amber, "Kid B" sky); otherwise touch nothing, ever. Production first boot gets kids only — parents rename and build chores through admin. Dev/CI use the same bootstrap plus a demo set of emoji chores via =priv/repo/seeds.exs=. No calendars are seeded; the app renders fine with zero calendars (empty events strip), which is also the CI posture (§6.4: boots and demos on placeholders alone).
+
+* 9. Backup & restore (§6.7)
+- *Mechanism:* nightly systemd timer (defined in =nix/module.nix=, configured from the homeassistant repo): =sqlite3 <db> ".backup <snapshot>"= (safe under WAL, no app pause), then =restic backup= of the snapshot to an encrypted B2/S3 repository; =restic forget --prune --keep-daily 14 --keep-weekly 8=. Meets the ≤1-day loss tolerance.
+- *Secrets posture:* backups contain the family DB including ICS URLs (D9) — restic's encryption at rest is required, not optional. Restic credentials are infrastructure secrets, deliberately distinct from family data, delivered concretely as: a =backupEnvironmentFile= option on =nix/module.nix= pointing at a root-owned, hand-placed env file (e.g. =/var/lib/bear-cub/backup.env= with =RESTIC_REPOSITORY=, =RESTIC_PASSWORD=, B2 keys), consumed via =EnvironmentFile== by the backup service only — never by the app unit. This file is an explicit rebuild input in success criterion 4.
+- *Restore playbook* (written as a runbook in =docs/=, proven once before cutover — success criterion 4): deploy the module fresh on a clean box → =restic restore= the latest snapshot into the state directory → start the service. Total rebuild inputs: the two repos + restic credentials + the DB snapshot.
+
+* 10. Design decision log (extends PRD §9)
+- *D8 (2026-07-10) — Routines are app constants:* no routines table; windows in =runtime.exs= with env overrides; settles FR-1/FR-23. → §1, §3
+- *D9 (2026-07-10) — ICS URLs are DB data:* admin-managed calendars table (N per kid + family as =kid_id: null=); no local-secrets mechanism; backups become secret-bearing; rebuild needs no locally supplied app secrets. Settles FR-21/§6.4. → §1, §9
+- *D10 (2026-07-10) — Derived day state:* completions are a dated append-style log; no rollover job; FR-13 holds by construction. → §2
+- *D11 (2026-07-10) — Chore = per-kid assignment:* single =chores= table; no assignment join table. → §1
+- *D12 (2026-07-10) — Icons are emoji:* required emoji string per chore; no asset pipeline. → §1, §5
+- *D13 (2026-07-10) — Backup destination:* restic to encrypted B2/S3, nightly timer, 14 daily / 8 weekly retention. → §9
+- *D14 (2026-07-10) — Nix packaging:* bear-cub ships plain =nix/package.nix= + =nix/module.nix= (non-flake); homeassistant repo pins via =fetchGit= and configures, matching its existing channel-based module pattern. → §7
+- *D15 (2026-07-10) — Kiosk tap throttle:* chore rows use =phx-throttle= (~1 s) so a rapid double-tap cannot complete-then-undo; deliberate undo stays instant. → §5
+- *D16 (2026-07-10) — ICS correctness bar & spike:* =RRULE= + =EXDATE= + =RECURRENCE-ID= must all be honored; Phase 4 opens with a parser spike against the family's real feeds before any calendar UI. → §6
+
+* 11. Testing strategy
+TDD (red-green-refactor) at both layers:
+
+- *Unit:* =Routines= window/boundary edges exhaustively (23:59/00:01, edge-to-edge handoff, overnight gap); completion semantics (complete→undo→complete AC, double-tap uniqueness via the partial index, local-date scoping across midnight); =Calendars.ICS= against real Google ICS fixtures (all-day, timed, RRULE recurrence, midnight-spanning); seed idempotency.
+- *Integration:* LiveView tests for kiosk tap/undo/flip flows and PubSub cross-surface propagation (admin change → kiosk render); admin CRUD + reorder + on-behalf completion + day reset; refresher failure modes (fetch error → cache served, staleness glyph).
+- *On-device (manual phase gate, per PRD §7):* Fully Kiosk WebView rendering, 5-chore no-scroll AC, sleep/wake reconnect, connection-loss degradation. These cannot be honestly CI'd.
