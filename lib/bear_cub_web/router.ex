@@ -17,7 +17,7 @@ defmodule BearCubWeb.Router do
   scope "/", BearCubWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", KioskLive
   end
 
   # Other scopes may use custom stacks.
