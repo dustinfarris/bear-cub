@@ -105,6 +105,7 @@ Seeding is a mix script, not boot machinery (D17): =priv/repo/seeds.exs= is idem
 - *D15 (2026-07-10) — Kiosk tap throttle:* chore rows use =phx-throttle= (~1 s) so a rapid double-tap cannot complete-then-undo; deliberate undo stays instant. → §5
 - *D16 (2026-07-10) — ICS correctness bar & spike:* =RRULE= + =EXDATE= + =RECURRENCE-ID= must all be honored; Phase 4 opens with a parser spike against the family's real feeds before any calendar UI. → §6
 - *D17 (2026-07-10) — Seeds are a mix script, not a boot hook:* no boot-time bootstrap task; dev/CI seed via =priv/repo/seeds.exs=, and production placeholder rows are inserted once at first deploy (documented QA step). Trades a self-seeding first boot for zero boot machinery. Amends §8.
+- *D18 (2026-07-10) — Kiosk follows the device theme:* dark mode is supported, not pinned — surfaces render in whichever theme the device reports (the scaffold's =prefers-color-scheme= wiring stays). Styling must use theme-relative tokens, and on-device QA covers both themes; if the dark rendering proves janky, iterate on the dark palette rather than pinning light. → §5
 
 * 11. Testing strategy
 TDD (red-green-refactor) at both layers:
