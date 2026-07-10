@@ -16,52 +16,17 @@ defmodule BearCub.Chores do
     Repo.all(from k in Kid, order_by: [asc: k.position, asc: k.id])
   end
 
-  @doc """
-  Gets a single kid.
-
-  Raises `Ecto.NoResultsError` if the Kid does not exist.
-
-  ## Examples
-
-      iex> get_kid!(123)
-      %Kid{}
-
-      iex> get_kid!(456)
-      ** (Ecto.NoResultsError)
-
-  """
+  @doc "Gets a single kid. Raises `Ecto.NoResultsError` if absent."
   def get_kid!(id), do: Repo.get!(Kid, id)
 
-  @doc """
-  Creates a kid.
-
-  ## Examples
-
-      iex> create_kid(%{field: value})
-      {:ok, %Kid{}}
-
-      iex> create_kid(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Creates a kid."
   def create_kid(attrs) do
     %Kid{}
     |> Kid.changeset(attrs)
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a kid.
-
-  ## Examples
-
-      iex> update_kid(kid, %{field: new_value})
-      {:ok, %Kid{}}
-
-      iex> update_kid(kid, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
+  @doc "Updates a kid (rename/recolor — kids are edit-only in v1, design §1)."
   def update_kid(%Kid{} = kid, attrs) do
     kid
     |> Kid.changeset(attrs)

@@ -12,10 +12,7 @@ defmodule BearCub.Application do
       BearCub.Repo,
       {Ecto.Migrator,
        repos: Application.fetch_env!(:bear_cub, :ecto_repos), skip: skip_migrations?()},
-      {DNSCluster, query: Application.get_env(:bear_cub, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BearCub.PubSub},
-      # Start a worker by calling: BearCub.Worker.start_link(arg)
-      # {BearCub.Worker, arg},
       # Start to serve requests, typically the last entry
       BearCubWeb.Endpoint
     ]
