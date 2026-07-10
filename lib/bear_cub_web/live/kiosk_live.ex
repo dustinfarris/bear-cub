@@ -7,6 +7,8 @@ defmodule BearCubWeb.KioskLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Chores.subscribe()
+
     {:ok, socket |> assign(:flipped, false) |> load(LocalTime.now()) |> schedule_boundary()}
   end
 
@@ -15,7 +17,26 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> update(:flipped, &(!&1)) |> load(LocalTime.now())}
   end
 
+  def handle_event("toggle-chore", %{"chore-id" => id}, socket) do
+    chore = Chores.get_chore!(id)
+    now = LocalTime.now()
+
+    if Map.has_key?(socket.assigns.completions, chore.id) do
+      # {:error, :not_completed} if another surface undid it first — no-op
+      Chores.undo_chore(chore, now)
+    else
+      # a racing double-complete hits the partial unique index — already done
+      Chores.complete_chore(chore, now, "kiosk")
+    end
+
+    {:noreply, load(socket, now)}
+  end
+
   @impl true
+  def handle_info(:chores_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
   def handle_info(:boundary, socket) do
     # Window handoff (FR-3), flip reversion (FR-4), and the midnight
     # re-render of derived day state (design §2) are all one event:
@@ -27,13 +48,22 @@ defmodule BearCubWeb.KioskLive do
     {state, auto} = Routines.current(local_now)
     shown = if socket.assigns.flipped, do: Routines.other(auto), else: auto
 
+    # done today? — derived, never stored (design §2)
+    completions = Chores.current_completions(DateTime.to_date(local_now))
+
     columns =
       for kid <- Chores.list_kids() do
-        %{kid: kid, chores: Chores.list_chores(kid, Atom.to_string(shown))}
+        chores =
+          for chore <- Chores.list_chores(kid, Atom.to_string(shown)) do
+            %{chore: chore, done?: Map.has_key?(completions, chore.id)}
+          end
+
+        %{kid: kid, chores: chores}
       end
 
     assign(socket,
       columns: columns,
+      completions: completions,
       shown: shown,
       dimmed?: socket.assigns.flipped or state == :upcoming
     )
@@ -103,8 +133,11 @@ defmodule BearCubWeb.KioskLive do
           </div>
 
           <%!-- Chores: equal full-width rows; at ≤5 the 1fr region divides
-               evenly, beyond 5 only this region scrolls (FR-6). Dimmed when
-               the shown routine is not the active one (design §5). --%>
+               evenly, beyond 5 only this region scrolls (FR-6). Done = kid-color
+               fill + check, emoji still visible (FR-7); tap again to undo, no
+               confirmation (FR-8). phx-throttle swallows the excited rapid
+               double-tap (D15). Dimming is visual only — rows stay tappable
+               (D19). --%>
           <ul
             id={"chores-#{kid.id}"}
             class={[
@@ -113,12 +146,23 @@ defmodule BearCubWeb.KioskLive do
             ]}
           >
             <li
-              :for={chore <- chores}
+              :for={%{chore: chore, done?: done?} <- chores}
               id={"chore-#{chore.id}"}
-              class="flex min-h-[88px] items-center gap-5 bg-base-100 px-6"
+              data-done={done?}
+              phx-click="toggle-chore"
+              phx-value-chore-id={chore.id}
+              phx-throttle="1000"
+              class={[
+                "flex min-h-[88px] cursor-pointer select-none items-center gap-5 px-6 transition-colors",
+                !done? && "bg-base-100"
+              ]}
+              style={done? && "background-color: #{kid.color}"}
             >
               <span class="text-[2.5rem] leading-none">{chore.icon}</span>
-              <span class="text-2xl font-semibold">{chore.name}</span>
+              <span class={["text-2xl font-semibold", done? && "text-white drop-shadow-sm"]}>
+                {chore.name}
+              </span>
+              <.icon :if={done?} name="hero-check" class="ml-auto size-10 text-white drop-shadow-sm" />
             </li>
           </ul>
         </section>

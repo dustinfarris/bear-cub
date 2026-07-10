@@ -153,4 +153,114 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "a")
     end
   end
+
+  describe "tap to complete and undo" do
+    import Ecto.Query, only: [from: 2]
+
+    alias BearCub.Chores
+    alias BearCub.Chores.Completion
+    alias BearCub.Repo
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      # the chore lives in whichever routine the kiosk is showing right now,
+      # so taps land on a visible row no matter when the suite runs
+      chore =
+        chore_fixture(kid, %{
+          name: "Brush Teeth",
+          icon: "🪥",
+          routine: Atom.to_string(auto_routine())
+        })
+
+      %{kid: kid, chore: chore}
+    end
+
+    test "tapping a chore marks it done with the kid-color fill and a check (FR-7)",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#chore-#{chore.id}[data-done]")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+      assert has_element?(view, "#chore-#{chore.id}[style*='background-color: #f59e0b']")
+      assert has_element?(view, "#chore-#{chore.id} .hero-check")
+      assert has_element?(view, "#chore-#{chore.id}", "🪥")
+
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^chore.id)
+      assert completion.source == "kiosk"
+      assert completion.local_date == DateTime.to_date(LocalTime.now())
+      assert completion.undone_at == nil
+    end
+
+    test "tapping a done chore undoes it — no confirmation (FR-8)",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{chore.id}[data-done]")
+
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^chore.id)
+      refute is_nil(completion.undone_at)
+    end
+
+    test "complete → undo → complete: one current record, full history (FR-8 AC)",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+      view |> element("#chore-#{chore.id}") |> render_click()
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+
+      completions = Repo.all(from c in Completion, where: c.chore_id == ^chore.id)
+      assert length(completions) == 2
+      assert Enum.count(completions, &is_nil(&1.undone_at)) == 1
+    end
+
+    test "chore rows carry the 1s tap throttle (D15)", %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{chore.id}[phx-throttle='1000']")
+    end
+
+    test "a dimmed preview stays tappable (D19)", %{conn: conn, kid: kid} do
+      other = Routines.other(auto_routine())
+
+      flipped_chore =
+        chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: Atom.to_string(other)})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#routine-flip") |> render_click()
+
+      view |> element("#chore-#{flipped_chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{flipped_chore.id}[data-done]")
+      assert Repo.exists?(from c in Completion, where: c.chore_id == ^flipped_chore.id)
+    end
+
+    test "a completion from another surface appears without refresh (FR-9)",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # stand-in for Phase 3's admin: any context write broadcasts
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "admin")
+
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+    end
+
+    test "a tap in one kiosk view updates another (FR-9)", %{conn: conn, chore: chore} do
+      {:ok, view_a, _html} = live(conn, ~p"/")
+      {:ok, view_b, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+
+      view_a |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view_b, "#chore-#{chore.id}[data-done]")
+    end
+  end
 end
