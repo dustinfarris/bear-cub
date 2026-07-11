@@ -18,10 +18,9 @@ defmodule BearCub.Chores.Chore do
   @doc false
   def changeset(chore, attrs) do
     chore
-    |> cast(attrs, [:routine, :name, :icon, :position])
-    |> validate_required([:routine, :name, :icon, :position])
+    |> cast(attrs, [:routine, :name, :icon])
+    |> validate_required([:routine, :name, :icon])
     |> validate_inclusion(:routine, @routines)
-    |> validate_number(:position, greater_than_or_equal_to: 0)
     |> assoc_constraint(:kid)
   end
 end

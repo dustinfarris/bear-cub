@@ -34,8 +34,10 @@ if Repo.aggregate(Chore, :count) == 0 do
   for kid <- Repo.all(Kid),
       {routine, chores} <- demo_chores,
       {{name, icon}, position} <- Enum.with_index(chores) do
-    %Chore{kid_id: kid.id}
-    |> Chore.changeset(%{name: name, icon: icon, routine: routine, position: position})
+    # position is programmatic (never cast) — seeds set it on the struct,
+    # exactly as the context computes appends
+    %Chore{kid_id: kid.id, position: position}
+    |> Chore.changeset(%{name: name, icon: icon, routine: routine})
     |> Repo.insert!()
   end
 end

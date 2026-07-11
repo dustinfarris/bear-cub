@@ -76,10 +76,17 @@ defmodule BearCub.Chores do
   """
   def get_chore(id), do: Repo.get(Chore, id)
 
-  @doc "Creates a chore owned by `kid`. `kid_id` is never cast from attrs."
+  @doc """
+  Creates a chore owned by `kid`, appended at the end of its routine's
+  list (D22). `kid_id` and `position` are never cast from attrs — the
+  ▲/▼ swap in `move_chore/2` is the only ordering control.
+  """
   def create_chore(%Kid{} = kid, attrs) do
-    %Chore{kid_id: kid.id}
-    |> Chore.changeset(attrs)
+    changeset = Chore.changeset(%Chore{kid_id: kid.id}, attrs)
+    routine = Ecto.Changeset.get_field(changeset, :routine)
+
+    changeset
+    |> Ecto.Changeset.put_change(:position, next_position(kid, routine))
     |> Repo.insert()
     |> broadcast_change()
   end
@@ -95,6 +102,68 @@ defmodule BearCub.Chores do
     chore
     |> Repo.delete()
     |> broadcast_change()
+  end
+
+  @doc """
+  Swaps `chore`'s position with its neighbor in the same kid+routine
+  list (D22) — `:up` toward position 0. At the list edge this is a
+  silent no-op: `{:ok, chore}` unchanged, no broadcast.
+  """
+  def move_chore(%Chore{} = chore, direction) when direction in [:up, :down] do
+    case neighbor(chore, direction) do
+      nil ->
+        {:ok, chore}
+
+      other ->
+        {:ok, moved} =
+          Repo.transaction(fn ->
+            {:ok, _} = other |> Ecto.Changeset.change(position: chore.position) |> Repo.update()
+
+            {:ok, moved} =
+              chore |> Ecto.Changeset.change(position: other.position) |> Repo.update()
+
+            moved
+          end)
+
+        broadcast_change({:ok, moved})
+    end
+  end
+
+  # The adjacent chore within the same kid+routine — position-gap tolerant
+  # (deletes leave gaps; the nearest position wins, ties broken by id).
+  defp neighbor(%Chore{} = chore, :up) do
+    Repo.one(
+      from c in Chore,
+        where:
+          c.kid_id == ^chore.kid_id and c.routine == ^chore.routine and
+            c.position < ^chore.position,
+        order_by: [desc: c.position, desc: c.id],
+        limit: 1
+    )
+  end
+
+  defp neighbor(%Chore{} = chore, :down) do
+    Repo.one(
+      from c in Chore,
+        where:
+          c.kid_id == ^chore.kid_id and c.routine == ^chore.routine and
+            c.position > ^chore.position,
+        order_by: [asc: c.position, asc: c.id],
+        limit: 1
+    )
+  end
+
+  defp next_position(_kid, nil), do: 0
+
+  defp next_position(%Kid{} = kid, routine) do
+    max_position =
+      Repo.one(
+        from c in Chore,
+          where: c.kid_id == ^kid.id and c.routine == ^routine,
+          select: max(c.position)
+      )
+
+    (max_position || -1) + 1
   end
 
   def change_chore(%Chore{} = chore, attrs \\ %{}) do

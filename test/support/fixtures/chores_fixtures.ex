@@ -20,7 +20,7 @@ defmodule BearCub.ChoresFixtures do
     {:ok, chore} =
       Chores.create_chore(
         kid,
-        Enum.into(attrs, %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0})
+        Enum.into(attrs, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
       )
 
     chore

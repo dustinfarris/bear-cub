@@ -72,13 +72,13 @@ defmodule BearCub.ChoresTest do
   describe "chores" do
     import BearCub.ChoresFixtures
 
-    test "list_chores/2 returns the kid's chores for a routine, ordered by position" do
+    test "list_chores/2 returns the kid's chores for a routine, in append order" do
       kid = kid_fixture()
       other_kid = kid_fixture(%{position: 1})
-      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️", position: 1})
-      first = chore_fixture(kid, %{position: 0})
-      _evening = chore_fixture(kid, %{routine: "evening", position: 0})
-      _other_kids = chore_fixture(other_kid, %{position: 0})
+      first = chore_fixture(kid)
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      _evening = chore_fixture(kid, %{routine: "evening"})
+      _other_kids = chore_fixture(other_kid)
 
       assert Chores.list_chores(kid, "morning") == [first, second]
     end
@@ -108,13 +108,13 @@ defmodule BearCub.ChoresTest do
       assert %{routine: ["is invalid"]} = errors_on(changeset)
     end
 
-    test "update_chore/2 updates name, icon, and position" do
+    test "update_chore/2 updates name and icon; position is not mass-assignable" do
       chore = chore_fixture()
 
-      assert {:ok, chore} = Chores.update_chore(chore, %{name: "Floss", icon: "🦷", position: 3})
+      assert {:ok, chore} = Chores.update_chore(chore, %{name: "Floss", icon: "🦷", position: 9})
       assert chore.name == "Floss"
       assert chore.icon == "🦷"
-      assert chore.position == 3
+      assert chore.position == 0
     end
 
     test "delete_chore/1 deletes the chore" do
@@ -140,6 +140,95 @@ defmodule BearCub.ChoresTest do
 
       Repo.delete!(chore)
       assert Chores.get_chore(chore.id) == nil
+    end
+  end
+
+  describe "chore ordering" do
+    import BearCub.ChoresFixtures
+
+    test "create_chore/2 appends to the end of the kid's routine (D22)" do
+      kid = kid_fixture()
+
+      first = chore_fixture(kid)
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      evening = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+
+      assert first.position == 0
+      assert second.position == 1
+      # positions are independent per kid+routine
+      assert evening.position == 0
+    end
+
+    test "position is not mass-assignable on create" do
+      kid = kid_fixture()
+
+      {:ok, chore} =
+        Chores.create_chore(kid, %{
+          name: "Brush Teeth",
+          icon: "🪥",
+          routine: "morning",
+          position: 7
+        })
+
+      assert chore.position == 0
+    end
+
+    test "move_chore/2 down swaps with the next chore and broadcasts once" do
+      kid = kid_fixture()
+      first = chore_fixture(kid)
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      :ok = Chores.subscribe()
+
+      assert {:ok, moved} = Chores.move_chore(first, :down)
+      assert moved.position == 1
+
+      assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [second.id, first.id]
+      assert_receive :chores_changed
+      refute_receive :chores_changed, 50
+    end
+
+    test "move_chore/2 up swaps with the previous chore" do
+      kid = kid_fixture()
+      first = chore_fixture(kid)
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+
+      assert {:ok, _} = Chores.move_chore(second, :up)
+      assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [second.id, first.id]
+    end
+
+    test "move_chore/2 at the list edge is a silent no-op — no broadcast" do
+      kid = kid_fixture()
+      only = chore_fixture(kid)
+      :ok = Chores.subscribe()
+
+      assert {:ok, chore} = Chores.move_chore(only, :up)
+      assert chore.position == only.position
+      refute_receive :chores_changed, 50
+    end
+
+    test "move_chore/2 never crosses kid or routine boundaries" do
+      kid = kid_fixture()
+      other_kid = kid_fixture(%{position: 1})
+      morning = chore_fixture(kid)
+      _evening = chore_fixture(kid, %{routine: "evening"})
+      _other = chore_fixture(other_kid)
+
+      # nothing above or below it within kid+morning — both directions no-op
+      assert {:ok, %{position: 0}} = Chores.move_chore(morning, :up)
+      assert {:ok, %{position: 0}} = Chores.move_chore(morning, :down)
+    end
+
+    test "move_chore/2 swaps across position gaps left by deletes" do
+      kid = kid_fixture()
+      first = chore_fixture(kid)
+      middle = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      last = chore_fixture(kid, %{name: "Get Dressed", icon: "👕"})
+      {:ok, _} = Chores.delete_chore(middle)
+
+      assert {:ok, moved} = Chores.move_chore(first, :down)
+      assert moved.position == 2
+
+      assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [last.id, first.id]
     end
   end
 
