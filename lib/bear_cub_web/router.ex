@@ -28,6 +28,9 @@ defmodule BearCubWeb.Router do
     live "/chores", ChoreLive.Index, :index
     live "/chores/new", ChoreLive.Form, :new
     live "/chores/:id/edit", ChoreLive.Form, :edit
+
+    live "/kids", KidLive.Index, :index
+    live "/kids/:id/edit", KidLive.Form, :edit
   end
 
   # Other scopes may use custom stacks.

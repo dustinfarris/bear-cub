@@ -110,6 +110,7 @@ Seeding is a mix script, not boot machinery (D17): =priv/repo/seeds.exs= is idem
 - *D20 (2026-07-10) — Per-dep Nix derivations:* mix deps build as one Nix derivation each via a deps_nix-generated =nix/deps.nix= (regenerated automatically by the =deps.get=/=deps.update= aliases), so a code deploy recompiles only the app — replaces the fetchMixDeps FOD and its TOFU hash refresh. exqlite links nixpkgs' sqlite (=EXQLITE_USE_SYSTEM=) instead of compiling the bundled amalgamation. daisyui is asset-only (=app: false, compile: false=), which deps_nix omits — hand-pinned in =nix/package.nix=, bumped together with =mix.exs=. → §7
 - *D21 (2026-07-10) — Day reset is bulk undo:* resetting a kid's day or the whole day stamps =undone_at= on every current completion in scope (one broadcast, rows retained per FR-17); a reset never deletes anything. → §2
 - *D22 (2026-07-10) — Reorder is a position swap:* new chores append at max(position)+1 within kid+routine; the admin's ▲/▼ buttons swap adjacent positions server-side (no drag-and-drop JS, per §6.2 minimal-JS); =position= and =kid_id= are never cast from params. → §1
+- *D23 (2026-07-10) — Kid colors pick from a curated swatch palette:* the kid form offers ten hex swatches pre-vetted for white-text contrast in both themes; UI-only — the schema stays generic hex, and an out-of-palette color renders as an extra swatch. → §1
 
 * 11. Testing strategy
 TDD (red-green-refactor) at both layers:
