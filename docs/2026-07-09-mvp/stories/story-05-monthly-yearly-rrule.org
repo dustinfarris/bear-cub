@@ -1,0 +1,81 @@
+#+title: Story 05 — Monthly RRULE expansion & graceful degradation on unsupported FREQ
+
+Design: [[file:../DESIGN.org][DESIGN.org]] · Plan: [[file:../PLAN.org][PLAN.org]]
+
+* Design excerpt
+
+Verbatim from DESIGN.org §6 (Calendar pipeline):
+
+#+begin_quote
+*Parse:* at fetch time (and once on boot from cached payloads), payloads are parsed and recurring events expanded into concrete instances over a bounded horizon (yesterday → tomorrow, so midnight-spanning and recurring events resolve), held in ETS. Parsing sits behind our own =Calendars.ICS= module: hand-rolled (D25) — the =icalendar= hex package silently drops =RECURRENCE-ID=, an unrecoverable gap against the correctness bar below — fixture-tested against sanitized excerpts of the family's real Google Calendar ICS exports, and swappable behind the wrapper.
+#+end_quote
+
+Verbatim from DESIGN.org §11 (Testing strategy):
+
+#+begin_quote
+*Unit:* =Routines= window/boundary edges exhaustively (23:59/00:01, edge-to-edge handoff, overnight gap); completion semantics (complete→undo→complete AC, double-tap uniqueness via the partial index, local-date scoping across midnight); =Calendars.ICS= against sanitized fixtures derived from real Google ICS exports (all-day, timed, RRULE recurrence, EXDATE exclusion, RECURRENCE-ID override, midnight-spanning); seed idempotency.
+#+end_quote
+
+Verbatim from PRD.org (FR-19):
+
+#+begin_quote
+*FR-19* Each kid's column shows their personal events blended with family events in one chronological list; family events appear in both columns and are visually distinct (family color/icon). Today's events only — no tomorrow preview.
+#+end_quote
+
+* User Story
+
+As a parent relying on the kiosk to show accurate events, I need the calendar parser to correctly expand a monthly recurring event and to never crash on a recurrence pattern it doesn't yet support, so that one calendar's advanced RRULE shape can't take down that kid's (or the family's) entire blended event list per FR-19.
+
+* Acceptance Criteria
+
+** [X] A sanitized ICS fixture exists for the =FREQ=MONTHLY= recurring case as it occurs in the family's real feeds, derived under the same sanitization mechanism as Story 01 (structural =RRULE=/=EXDATE=/=DTSTART=/=DTEND= preserved, =SUMMARY=/=LOCATION=/=UID= replaced with placeholders).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:46] \\
+  =test/support/fixtures/ics/monthly_recurring_event.ics= cross-checked byte-for-byte against the sole real =FREQ=MONTHLY= =VEVENT= in =tmp/real-feeds/child-b.ics= (lines 254-278, never staged): =DTSTART=, =DTEND=, =RRULE:FREQ=MONTHLY;WKST=SU;BYDAY=1TH=, and both =EXDATE=s are identical; =UID=/=SUMMARY=/=LOCATION= are placeholders (=fixture-monthly-recurring-event-1@bearcub.example=, "Placeholder Monthly Recurring Event", "Placeholder Location"). Verified by a story-verifier subagent audit.
+:END:
+** [X] =BearCub.Calendars.ICS.expand_rrule/3= correctly expands =FREQ=MONTHLY= (including its =BYDAY= ordinal-weekday form, e.g. =BYDAY=1TH=) within the bounded horizon, verified by a test asserting the expected concrete instances against the fixture, honoring its =EXDATE= exclusions.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:46] \\
+  =expand_monthly_byday/4= (=lib/bear_cub/calendars/ics.ex:159-187=), dispatched from =expand_rrule/3= (=ics.ex:102-103=). Test "expands FREQ=MONTHLY;BYDAY=1TH into one instance per matching month, honoring EXDATE" (=test/bear_cub/calendars/ics_test.exs:137-177=) asserts all 10 in-window first-Thursday occurrences for 2026, independently recomputed against the real PST/PDT DST transition (Mar→Apr, Nov), with the two =EXDATE=d months (May, Jul) correctly absent. =mix test test/bear_cub/calendars/ics_test.exs= → 9 passed.
+:END:
+** [X] The committed fixture file contains no real family names, event titles, locations, or any other identifying string — every identifying string is a placeholder.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:46] \\
+  =grep -n -iE "SUMMARY|LOCATION|ORGANIZER|ATTENDEE|X-WR-CALNAME|X-WR-CALDESC|^UID" test/support/fixtures/ics/monthly_recurring_event.ics= (the same check Story 01 used) matches only placeholder values: =Placeholder Calendar=, =Placeholder Monthly Recurring Event=, =Placeholder Location=, =fixture-monthly-recurring-event-1@bearcub.example=; no ORGANIZER/ATTENDEE lines exist. =git status --short= confirms nothing under =tmp/= is staged. Verified by a story-verifier subagent audit.
+:END:
+** [X] An unsupported =FREQ= value (e.g. =FREQ=YEARLY=, still unimplemented after this story) degrades gracefully: =BearCub.Calendars.ICS.parse/3= does not raise for a recurrence shape it can't expand, verified by a test. (Closes the =CaseClauseError= gap flagged by Story 01's closeout audit — =expand_rrule/3='s =case= currently has no catch-all.)
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:46] \\
+  Catch-all clause ={_unsupported_freq, _byday} -> []= added to the =case= in =expand_rrule/3= (=lib/bear_cub/calendars/ics.ex:105-106=), closing Story 01's flagged =CaseClauseError= gap. Test "does not raise for FREQ=YEARLY, an unimplemented recurrence shape" (=ics_test.exs:179-198=) constructs an inline =FREQ=YEARLY;BYMONTH=3;BYDAY=2SU= snippet per the Technical Notes and asserts ={:ok, []} = ICS.parse(...)=, no raise. =mix test= → 9/9 passed.
+:END:
+
+* Definition of Done
+
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:48] \\
+  All 4 ACs above are =[X]= with LOGBOOK evidence entries; independently re-confirmed by a second story-verifier pass (re-read file/line evidence for AC2/AC4's dispatch and catch-all clauses, re-ran AC3's placeholder grep).
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:48] \\
+  =test/bear_cub/calendars/ics_test.exs:137-177= (MONTHLY expansion) and =:179-198= (unsupported FREQ) map 1:1 to AC2/AC4. =mix test test/bear_cub/calendars/ics_test.exs= → 9 passed; =mix test= (full suite) → 131 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:48] \\
+  =lib/bear_cub/calendars/ics.ex= spot-checked against CLAUDE.md's Elixir guidelines: no =String.to_atom/1= on user input, no map-access syntax on structs (dot access / pattern matching throughout), =case=/=cond= used instead of =if/else if=, one module per file, predicate functions (=overlaps?/3=, =excluded?/2=) use =?= suffix not =is_= prefix. =mix compile --warnings-as-errors= compiles clean.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:48] \\
+  =mix format --check-formatted= exits 0. =mix test= → 131 passed, 0 failures.
+:END:
+
+* Technical Notes
+
+- *Evidence correction (recorded here since it shaped this story's scope):* the authorization for this story originally cited "7 MONTHLY/YEARLY recurring events (2 per kid calendar)" in the real feeds as an FR-19-blocking finding. Verified directly against =tmp/real-feeds/*.ics= before this story was written: scoped strictly to =VEVENT= blocks (excluding =VTIMEZONE='s boilerplate =DAYLIGHT=/=STANDARD= sub-blocks, which every Google export encodes as =RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU= / =RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU= DST-transition rules — not family events), the real feeds contain exactly *one* =FREQ=MONTHLY= =VEVENT= (in =child-b.ics=: =RRULE:FREQ=MONTHLY;WKST=SU;BYDAY=1TH= with two =EXDATE=s) and *zero* =FREQ=YEARLY= =VEVENT=s. The naive whole-file grep that produced "7" was counting the VTIMEZONE boilerplate lines (2 per file × 3 files = 6) plus the one real =MONTHLY= event = 7 — an artifact of not scoping the grep to =VEVENT= blocks, not seven distinct family events. This story is scoped to the corrected evidence: one real =MONTHLY= fixture, and =YEARLY= handled only via the graceful-degradation AC (no real =YEARLY= fixture exists or is required).
+- Sanitization process (same mechanism as Story 01, not itself an AC): pull the family's real ICS feeds locally (never committed), hand-derive the fixture file by replacing =SUMMARY=/=LOCATION=/=ORGANIZER=/=ATTENDEE=/=UID= with placeholders while preserving the =RRULE=/=EXDATE=/=DTSTART=/=DTEND= structure the AC exercises, and verify with the same identifying-field grep Story 01 used for its sanitization AC. The real feeds and any intermediate un-sanitized files must never be staged or committed.
+- AC4's "unsupported =FREQ=" test does not need a real fixture — construct a minimal =FREQ=YEARLY= ICS snippet inline in the test module, the same way Story 01's closeout audit reproduced the =CaseClauseError= (using =FREQ=MONTHLY=, before this story made it supported), mirroring Story 01's approach to the midnight-spanning fixture when no real analog existed.
+- No dependency on Stories 02/03/04 — this story only extends =BearCub.Calendars.ICS= (=lib/bear_cub/calendars/ics.ex=, specifically =expand_rrule/3=); it does not touch the =calendars= schema/table, the =BearCub.Calendars= context, the Refresher GenServer, or any LiveView.
+- Deferred discovery carried from Story 01, still open after this story: =BYMONTHDAY=, =BYSETPOS=, =BYMONTH=, =COUNT=, and =FREQ=YEARLY= expansion remain unimplemented — only =FREQ=MONTHLY;BYDAY=<ordinal><weekday>= (the shape the real feeds actually use) is added by this story. If a future real feed needs broader coverage, extend =expand_rrule/3= again rather than reaching for a library (D25 rules out =icalendar= categorically).

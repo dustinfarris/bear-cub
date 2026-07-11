@@ -12,10 +12,27 @@ Design: [[file:DESIGN.org]]
 :END:
 
 * Batch 2 — Phase 4: Calendar overlay
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:30] \\
+  Inserted Story 05 (monthly RRULE expansion + graceful degradation on unsupported =FREQ=) into this batch, immediately after Story 01, per human authorization. The authorization's original evidence ("7 MONTHLY/YEARLY recurring events, 2 per kid calendar") was checked against =tmp/real-feeds/*.ics= before writing anything and found inflated: scoped strictly to =VEVENT= blocks (excluding each calendar's =VTIMEZONE= boilerplate DST-transition =RRULE=s, which also use =FREQ=YEARLY= and were being counted as if they were family events), the real feeds contain exactly one =FREQ=MONTHLY= =VEVENT= (=child-b.ics=) and zero =FREQ=YEARLY= =VEVENT=s. Human chose to proceed with the corrected evidence, scoping Story 05 to the one real =MONTHLY= event plus a graceful-degradation AC for unsupported =FREQ= (closing the =CaseClauseError= gap Story 01's closeout audit found), rather than the originally stated 7-event/blocker framing. See story-05-monthly-yearly-rrule.org Technical Notes for full detail.
+:END:
 
-** TODO [[file:stories/story-01-ics-parser-spike.org][Story 01 — ICS parser spike]]
+** DONE [[file:stories/story-01-ics-parser-spike.org][Story 01 — ICS parser spike]]
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:44] \\
+  Closed out: all 4 ACs and all 4 DoD items =[X]=. =icalendar= 1.1.3 was evaluated and rejected — it silently drops =RECURRENCE-ID= (no struct field, no parser clause), a hard fail against the D16 correctness bar — and =BearCub.Calendars.ICS= was hand-rolled instead (=lib/bear_cub/calendars/ics.ex= + =lib/bear_cub/calendars/ics/instance.ex=), fixture-tested against six sanitized fixtures derived from the family's real feeds (=test/support/fixtures/ics/=), 7/7 tests passing. See the story's Technical Notes for full evidence; this decision needs a DESIGN.org D-entry (handled in this update-design pass).
+:END:
+** DONE [[file:stories/story-05-monthly-yearly-rrule.org][Story 05 — Monthly RRULE expansion & graceful degradation on unsupported FREQ]]
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 13:51] \\
+  Closed out: all 4 ACs and all 4 DoD items =[X]=. =expand_monthly_byday/4= added to =lib/bear_cub/calendars/ics.ex=, dispatched from =expand_rrule/3= for =FREQ=MONTHLY;BYDAY=<ordinal><weekday>=; verified against a new sanitized fixture (=monthly_recurring_event.ics=, derived from the real =child-b.ics= =MONTHLY= =VEVENT=) covering 10 in-window occurrences across the Mar/Nov DST transitions with both =EXDATE=s honored. =expand_rrule/3='s =case= gained a catch-all closing Story 01's flagged =CaseClauseError= gap — an unsupported =FREQ= (e.g. =FREQ=YEARLY=) now returns zero occurrences for that event instead of raising. =mix test= → 131 passed. DESIGN.org updated with D26 + a paired Advisory (§6 correctness-bar scope clarification); see this pass's DESIGN.org changes.
+:END:
 ** TODO [[file:stories/story-02-calendars-schema-admin.org][Story 02 — Calendars schema, context, and admin CRUD]]
 ** TODO [[file:stories/story-03-calendar-refresh-pipeline.org][Story 03 — Calendar refresh pipeline]]
 ** TODO [[file:stories/story-04-kiosk-events-strip.org][Story 04 — Kiosk events strip]]
 
 * Deferred
+
+- From Story 01, implemented by Story 05: =FREQ=MONTHLY= RRULE expansion (=BYDAY=<ordinal><weekday>= form) and graceful degradation on unsupported =FREQ= — no longer deferred; see [[file:stories/story-05-monthly-yearly-rrule.org][Story 05]] and DESIGN.org D26.
+- From Story 01, still deferred: =FREQ=YEARLY= expansion (Story 05 only degrades gracefully on it, does not expand it — zero real =YEARLY= =VEVENT=s observed in the family's feeds, scoped strictly to =VEVENT= blocks and excluding =VTIMEZONE= boilerplate), plus =COUNT=, =BYMONTHDAY=, =BYSETPOS=, =BYMONTH=. The family's real feeds also contain =FREQ=DAILY= events with large =INTERVAL= values and no =COUNT=/=UNTIL= — already handled correctly by the existing safety-cap bound, not a correctness gap. If a future real-feed fetch surfaces a recurrence shape the module still can't expand, extend =expand_rrule/3= rather than reaching for a library (D25 rules out =icalendar= categorically for this project).
+- From Story 01: recurring all-day events (=RRULE= combined with =VALUE=DATE=) are unhandled — no required fixture combines them, and none were observed in the family's real feeds.

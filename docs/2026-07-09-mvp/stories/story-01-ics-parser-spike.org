@@ -38,17 +38,49 @@ As a parent relying on the kiosk to show accurate events, I need the calendar pa
 
 * Acceptance Criteria
 
-** [ ] Sanitized ICS fixture files exist, derived from the family's real Google Calendar feeds, covering: a plain timed event, an all-day event, an event spanning midnight, a recurring event (RRULE), a cancelled recurring instance (EXDATE), and a moved/edited recurring instance (RECURRENCE-ID override).
-** [ ] None of the committed fixture files contain real family names, event titles, locations, or any other identifying string from the family's actual calendars — every identifying string is a placeholder.
-** [ ] A =BearCub.Calendars.ICS= module parses each fixture and expands recurring events into concrete instances, correctly honoring RRULE expansion, EXDATE exclusion, and RECURRENCE-ID override, verified by tests asserting the expected instances for each fixture.
-** [ ] The parser implementation choice (the =icalendar= hex package, or a hand-rolled parser if it doesn't clear the correctness bar) is settled and recorded, based on its performance against these fixtures.
+** [X] Sanitized ICS fixture files exist, derived from the family's real Google Calendar feeds, covering: a plain timed event, an all-day event, an event spanning midnight, a recurring event (RRULE), a cancelled recurring instance (EXDATE), and a moved/edited recurring instance (RECURRENCE-ID override).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:34] \\
+  Six fixtures exist under =test/support/fixtures/ics/=, each verified to contain the structural ICS properties its category requires: =timed_event.ics= (=DTSTART=/=DTEND=, no RRULE), =all_day_event.ics= (=VALUE=DATE=), =recurring_event.ics= (=RRULE:FREQ=WEEKLY;BYDAY=MO,WE=), =cancelled_instance_event.ics= (=RRULE= + two =EXDATE=), =moved_instance_event.ics= (master =VEVENT= + override =VEVENT= sharing =UID= with =RECURRENCE-ID=). =midnight_spanning_event.ics= is the one constructed exception (no real family event spans local midnight) — documented under "Fixture provenance note" in Technical Notes. Five of six fixtures are direct structural excerpts of real =VEVENT= blocks from =family.ics=; the sixth's provenance is explicit.
+:END:
+** [X] None of the committed fixture files contain real family names, event titles, locations, or any other identifying string from the family's actual calendars — every identifying string is a placeholder.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:34] \\
+  =grep -n -iE "SUMMARY|LOCATION|ORGANIZER|ATTENDEE|X-WR-CALNAME|X-WR-CALDESC|^UID"= across all six fixture files in =test/support/fixtures/ics/= shows every value is a generic placeholder (=Placeholder Calendar=, =Placeholder Location=, =Placeholder ... Event=, or a synthetic =fixture-*@bearcub.example= UID); no ORGANIZER/ATTENDEE lines exist in any fixture. =git status --short= confirms nothing under =tmp/= is staged; =tmp/real-feeds/= (containing the real =family.ics=/=child-a.ics=/=child-b.ics=) is gitignored via =/tmp/= in =.gitignore= and was never referenced by committed content beyond structural fields per the session's sanitization mechanism.
+:END:
+** [X] A =BearCub.Calendars.ICS= module parses each fixture and expands recurring events into concrete instances, correctly honoring RRULE expansion, EXDATE exclusion, and RECURRENCE-ID override, verified by tests asserting the expected instances for each fixture.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:34] \\
+  =mix test test/bear_cub/calendars/ics_test.exs= → 7 passed, 0 failed. Each fixture category has a test with concrete UTC-timestamp assertions (=test/bear_cub/calendars/ics_test.exs=): timed event, all-day (exclusive DTEND range + =all_day= flag), midnight-spanning (TZID wall-clock resolved to distinct UTC instants), RRULE =WEEKLY;BYDAY= expansion (3 concrete occurrences), EXDATE exclusion (6 concrete occurrences, 2 cancelled dates + 1 post-UNTIL date excluded), RECURRENCE-ID override (moved instance at its own time/summary, unmoved instance unchanged, and an explicit =refute= that the un-moved original slot does not also appear), plus a bounded-window test. Regression-tested: manually disabled the RECURRENCE-ID override logic and the window filter in turn and confirmed the corresponding tests fail for the right reason before restoring. =mix precommit= (compile --warnings-as-errors, format, full suite) passes clean, 129 tests.
+:END:
+** [X] The parser implementation choice (the =icalendar= hex package, or a hand-rolled parser if it doesn't clear the correctness bar) is settled and recorded, based on its performance against these fixtures.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:35] \\
+  =icalendar= 1.1.3 was added, fetched, and empirically probed against a master+override =VEVENT= pair; confirmed =ICalendar.Event= has no =recurrence_id= field and =ICalendar.Util.Deserialize.parse_attr/2= has no clause for =RECURRENCE-ID= (silently dropped via the catch-all clause) — a hard, structural fail against the D16 correctness bar, recorded with file/line evidence in Technical Notes ("Parser choice" section). =BearCub.Calendars.ICS= was hand-rolled instead. =grep -i icalendar mix.exs mix.lock= and =ls deps | grep -i icalendar= all return nothing, confirming the dependency was fully removed with no trace left in the committed tree.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:38] \\
+  All four Acceptance Criteria above are =[X]= with LOGBOOK evidence entries (fixture inventory, sanitization grep, test run + regression-tested override/window-filter behavior, icalendar-rejection file/line evidence). Independently re-confirmed by a second story-verifier pass.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:38] \\
+  =mix test test/bear_cub/calendars/ics_test.exs= → 7 passed, 0 failed, verified independently on three separate audit passes. Tests map 1:1 to the six required fixture categories plus a bounded-window case, with concrete UTC-timestamp assertions.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:38] \\
+  Spot-checked against CLAUDE.md Elixir guidelines (no =String.to_atom/1= on user input, no map-access syntax on structs, =case=/=cond= used instead of =if/else if=) — clean. One deviation found by audit ("never nest multiple modules in the same file" — =Instance= was nested inside =BearCub.Calendars.ICS=) was fixed by moving it to its own file, =lib/bear_cub/calendars/ics/instance.ex=, with an =alias= added to =ics.ex=; re-verified one module per file (=grep -c defmodule=) and no regression (7/7 tests still passing). No coupling to =BearCub.Chores= or the =calendars= schema/table — confirmed via grep, consistent with this story's scope boundary.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 12:38] \\
+  =mix format --check-formatted= exits 0 clean. =mix precommit= (compile --warnings-as-errors, deps.unlock --unused, format, test) passes: 129 tests, 0 failures, exit 0 — re-run three times across the fix loop, consistently clean.
+:END:
 
 * Technical Notes
 
@@ -57,3 +89,19 @@ As a parent relying on the kiosk to show accurate events, I need the calendar pa
 - Sanitization process (not itself an AC, but the mechanism for meeting the ACs above): pull the family's real ICS feeds locally (never committed), then hand-derive fixture files by replacing SUMMARY/LOCATION/ORGANIZER/ATTENDEE and any other identifying fields with placeholders, while preserving the RRULE/EXDATE/RECURRENCE-ID/DTSTART/DTEND structure that the correctness bar exercises. The real feeds and any intermediate un-sanitized files must never be staged or committed.
 - The Design excerpt's bounded horizon (yesterday → tomorrow) and ETS storage are called out here as context for why expansion must work correctly across a resolution window, but the ETS caching and the fetch/serve pipeline itself belong to Story 03 (§6 Fetch/Serve), not this story — this story proves the parsing/expansion logic on fixtures directly, independent of the fetch pipeline.
 - =Calendars.ICS= is described in the design as "swappable behind the wrapper" — keep the module's public interface stable so Story 03 can call it without knowing which library backs it.
+
+** Parser choice: icalendar hex package rejected, hand-rolled instead
+
+=icalendar= 1.1.3 was added to =mix.exs=, fetched, and probed directly (=ICalendar.from_ics/1= and =ICalendar.Recurrence.get_recurrences/2=) against a two-=VEVENT= master+override pair (a =FREQ=WEEKLY= master plus a second =VEVENT= sharing its =UID= with a =RECURRENCE-ID=). Findings:
+
+- *RECURRENCE-ID is silently dropped — hard fail against D16.* =ICalendar.Event= (=deps/icalendar/lib/icalendar/event.ex=) has no =recurrence_id= field, and =ICalendar.Util.Deserialize.parse_attr/2= has no clause for the =RECURRENCE-ID= key — it falls through to the catch-all clause that discards unrecognized properties. Expected: the override event's struct carries the value it overrides (=20260322T160000= in the probe) so callers can match it to the master's occurrence. Actual: the parsed override event is a plain =%ICalendar.Event{}= with an ordinary =dtstart=/=dtend=, indistinguishable from an unrelated one-off event that happens to share the same =UID=. There is no supported way to reconstruct which master occurrence it replaces, so a consuming pipeline built on this library cannot avoid showing both the un-moved original slot and the moved instance — exactly the failure D16 rules out.
+- Secondary issues that would have needed work-arounds even for EXDATE/RRULE alone: =ICalendar.Recurrence= only supports the =:byday= by-x modifier (=@supported_by_x_rrules=); =BYMONTHDAY=, =BYSETPOS=, =BYMONTH=, =BYYEARDAY=, =BYWEEKNO= are explicitly unsupported per its own moduledoc. EXDATE exclusion is a raw =DateTime= equality check (=new_event.dtstart in new_event.exdates=), fragile across TZID/UTC representation mismatches. All-day (=VALUE=DATE=) events collapse to UTC-midnight timestamps with no =all_day= flag, so callers can't distinguish them from a real midnight timed event.
+- Given the RECURRENCE-ID gap is a hard, structural fail (not a config/version issue — no field exists to populate), =BearCub.Calendars.ICS= was hand-rolled per the fixture-tested contract instead. The =icalendar= dependency was added, evaluated, and fully removed (=mix.exs=, =mix.lock=, =deps/=) — no trace remains in the committed tree.
+- The hand-rolled implementation covers what the six required fixtures exercise: =FREQ=DAILY|WEEKLY= with optional =INTERVAL= and =BYDAY=, bounded by =UNTIL= and/or the caller's window (safety-capped at 1000 occurrences regardless, so an indefinite RRULE can't loop forever). =FREQ=MONTHLY|YEARLY=, =COUNT=, and the other =BYxxx= modifiers are unimplemented.
+- Deferred discovery: broader RRULE coverage (=FREQ=MONTHLY|YEARLY=, =COUNT=, =BYMONTHDAY=, =BYSETPOS=, =BYMONTH=) — none of the six required fixtures need it, but the family's real feeds do contain a handful of =FREQ=DAILY= events with large =INTERVAL= values and no =COUNT=/=UNTIL=; if Story 03's real-feed fetch surfaces a recurrence shape this module can't expand, extend =BearCub.Calendars.ICS.expand_rrule/3= rather than reaching for a library, since the RECURRENCE-ID gap rules out =icalendar= categorically for this project.
+- Deferred discovery: recurring *all-day* events (=RRULE= combined with =VALUE=DATE=) are unhandled — no required fixture combines them, and none were observed in the family's real feeds.
+- Deferred discovery: =expand_rrule/3='s =case= has no catch-all — an unsupported =FREQ= (=MONTHLY=, =YEARLY=) raises =CaseClauseError= rather than degrading gracefully, crashing the whole =parse/3= call for that feed. Closeout audit flagged this; correctly out of this story's scope (=Calendars.ICS= proves parsing/expansion on fixtures directly, independent of the fetch pipeline per this story's own Technical Notes above). Story 03's fetch/serve pipeline should handle this defensively — e.g. rescue per-calendar rather than let one malformed feed take down the whole fetch — consistent with the "calendar is a degradable overlay" design invariant.
+
+** Fixture provenance note: midnight-spanning event
+
+None of the three real feeds (=family.ics=, =child-a.ics=, =child-b.ics=) contain an event whose *local* (=America/Los_Angeles=) wall-clock time spans midnight — the family's evening events are either encoded with a local =TZID= that stays within one local calendar day, or as UTC (=Z=) instants that cross a UTC-day boundary while remaining same-day in Pacific time. =test/support/fixtures/ics/midnight_spanning_event.ics= therefore is *not* a sanitized excerpt of a real event: its =DTSTART=/=DTEND= wall-clock times (22:30 → 00:30 =America/Los_Angeles=) were constructed to exercise this correctness-bar case, using the same structural shape (=DTSTART;TZID=America/Los_Angeles=, single =VEVENT=, no =RRULE=) as the family's real single-instance events. Every other fixture's =RRULE=/=EXDATE=/=RECURRENCE-ID=/=DTSTART=/=DTEND= structure is a direct, only-SUMMARY/LOCATION/UID-sanitized excerpt of a real =VEVENT= (or =VEVENT= pair) from =family.ics=.
