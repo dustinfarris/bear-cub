@@ -1,6 +1,6 @@
 #+title: Bear Cub — MVP Design Doc
 
-Companion to [[file:prd.org][the PRD]]. Covers the items the PRD deferred: schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, deployment packaging, and the backup playbook. Decisions made here extend the PRD's decision log as D8–D16 (§10); PRD points they settle carry a =(design Dx)= marker in place.
+Companion to [[file:PRD.org][the PRD]]. Covers the items the PRD deferred: schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, deployment packaging, and the backup playbook. Decisions made here extend the PRD's decision log as D8–D16 (§10); PRD points they settle carry a =(design Dx)= marker in place.
 
 * 1. Domain model & schema
 SQLite via =ecto_sqlite3=. Four tables:

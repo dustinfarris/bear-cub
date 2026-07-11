@@ -149,4 +149,4 @@ Cutover gate: all FRs in scope for v1 pass their acceptance criteria on-device, 
 
 --------------
 
-/Design doc: [[file:design.org]] — schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, backup playbook./
+/Design doc: [[file:DESIGN.org]] — schema, LiveView topology, reconnect strategy, kiosk layout, routine-window configuration, ICS handling, backup playbook./
