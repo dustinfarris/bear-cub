@@ -1,0 +1,59 @@
+#+title: Learnings
+#+startup: showall
+
+Things we learned building the MVP that are *not* recorded in commit
+messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
+of each section are fine; every entry carries the date it was learned.
+
+* [2026-07-10 Fri] Nix deploy: every mix.lock change needs a fetchMixDeps hash bump
+The mix deps fetch in =nix/package.nix= is a fixed-output derivation:
+when =mix.lock= changes but the pinned =hash= does not, Nix silently
+reuses the *cached pre-change deps* and the failure surfaces late — as
+~Could not find application :<new dep>~ during =mix release= inside
+=nixos-rebuild=, not at fetch time.
+
+Fast TOFU loop that avoids committing broken pins: on the target box,
+=nix-build= a one-off expression that calls
+=beamPackages.fetchMixDeps= with =builtins.fetchGit= of the
+already-pushed rev and =hash = lib.fakeHash=; the mismatch error
+prints the real hash (no sudo needed). Bonus: the deps land in the
+store, so the subsequent =nixos-rebuild switch= skips refetching.
+
+* [2026-07-10 Fri] Elixir: map-pattern keys must be literals or pins
+=assert %{chore.id => found} = ...= is not legal Elixir — a pattern
+key can't be an arbitrary expression. Bind first, then pin:
+=chore_id = chore.id; assert %{^chore_id => found} = ...=.
+Wider point: code blocks embedded in planning docs are never
+compiler-checked, so expect (and review for) this class of fix when
+implementing from written plans.
+
+* [2026-07-10 Fri] Nix: asset-binary versions drift from the mix config pins
+Under the sandboxed build, =MIX_TAILWIND_PATH= / =MIX_ESBUILD_PATH=
+supply nixpkgs binaries, which drift ahead of the versions pinned in
+=config.exs= (seen: esbuild 0.27.2 vs configured 0.25.4 → a warning in
+the build log). The config pin only governs mix-managed downloads on
+dev machines; the warning is cosmetic in the Nix build, but align the
+pin when convenient so real incompatibilities aren't masked by a
+warning everyone has learned to ignore.
+
+* [2026-07-10 Fri] tzdata boots fine from the read-only Nix store
+With =config :tzdata, :autoupdate, :disabled=, tzdata reads its
+bundled tables from its priv dir in the store without complaint — no
+=:data_dir= override needed. (If autoupdate is ever re-enabled it
+*will* need a writable =data_dir=, e.g. the service's
+StateDirectory.) tzdata also drags in hackney + friends as transitive
+deps; they're never started and Req remains the app's HTTP client.
+
+* [2026-07-10 Fri] Test suite has a theoretical window-edge flake
+LiveView tests deliberately compute the expected routine from the real
+clock with the same pure functions the view uses (no clock mocking).
+A suite run that straddles 05:00 / 17:00 / 23:00 local to the second
+could flake a single test (helper evaluates before the edge, mount
+after). Accepted trade-off; if it ever actually fires, rerun — don't
+reach for clock mocking.
+
+* [2026-07-10 Fri] Ops: reach the server over Tailscale, not the LAN IP
+From the dev machine the box's LAN IP times out on ssh; the Tailscale
+machine name (=nixos=) connects. Non-sudo deploy steps (=git pull=,
+one-off =nix-build=) are scriptable over ssh; =nixos-rebuild switch=
+still needs a real terminal for sudo.
