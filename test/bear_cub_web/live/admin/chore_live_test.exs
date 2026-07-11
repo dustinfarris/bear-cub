@@ -1,5 +1,5 @@
 defmodule BearCubWeb.Admin.ChoreLiveTest do
-  use BearCubWeb.ConnCase, async: true
+  use BearCubWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import BearCub.ChoresFixtures

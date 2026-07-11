@@ -1,5 +1,5 @@
 defmodule BearCubWeb.KioskLiveTest do
-  use BearCubWeb.ConnCase, async: true
+  use BearCubWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import BearCub.ChoresFixtures

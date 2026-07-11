@@ -111,6 +111,7 @@ Seeding is a mix script, not boot machinery (D17): =priv/repo/seeds.exs= is idem
 - *D21 (2026-07-10) — Day reset is bulk undo:* resetting a kid's day or the whole day stamps =undone_at= on every current completion in scope (one broadcast, rows retained per FR-17); a reset never deletes anything. → §2
 - *D22 (2026-07-10) — Reorder is a position swap:* new chores append at max(position)+1 within kid+routine; the admin's ▲/▼ buttons swap adjacent positions server-side (no drag-and-drop JS, per §6.2 minimal-JS); =position= and =kid_id= are never cast from params. → §1
 - *D23 (2026-07-10) — Kid colors pick from a curated swatch palette:* the kid form offers ten hex swatches pre-vetted for white-text contrast in both themes; UI-only — the schema stays generic hex, and an out-of-palette color renders as an extra swatch. → §1
+- *D24 (2026-07-10) — DB-backed tests run synchronously on SQLite:* the =ecto_sqlite3= adapter does not support =async: true= with =Ecto.Adapters.SQL.Sandbox= (SQLite allows one writer at a time, so concurrent per-test write transactions collide as "Database busy"); busy_timeout/WAL are already adapter defaults and are not the fix. =DataCase= context tests were already synchronous; the =ConnCase= LiveView tests that write via fixtures now drop =async: true= to match. Pure-function =ExUnit.Case= tests stay async. → §11
 
 * 11. Testing strategy
 TDD (red-green-refactor) at both layers:

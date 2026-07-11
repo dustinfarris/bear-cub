@@ -1,5 +1,5 @@
 defmodule BearCubWeb.Admin.TodayLiveTest do
-  use BearCubWeb.ConnCase, async: true
+  use BearCubWeb.ConnCase
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
