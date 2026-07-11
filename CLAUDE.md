@@ -47,6 +47,7 @@ Pipeline from here: /workflow-kit:user-stories (phase-scoped) → per story: TDD
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+- **Consult Tidewave early and often**: with `mix phx.server` running in dev, Tidewave's MCP tools (`/tidewave/mcp`) give live introspection of this running app — schema, routes, runtime state, logs, docs. Reach for it before guessing at schema/route/behavior, and while iterating to check a change against the live app rather than re-deriving from source alone.
 
 ### Phoenix v1.8 guidelines
 
