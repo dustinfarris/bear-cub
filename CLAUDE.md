@@ -4,7 +4,7 @@ Active initiative: docs/2026-07-09-mvp/
 
 ## Repo conventions (pre-kit project, adopted at Phase 3)
 
-- Changelog convention: this repo uses the Design decision log (DESIGN.org §10, D-entries extending PRD §9) instead of the org-conventions Changelog format. /workflow-kit:update-design appends dated D-entries in the established format; the body-edit-required invariant applies unchanged.
+- Decision Log: DESIGN.org §10 ('Design decision log', extending PRD §9) is this repo's * Decision Log; continue the existing sequence — next entry is D25. Advisories adopted per kit default.
 - Phases 1–2 predate the kit: no stories exist for them; git history is their record.
 - Stories are phase-scoped: /workflow-kit:user-stories is always invoked with an explicit phase scope and only excerpts the DESIGN sections that phase implements.
 - Phase close includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
@@ -18,8 +18,9 @@ personal-mvp. Personal family software with a real correctness bar: the mvp DoD 
 
 - `docs/2026-07-09-mvp/PRD.org` — requirements (FR-x), success criteria, decision log §9
 - `docs/2026-07-09-mvp/DESIGN.org` — schema, topology, decision log §10 (D-entries)
+- `docs/2026-07-09-mvp/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
 
-When code and these docs disagree, the docs win. DESIGN.org may be amended when implementation surfaces new information — body edit plus a new D-entry in §10, normally via /workflow-kit:update-design. PRD.org is the invariant contract and is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as an Amendment question, not fixed.
+When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in §10 and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 
 ## Workflow
 

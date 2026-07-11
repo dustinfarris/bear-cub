@@ -1,0 +1,14 @@
+#+title: PLAN — Bear Cub MVP
+#+date: 2026-07-11
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1 — Phases 1–3 (pre-kit)
+:LOGBOOK:
+- Note taken on [2026-07-11 10:09 PDT] \\
+  Completed before kit adoption. On-device QA was performed per PRD §7 at each phase (1–3). No stories exist for this batch and none are being retroactively reconstructed — the record of work is git history plus DESIGN.org §10 decision log entries D8–D24.
+:END:
+
+* Deferred

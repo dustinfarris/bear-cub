@@ -119,3 +119,12 @@ TDD (red-green-refactor) at both layers:
 - *Unit:* =Routines= window/boundary edges exhaustively (23:59/00:01, edge-to-edge handoff, overnight gap); completion semantics (complete→undo→complete AC, double-tap uniqueness via the partial index, local-date scoping across midnight); =Calendars.ICS= against real Google ICS fixtures (all-day, timed, RRULE recurrence, midnight-spanning); seed idempotency.
 - *Integration:* LiveView tests for kiosk tap/undo/flip flows and PubSub cross-surface propagation (admin change → kiosk render); admin CRUD + reorder + on-behalf completion + day reset; refresher failure modes (fetch error → cache served, staleness glyph).
 - *On-device (manual phase gate, per PRD §7):* Fully Kiosk WebView rendering, 5-chore no-scroll AC, sleep/wake reconnect, connection-loss degradation. These cannot be honestly CI'd.
+
+* 12. Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
