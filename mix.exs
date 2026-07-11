@@ -69,7 +69,8 @@ defmodule BearCub.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"},
-      {:tzdata, "~> 1.1"}
+      {:tzdata, "~> 1.1"},
+      {:deps_nix, "~> 3.0", only: :dev}
     ]
   end
 
@@ -82,6 +83,10 @@ defmodule BearCub.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      # Regenerate nix/deps.nix whenever the lockfile changes, so the
+      # Nix build's per-dep derivations never drift from mix.lock.
+      "deps.get": ["deps.get", "deps.nix --output nix/deps.nix"],
+      "deps.update": ["deps.update", "deps.nix --output nix/deps.nix"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],

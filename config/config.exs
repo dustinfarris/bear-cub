@@ -67,17 +67,6 @@ if esbuild_path = System.get_env("MIX_ESBUILD_PATH") do
   config :esbuild, path: esbuild_path
 end
 
-# exqlite's mix.exs only forces a from-source NIF build when its own
-# `:exqlite, :force_build` app env is true (elixir_make's generic
-# ELIXIR_MAKE_FORCE_BUILD env var does not exist; the real per-app override
-# keys on the dep's app name, e.g. `config :elixir_make, force_build: [exqlite: true]`, and exqlite composes
-# its own knob on top of that). nix/package.nix sets this OS env var because
-# the precompiled-NIF download is unreachable in the strict sandbox on the
-# target NixOS server.
-if System.get_env("ELIXIR_MAKE_FORCE_BUILD") == "1" do
-  config :exqlite, force_build: true
-end
-
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
