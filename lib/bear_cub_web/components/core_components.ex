@@ -498,4 +498,11 @@ defmodule BearCubWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Display name for a routine slug. Routines are app constants (D8);
+  names derive from the slug — there is no configurable label.
+  """
+  def routine_label(:morning), do: "Morning"
+  def routine_label(:evening), do: "Evening"
 end

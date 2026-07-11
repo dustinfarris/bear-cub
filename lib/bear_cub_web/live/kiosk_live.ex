@@ -88,9 +88,6 @@ defmodule BearCubWeb.KioskLive do
     socket
   end
 
-  defp routine_label(:morning), do: "Morning"
-  defp routine_label(:evening), do: "Evening"
-
   @impl true
   def render(assigns) do
     ~H"""

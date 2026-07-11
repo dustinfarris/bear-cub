@@ -20,6 +20,16 @@ defmodule BearCubWeb.Router do
     live "/", KioskLive
   end
 
+  # Phone-first admin (FR-25), fenced from the kiosk by path prefix alone:
+  # no auth — the network (tailnet + LAN) is the trust boundary (FR-26/D5).
+  scope "/admin", BearCubWeb.Admin do
+    pipe_through :browser
+
+    live "/chores", ChoreLive.Index, :index
+    live "/chores/new", ChoreLive.Form, :new
+    live "/chores/:id/edit", ChoreLive.Form, :edit
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", BearCubWeb do
   #   pipe_through :api
