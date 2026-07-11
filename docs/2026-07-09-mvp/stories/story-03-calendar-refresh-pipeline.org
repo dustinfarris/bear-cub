@@ -1,0 +1,65 @@
+#+title: Story 03 — Calendar refresh pipeline
+
+Design: [[file:../DESIGN.org][DESIGN.org]] · Plan: [[file:../PLAN.org][PLAN.org]]
+
+* Design excerpt
+
+Verbatim from DESIGN.org §6 (Calendar pipeline):
+
+#+begin_quote
+One supervised GenServer, =BearCub.Calendars.Refresher= — the app's only periodic process:
+
+- *Fetch:* on boot and every 10 minutes (config; inside the ~15-minute freshness target), =Req.get= each calendar's =ics_url=. Success → write =last_payload= + =last_fetched_at= on the row (the cache survives reboot, satisfying FR-20's WAN-unplugged-reboot AC). Failure → keep the old payload, record =last_error=, log detail server-side; the kiosk sees at most the staleness glyph.
+- *Parse:* at fetch time (and once on boot from cached payloads), payloads are parsed and recurring events expanded into concrete instances over a bounded horizon (yesterday → tomorrow, so midnight-spanning and recurring events resolve), held in ETS. Parsing sits behind our own =Calendars.ICS= module [...]
+- *Serve:* =Calendars.today_events(kid_id, today)= filters ETS — pure and fast; the kiosk's midnight re-render just re-slices. A ="calendars"= broadcast after each refresh that changed anything triggers the kiosk re-fetch.
+- *Hygiene (FR-21):* the Refresher logs calendar labels and error reasons, never URLs — raw =Req= error tuples can embed the URL, so they are not logged verbatim. Schema-level =redact: true= (§1) covers the accidental paths.
+- *Staleness threshold:* config, default 2 h (PRD's proposal adopted).
+#+end_quote
+
+Verbatim from DESIGN.org §10 (Decision Log, D10):
+
+#+begin_quote
+*D10 (2026-07-10) — Derived day state:* completions are a dated append-style log; no rollover job; FR-13 holds by construction. → §2
+#+end_quote
+
+(D10 is cited by §6.6 of the PRD as establishing that calendar refresh is the app's only periodic work, which this story implements.)
+
+Verbatim from PRD.org relevant FRs:
+
+#+begin_quote
+*FR-18* /(design D9)/ Three Google Calendars: one per kid + one family calendar, read-only. *Freshness target:* a calendar change appears on the kiosk within ~15 minutes. (Integration approach — server-side ICS polling with local cache, no OAuth — is a decided constraint, recorded in §6.6.)
+
+*FR-20* Calendar is a degradable overlay: Google outage or dead internet serves the last cached copy indefinitely and never affects chore display. If the cache is stale beyond a threshold (design doc sets it; ~2h proposed), the kiosk shows a small, subtle staleness glyph — diagnostic detail belongs in server logs, not on the kiosk.
+- *AC:* Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events.
+
+*FR-21* /(design D9)/ ICS URLs are database data, entered and edited through admin — one or more calendars per kid, plus family calendars. Never in the repo, never in logs; backups are therefore secret-bearing and must be encrypted (§6.7).
+#+end_quote
+
+* User Story
+
+As a parent, I need the kiosk's calendar data to refresh automatically in the background and keep serving the last known-good events through any fetch failure, so that a Google outage or a dead internet connection never blanks the events strip or affects chore display.
+
+* Acceptance Criteria
+
+** [ ] A supervised =BearCub.Calendars.Refresher= GenServer fetches each calendar's =ics_url= on boot and again on a configured interval (default within the PRD's ~15-minute freshness target).
+** [ ] A successful fetch parses the payload (via the =Calendars.ICS= module from Story 01) and stores concrete event instances such that =Calendars.today_events(kid_id, today)= returns them.
+** [ ] When a fetch fails, the previously cached events keep being served without interruption or gap, and the failure is recorded server-side (=last_error=) without ever logging the calendar's =ics_url=.
+** [ ] The cached calendar payload survives a server restart: on boot, events from the last successful fetch are available immediately, before the next fetch completes.
+** [ ] When a calendar's cache exceeds the staleness threshold (default 2 hours) without a successful refresh, that calendar is marked stale so a consumer can detect it (verified by a test asserting the staleness determination, independent of any UI).
+** [ ] A successful refresh that changes a calendar's events broadcasts on the ="calendars"= PubSub topic.
+** [ ] Unit tests cover fetch success, fetch failure with cache fallback, boot-time cache hydration, and the staleness threshold determination.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+- Depends on Story 01 (=BearCub.Calendars.ICS=, proven against the fixture correctness bar) and Story 02 (the =calendars= schema/table and =BearCub.Calendars= context/CRUD) — this story cannot start until both exist, since the Refresher reads calendar rows and calls the parser.
+- Use =Req= for the HTTP fetch per CLAUDE.md project guidelines (never =:httpoison=, =:tesla=, or =:httpc=).
+- The "kiosk sees at most the staleness glyph" line and the staleness glyph rendering itself belong to Story 04 — this story's scope stops at making the staleness fact determinable (e.g. via =last_fetched_at= vs. the configured threshold), not at rendering it.
+- The on-device/manual AC "Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events" (PRD FR-20) is a phase-close on-device gate item per Repo conventions, not a story AC here — this story's ACs cover the equivalent behavior via fetch-failure and boot-hydration tests instead of a literal WAN pull.
+- §1's contexts paragraph applies: =BearCub.Calendars= must never be called by =BearCub.Chores=, and calendar trouble must structurally be unable to touch the tap-to-complete path.

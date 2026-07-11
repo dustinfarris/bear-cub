@@ -1,0 +1,59 @@
+#+title: Story 01 — ICS parser spike
+
+Design: [[file:../DESIGN.org][DESIGN.org]] · Plan: [[file:../PLAN.org][PLAN.org]]
+
+* Design excerpt
+
+Verbatim from DESIGN.org §6 (Calendar pipeline) and §10 (Decision Log, D16):
+
+#+begin_quote
+*Parse:* at fetch time (and once on boot from cached payloads), payloads are parsed and recurring events expanded into concrete instances over a bounded horizon (yesterday → tomorrow, so midnight-spanning and recurring events resolve), held in ETS. Parsing sits behind our own =Calendars.ICS= module: implemented on the =icalendar= hex package if it proves adequate for Google's feeds, hand-rolled if not — fixture-tested against real Google Calendar ICS exports either way, and swappable behind the wrapper.
+
+*Correctness bar (D16):* whichever implementation, =RRULE= expansion, =EXDATE= (cancelled instances), and =RECURRENCE-ID= overrides (a single moved/edited instance of a recurring event) /must all be honored/ — a kiosk confidently showing a cancelled or un-moved event is worse than showing none. This is the project's largest unknown, so /the first task of Phase 4 is a spike/: pull the family's real ICS feeds, build fixtures from them, and prove the chosen parser against this bar before any calendar UI work.
+#+end_quote
+
+#+begin_quote
+*D16 (2026-07-10) — ICS correctness bar & spike:* =RRULE= + =EXDATE= + =RECURRENCE-ID= must all be honored; Phase 4 opens with a parser spike against the family's real feeds before any calendar UI. → §6
+#+end_quote
+
+Verbatim from PRD.org §6.4 (Privacy & repo hygiene), the governing constraint for committed fixtures:
+
+#+begin_quote
+Public repo. Kid names and ICS URLs never enter git.
+
+Kid identities are database data (FR-27), never in git by construction; seed/demo data in git uses placeholder names only.
+#+end_quote
+
+Human-provided scope constraint for this story (treat as spec, per the invoking instruction): real feeds are used locally to derive fixtures, but fixture files committed to this public repo must be fully sanitized — placeholder names, titles, and locations per PRD.org §6.4.
+
+Verbatim from DESIGN.org §11 (Testing strategy), the portion this story fulfills:
+
+#+begin_quote
+*Unit:* [...] =Calendars.ICS= against real Google ICS fixtures (all-day, timed, RRULE recurrence, midnight-spanning) [...]
+#+end_quote
+
+* User Story
+
+As a parent relying on the kiosk to show accurate events, I need the calendar parser proven against real recurrence edge cases before any calendar UI is built, so that the kiosk never confidently shows a cancelled or un-moved event.
+
+* Acceptance Criteria
+
+** [ ] Sanitized ICS fixture files exist, derived from the family's real Google Calendar feeds, covering: a plain timed event, an all-day event, an event spanning midnight, a recurring event (RRULE), a cancelled recurring instance (EXDATE), and a moved/edited recurring instance (RECURRENCE-ID override).
+** [ ] None of the committed fixture files contain real family names, event titles, locations, or any other identifying string from the family's actual calendars — every identifying string is a placeholder.
+** [ ] A =BearCub.Calendars.ICS= module parses each fixture and expands recurring events into concrete instances, correctly honoring RRULE expansion, EXDATE exclusion, and RECURRENCE-ID override, verified by tests asserting the expected instances for each fixture.
+** [ ] The parser implementation choice (the =icalendar= hex package, or a hand-rolled parser if it doesn't clear the correctness bar) is settled and recorded, based on its performance against these fixtures.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+- This is the spike named in D16 — it runs before Story 02, 03, and 04, and before any calendar UI work, per the Design excerpt above.
+- No dependency on prior batches: Phases 1–3 (chores/admin) are unrelated to this module. This story does not touch the =calendars= schema/table, the =BearCub.Calendars= context, the Refresher GenServer, or any LiveView — those land in Stories 02–04. This story's scope is =BearCub.Calendars.ICS= (the parsing module) plus its fixtures and tests.
+- Sanitization process (not itself an AC, but the mechanism for meeting the ACs above): pull the family's real ICS feeds locally (never committed), then hand-derive fixture files by replacing SUMMARY/LOCATION/ORGANIZER/ATTENDEE and any other identifying fields with placeholders, while preserving the RRULE/EXDATE/RECURRENCE-ID/DTSTART/DTEND structure that the correctness bar exercises. The real feeds and any intermediate un-sanitized files must never be staged or committed.
+- The Design excerpt's bounded horizon (yesterday → tomorrow) and ETS storage are called out here as context for why expansion must work correctly across a resolution window, but the ETS caching and the fetch/serve pipeline itself belong to Story 03 (§6 Fetch/Serve), not this story — this story proves the parsing/expansion logic on fixtures directly, independent of the fetch pipeline.
+- =Calendars.ICS= is described in the design as "swappable behind the wrapper" — keep the module's public interface stable so Story 03 can call it without knowing which library backs it.

@@ -1,0 +1,69 @@
+#+title: Story 04 — Kiosk events strip
+
+Design: [[file:../DESIGN.org][DESIGN.org]] · Plan: [[file:../PLAN.org][PLAN.org]]
+
+* Design excerpt
+
+Verbatim from DESIGN.org §5 (Kiosk layout), the events strip and corner glyph portions:
+
+#+begin_quote
+Viewport-locked =h-dvh= CSS grid, zero page scroll, two equal columns. Each column is =auto / auto / 1fr= rows:
+
+1. *Header band* — full-width block of the kid's identity color with the name as typography on top. [...]
+2. *Events strip* — compact chronological list: colored dot + time + title. All-day events pinned to top (FR-22). Family events render in both columns, visually distinct: neutral chip + house glyph vs. the kid-color dot (FR-19). "Today" = any event overlapping the local day; events spanning midnight render clipped to today ("until 2:00 PM").
+3. *Chores* — remaining height, equal full-width rows [...]
+
+States: [...] *Corner glyphs* (D4): dim dot when the socket is down; small clock glyph when the calendar cache exceeds the staleness threshold.
+#+end_quote
+
+Verbatim from DESIGN.org §6 (Calendar pipeline), the Serve bullet:
+
+#+begin_quote
+*Serve:* =Calendars.today_events(kid_id, today)= filters ETS — pure and fast; the kiosk's midnight re-render just re-slices. A ="calendars"= broadcast after each refresh that changed anything triggers the kiosk re-fetch.
+#+end_quote
+
+Verbatim from DESIGN.org §8 (Seeds), the zero-calendars posture:
+
+#+begin_quote
+No calendars are seeded; the app renders fine with zero calendars (empty events strip), which is also the CI posture (§6.4: boots and demos on placeholders alone).
+#+end_quote
+
+Verbatim from PRD.org relevant FRs:
+
+#+begin_quote
+*FR-19* Each kid's column shows their personal events blended with family events in one chronological list; family events appear in both columns and are visually distinct (family color/icon). Today's events only — no tomorrow preview.
+
+*FR-22* Event display handles all-day events, timed events, and events spanning midnight sensibly for a "today" view (exact rules defined in design doc; all-day events pin to top of the list — proposed).
+
+*FR-20* Calendar is a degradable overlay: Google outage or dead internet serves the last cached copy indefinitely and never affects chore display. [...] If the cache is stale beyond a threshold [...] the kiosk shows a small, subtle staleness glyph — diagnostic detail belongs in server logs, not on the kiosk.
+#+end_quote
+
+* User Story
+
+As a kid glancing at the fridge, I need to see today's events — mine and the family's — listed above my chores, so that I know what's happening today without anyone reading it to me; and as a parent, I need that events strip to keep working through a calendar outage so it never disrupts the chores my kid depends on.
+
+* Acceptance Criteria
+
+** [ ] Each kid's column shows a chronological list of today's events, blended from that kid's personal calendar(s) and the family calendar (FR-19).
+** [ ] Family events are visually distinct from the kid's personal events — a neutral chip + house glyph, versus the kid-color dot used for personal events — and appear in both kids' columns.
+** [ ] All-day events are pinned to the top of the events strip, ahead of timed events (FR-22).
+** [ ] An event spanning midnight renders clipped to today's portion (e.g., "until 2:00 PM") rather than its full multi-day span.
+** [ ] When any calendar's cache exceeds the staleness threshold, a small clock glyph appears alongside the existing socket-down indicator; it clears once every stale calendar has refreshed successfully (D4).
+** [ ] A calendar refresh (admin edits a calendar, or the Refresher's background fetch changes events) appears on the kiosk without a manual reload, consistent with the existing live-update pattern (FR-9 extended to the ="calendars"= topic).
+** [ ] With no calendars configured for a kid, that kid's events strip renders empty without error — chores render normally either way.
+** [ ] LiveView integration tests cover the blended per-kid + family event list, all-day pinning, the midnight-spanning clip, the staleness glyph, and the empty-calendars case (Repo conventions: §11 testing expectations fold into ACs wherever a flow is touched).
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+- Depends on Story 03: the events strip renders via =Calendars.today_events(kid_id, today)= and subscribes to the ="calendars"= PubSub topic, both established there. Also depends on the =KioskLive= boundary timer and PubSub subscription pattern already in place from Phases 1–3 (git history; no stories exist for those phases per Repo conventions).
+- The socket-down dim dot (also a D4 corner glyph) already exists from an earlier phase; this story adds only the staleness clock glyph alongside it, per the Design excerpt.
+- FR-20's on-device AC ("Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events") is a phase-close manual gate item per Repo conventions, not a story AC here — this story's "renders empty without error" and staleness-glyph ACs, plus Story 03's fetch-failure/boot-hydration coverage, are what's unit/integration-testable in CI.
+- §1's contexts paragraph (DESIGN.org) applies here too: rendering calendar data must never make chore/completion rendering depend on =BearCub.Calendars= being healthy — a calendar exception must not break the chores half of the kiosk view.
+- Design adjudication [2026-07-11 Sat 11:30]: DESIGN §5 is silent on glyph placement; the story generator initially assumed per-column/per-calendar granularity. Human ruled: global, matching the global socket-down dot — per-calendar diagnosis belongs in server logs per D4. Recorded here at the execution layer; promote to a DESIGN body edit (with D-entry + Advisory) only if this silence trips a future reader.

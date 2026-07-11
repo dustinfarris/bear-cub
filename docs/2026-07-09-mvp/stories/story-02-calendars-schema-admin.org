@@ -1,0 +1,62 @@
+#+title: Story 02 — Calendars schema, context, and admin CRUD
+
+Design: [[file:../DESIGN.org][DESIGN.org]] · Plan: [[file:../PLAN.org][PLAN.org]]
+
+* Design excerpt
+
+Verbatim from DESIGN.org §1 (Domain model & schema):
+
+#+begin_quote
+#+begin_example
+calendars      id, kid_id → kids (null = family), label, ics_url (redact: true),
+               last_payload (raw ICS text), last_fetched_at, last_error, timestamps
+#+end_example
+
+- *Calendars are database data (D9)*, entered and edited through admin — one or more per kid, plus family calendars as =kid_id: null= (rendered in both columns). There is no local-secrets mechanism and no hand-placed /application or family/ secret on the box (infrastructure credentials for backups are a distinct, explicit rebuild input — §9). Rotating a URL is a phone action; every backup contains the secret URLs, so the off-box backup destination must be private — it already held kid names and the family schedule, so this tightens nothing that wasn't already required, but it is now load-bearing.
+- *Integrity:*
+  - =ics_url= uses Ecto's =redact: true=, so by construction the URL is omitted from inspected structs and renders as =**redacted**= in inspected changesets and crash reports.
+- *Contexts:* =BearCub.Chores= (kids, chores, completions — pure local CRUD, no network) and =BearCub.Calendars= (calendar CRUD, fetching, parsing — the external integration). They share nothing, fail differently, and never call each other; only the web layer reads both. Calendar trouble structurally cannot touch the tap-to-complete path (FR-20).
+#+end_quote
+
+Verbatim from DESIGN.org §4 (LiveView topology & live updates):
+
+#+begin_quote
+- *Surfaces*, fenced for FR-26 by path prefix alone (same app, same server; Fully Kiosk's URL lock pins =/=; zero links from kiosk to admin):
+  - =/admin=, phone-first, navigated by a fixed bottom tab bar (=Layouts.admin=): [...] =Admin.CalendarsLive= (ICS URLs — Phase 4). The Index/Form module pairs are the phx.gen.live shape, superseding this doc's earlier single-module names.
+- *Implementation directive:* scaffold resources with =mix phx.gen.live= (context, schema, migration, LiveViews, PubSub notification wiring) and reshape toward this design — bespoke kiosk, phone-first admin — rather than hand-rolling the plumbing.
+#+end_quote
+
+Verbatim from DESIGN.org §10 (Decision Log, D9):
+
+#+begin_quote
+*D9 (2026-07-10) — ICS URLs are DB data:* admin-managed calendars table (N per kid + family as =kid_id: null=); no local-secrets mechanism; backups become secret-bearing; rebuild needs no locally supplied app secrets. Settles FR-21/§6.4. → §1, §9
+#+end_quote
+
+Relevant PRD requirements: FR-21, FR-25.
+
+* User Story
+
+As a parent, I need to add, edit, and delete each kid's and the family's calendar ICS URLs from the admin UI on my phone, so that the calendars driving the kiosk's events strip are entirely data I control, with no repo or server file to touch.
+
+* Acceptance Criteria
+
+** [ ] From =/admin=, a parent can add a calendar with a label and an ICS URL, either assigned to a specific kid or marked as a family calendar (=kid_id: null=).
+** [ ] From =/admin=, a parent can edit and delete an existing calendar's label or ICS URL.
+** [ ] The calendars admin screen is reachable and usable from a phone browser, consistent with the rest of =/admin= (FR-25).
+** [ ] The calendar schema's =ics_url= field is protected by Ecto's =redact: true=, verified by a test that inspects a calendar changeset or struct and asserts the URL does not appear in its inspected output.
+** [ ] LiveView integration tests cover the create, edit, and delete flows for calendars (Repo conventions: §11 testing expectations fold into ACs wherever a flow is touched).
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+- Scaffold with =mix phx.gen.live= per the Design excerpt's Implementation directive (context, schema, migration, =Admin.CalendarsLive.Index/Form=, PubSub wiring), then reshape toward this design rather than hand-rolling.
+- This story covers only calendar CRUD (data entry) — no fetching, no parsing, no ETS, no kiosk rendering. The Refresher GenServer that fetches =ics_url= and populates =last_payload=/=last_fetched_at=/=last_error= is Story 03, which depends on this story's schema and context existing. The kiosk events strip that renders parsed events is Story 04, which depends on Story 03.
+- This story also does not depend on Story 01 (=BearCub.Calendars.ICS=) — CRUD on calendar rows doesn't parse anything. Both stories can be built in either order; D16 fixes Story 01 first only because it is the project's largest unknown, not because of a code dependency.
+- Per §1's contexts paragraph, =BearCub.Calendars= must not be called by =BearCub.Chores=, and vice versa — this story is establishing the =BearCub.Calendars= context boundary that Story 03 and 04 build on.
+- The migration must match the schema fields verbatim from the Design excerpt above: =kid_id= (nullable, references =kids=), =label=, =ics_url= (=redact: true=), =last_payload=, =last_fetched_at=, =last_error=, timestamps. =last_payload=/=last_fetched_at=/=last_error= are written by the Refresher in Story 03 — this story only needs the columns to exist, not populated.
