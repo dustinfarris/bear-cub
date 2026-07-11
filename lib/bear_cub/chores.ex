@@ -139,12 +139,56 @@ defmodule BearCub.Chores do
   end
 
   @doc """
+  Completes `chore` if it isn't done for the local day of `local_now`,
+  undoes it if it is — the admin's on-behalf tap (FR-24). Returns the
+  same shapes as `complete_chore/3`/`undo_chore/2`; a racing duplicate
+  complete surfaces as `{:error, changeset}` — callers treat it as
+  already-done.
+  """
+  def toggle_completion(%Chore{} = chore, %DateTime{} = local_now, source) do
+    case undo_chore(chore, local_now) do
+      {:error, :not_completed} -> complete_chore(chore, local_now, source)
+      result -> result
+    end
+  end
+
+  @doc """
+  Bulk undo (D21): stamps `undone_at` on every *current* completion for
+  the local day of `local_now`, all kids. Rows are retained (FR-17);
+  one `:chores_changed` broadcast. Returns `{:ok, count}`.
+  """
+  def reset_day(%DateTime{} = local_now) do
+    reset(current_of_day(DateTime.to_date(local_now)), local_now)
+  end
+
+  @doc "Bulk undo (D21) scoped to `kid`'s chores. Returns `{:ok, count}`."
+  def reset_kid_day(%Kid{} = kid, %DateTime{} = local_now) do
+    kid_chore_ids = from c in Chore, where: c.kid_id == ^kid.id, select: c.id
+
+    from(c in current_of_day(DateTime.to_date(local_now)),
+      where: c.chore_id in subquery(kid_chore_ids)
+    )
+    |> reset(local_now)
+  end
+
+  defp reset(query, local_now) do
+    now_utc = to_utc(local_now)
+    {count, _} = Repo.update_all(query, set: [undone_at: now_utc, updated_at: now_utc])
+
+    broadcast_change({:ok, count})
+  end
+
+  defp current_of_day(%Date{} = local_date) do
+    from c in Completion, where: c.local_date == ^local_date and is_nil(c.undone_at)
+  end
+
+  @doc """
   All *current* completions for `local_date`, keyed by chore id — the
   kiosk's one done-today query (design §2). Yesterday needs no reset:
   the date argument changes and this returns empty.
   """
   def current_completions(%Date{} = local_date) do
-    Repo.all(from c in Completion, where: c.local_date == ^local_date and is_nil(c.undone_at))
+    Repo.all(current_of_day(local_date))
     |> Map.new(&{&1.chore_id, &1})
   end
 

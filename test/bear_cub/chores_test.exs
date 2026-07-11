@@ -234,6 +234,96 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "on-behalf toggling and day resets" do
+    import BearCub.ChoresFixtures
+
+    test "toggle_completion/3 completes an undone chore with the given source" do
+      chore = chore_fixture()
+
+      assert {:ok, completion} =
+               Chores.toggle_completion(chore, la(~D[2026-07-10], ~T[09:00:00]), "admin")
+
+      assert completion.source == "admin"
+      assert completion.undone_at == nil
+    end
+
+    test "toggle_completion/3 undoes a done chore" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[09:00:00]), "kiosk")
+
+      assert {:ok, undone} =
+               Chores.toggle_completion(chore, la(~D[2026-07-10], ~T[09:05:00]), "admin")
+
+      assert undone.undone_at == ~U[2026-07-10 16:05:00Z]
+    end
+
+    test "toggle → toggle → toggle keeps full history (FR-17)" do
+      chore = chore_fixture()
+
+      {:ok, _} = Chores.toggle_completion(chore, la(~D[2026-07-10], ~T[09:00:00]), "admin")
+      {:ok, _} = Chores.toggle_completion(chore, la(~D[2026-07-10], ~T[09:01:00]), "admin")
+      {:ok, _} = Chores.toggle_completion(chore, la(~D[2026-07-10], ~T[09:02:00]), "admin")
+
+      completions = Repo.all(BearCub.Chores.Completion)
+      assert length(completions) == 2
+      assert Enum.count(completions, &is_nil(&1.undone_at)) == 1
+    end
+
+    test "reset_kid_day/2 bulk-undoes only that kid's current completions (D21)" do
+      kid_a = kid_fixture()
+      kid_b = kid_fixture(%{position: 1})
+      a_morning = chore_fixture(kid_a)
+      a_evening = chore_fixture(kid_a, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      b_chore = chore_fixture(kid_b)
+
+      {:ok, _} = Chores.complete_chore(a_morning, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a_evening, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b_chore, la(~D[2026-07-10], ~T[08:02:00]), "kiosk")
+
+      assert {:ok, 2} = Chores.reset_kid_day(kid_a, la(~D[2026-07-10], ~T[13:00:00]))
+
+      current = Chores.current_completions(~D[2026-07-10])
+      refute Map.has_key?(current, a_morning.id)
+      refute Map.has_key?(current, a_evening.id)
+      assert Map.has_key?(current, b_chore.id)
+
+      # bulk undo, not delete: all three rows survive with history intact (FR-17)
+      assert Repo.aggregate(BearCub.Chores.Completion, :count) == 3
+    end
+
+    test "reset_day/1 bulk-undoes every kid's current completions, today only" do
+      kid_a = kid_fixture()
+      kid_b = kid_fixture(%{position: 1})
+      a_chore = chore_fixture(kid_a)
+      b_chore = chore_fixture(kid_b)
+
+      {:ok, _} = Chores.complete_chore(a_chore, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a_chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b_chore, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
+
+      assert {:ok, 2} = Chores.reset_day(la(~D[2026-07-10], ~T[13:00:00]))
+
+      assert Chores.current_completions(~D[2026-07-10]) == %{}
+      # yesterday's history is untouched
+      assert Map.has_key?(Chores.current_completions(~D[2026-07-09]), a_chore.id)
+    end
+
+    test "a reset broadcasts :chores_changed exactly once" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      :ok = Chores.subscribe()
+
+      assert {:ok, 1} = Chores.reset_day(la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert_receive :chores_changed
+      refute_receive :chores_changed, 50
+    end
+
+    test "resetting an already-clean day is {:ok, 0}" do
+      assert {:ok, 0} = Chores.reset_day(la(~D[2026-07-10], ~T[09:00:00]))
+    end
+  end
+
   describe "PubSub" do
     import BearCub.ChoresFixtures
 
