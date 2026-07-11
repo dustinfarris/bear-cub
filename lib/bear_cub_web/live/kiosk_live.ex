@@ -1,13 +1,17 @@
 defmodule BearCubWeb.KioskLive do
   use BearCubWeb, :live_view
 
+  alias BearCub.Calendars
   alias BearCub.Chores
   alias BearCub.LocalTime
   alias BearCub.Routines
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Chores.subscribe()
+    if connected?(socket) do
+      Chores.subscribe()
+      Calendars.subscribe()
+    end
 
     # one clock read per mount — two could straddle a window edge
     now = LocalTime.now()
@@ -45,6 +49,10 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
+  def handle_info(:calendars_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
   def handle_info(:boundary, socket) do
     # Window handoff (FR-3), flip reversion (FR-4), and the midnight
     # re-render of derived day state (design §2) are all one event:
@@ -56,9 +64,10 @@ defmodule BearCubWeb.KioskLive do
   defp load(socket, local_now) do
     {state, auto} = Routines.current(local_now)
     shown = if socket.assigns.flipped, do: Routines.other(auto), else: auto
+    today = DateTime.to_date(local_now)
 
     # done today? — derived, never stored (design §2)
-    completions = Chores.current_completions(DateTime.to_date(local_now))
+    completions = Chores.current_completions(today)
 
     columns =
       for kid <- Chores.list_kids() do
@@ -67,14 +76,15 @@ defmodule BearCubWeb.KioskLive do
             %{chore: chore, done?: Map.has_key?(completions, chore.id)}
           end
 
-        %{kid: kid, chores: chores}
+        %{kid: kid, chores: chores, events: Calendars.today_events(kid.id, today)}
       end
 
     assign(socket,
       columns: columns,
       completions: completions,
       shown: shown,
-      dimmed?: socket.assigns.flipped or state == :upcoming
+      dimmed?: socket.assigns.flipped or state == :upcoming,
+      calendars_stale?: Calendars.any_stale?(local_now)
     )
   end
 
@@ -108,8 +118,20 @@ defmodule BearCubWeb.KioskLive do
           <.icon name="hero-arrows-right-left" class="size-4" />
         </button>
 
+        <%!-- Corner glyph (D4): dim when the calendar cache has gone stale.
+             Global, not per-calendar or per-column — per-calendar diagnosis
+             belongs in server logs. Sits alongside the existing (unstyled)
+             socket-down disconnect indicator from Layouts.app. --%>
+        <div
+          :if={@calendars_stale?}
+          id="calendar-stale-glyph"
+          class="absolute left-4 top-4 z-10 text-base-content/30"
+        >
+          <.icon name="hero-clock" class="size-5" />
+        </div>
+
         <section
-          :for={%{kid: kid, chores: chores} <- @columns}
+          :for={%{kid: kid, chores: chores, events: events} <- @columns}
           id={"kid-column-#{kid.id}"}
           class="grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100"
         >
@@ -125,8 +147,10 @@ defmodule BearCubWeb.KioskLive do
             </h1>
           </header>
 
-          <%!-- Events strip: populated in Phase 4; the region exists now so the
-               three-band column layout is what on-device QA actually sees. --%>
+          <%!-- Events strip: chronological, blended per-kid + family list
+               (FR-19). All-day events pin to the top (FR-22); a family
+               event renders as a neutral chip + house glyph in every
+               column, a personal event as the kid-color dot. --%>
           <div
             id={"events-#{kid.id}"}
             class={[
@@ -134,7 +158,28 @@ defmodule BearCubWeb.KioskLive do
               @dimmed? && "opacity-40"
             ]}
           >
-            <p class="text-sm text-base-content/40">No events today</p>
+            <p :if={events == []} class="text-sm text-base-content/40">No events today</p>
+            <ul :if={events != []} class="flex flex-col gap-1.5">
+              <li
+                :for={event <- events}
+                id={"event-#{kid.id}-#{event.uid}"}
+                class="flex items-center gap-2 text-sm"
+              >
+                <span
+                  :if={!event.family?}
+                  class="size-2.5 shrink-0 rounded-full"
+                  style={"background-color: #{kid.color}"}
+                />
+                <span
+                  :if={event.family?}
+                  class="flex size-4 shrink-0 items-center justify-center rounded-full bg-base-300"
+                >
+                  <.icon name="hero-home" class="size-3 text-base-content/60" />
+                </span>
+                <span class="shrink-0 text-base-content/40">{event_time_label(event)}</span>
+                <span class="truncate font-medium">{event.summary}</span>
+              </li>
+            </ul>
           </div>
 
           <%!-- Chores: equal full-width rows; at ≤5 the 1fr region divides
@@ -174,5 +219,21 @@ defmodule BearCubWeb.KioskLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  # FR-22: an event clipped at the start of today's window (it started
+  # before today) shows only its end — "until 2:00 PM" — rather than a
+  # start time that isn't actually today's.
+  defp event_time_label(%{all_day: true}), do: "All day"
+
+  defp event_time_label(%{clipped_start?: true, ends_at: ends_at}),
+    do: "until #{format_time(ends_at)}"
+
+  defp event_time_label(%{starts_at: starts_at}), do: format_time(starts_at)
+
+  defp format_time(%DateTime{} = utc_time) do
+    utc_time
+    |> DateTime.shift_zone!(LocalTime.timezone())
+    |> Calendar.strftime("%-I:%M %p")
   end
 end

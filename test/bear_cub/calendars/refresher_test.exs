@@ -6,6 +6,7 @@ defmodule BearCub.Calendars.RefresherTest do
   alias BearCub.LocalTime
 
   import BearCub.CalendarsFixtures
+  import ExUnit.CaptureLog
 
   # The Refresher fetches from its own GenServer process, not the test
   # process, so its stub must be reachable from any pid (safe here since
@@ -54,8 +55,9 @@ defmodule BearCub.Calendars.RefresherTest do
 
     Req.Test.stub(Refresher, fn conn -> Plug.Conn.send_resp(conn, 503, "down") end)
 
-    start_supervised!(Refresher)
+    log = capture_log(fn -> start_supervised!(Refresher) end)
 
+    assert log =~ "reason=http_503"
     assert [%{uid: "cached-evt"}] = Calendars.today_events(calendar.kid_id, today())
     assert Calendars.get_calendar!(calendar.id).last_error
   end

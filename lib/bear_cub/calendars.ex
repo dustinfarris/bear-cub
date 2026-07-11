@@ -12,7 +12,6 @@ defmodule BearCub.Calendars do
   alias BearCub.Repo
   alias BearCub.Calendars.Calendar
   alias BearCub.Calendars.ICS
-  alias BearCub.Calendars.ICS.Instance
   alias BearCub.LocalTime
 
   @topic "calendars"
@@ -135,9 +134,13 @@ defmodule BearCub.Calendars do
   end
 
   @doc """
-  Today's events for `kid_id` (design §6, FR-19): that kid's own calendars
-  blended with family calendars (`kid_id: nil`), sorted by start time.
-  `today` is the local date already decided by the caller.
+  Today's events for `kid_id` (design §6, FR-19, FR-22): that kid's own
+  calendars blended with family calendars (`kid_id: nil`), each tagged
+  `family?` for the kiosk's dot-vs-chip rendering, clipped to the local
+  day window (`clipped_start?`/`clipped_end?` mark a midnight-spanning
+  event so the kiosk can render "until 2:00 PM" instead of the full
+  span), all-day events pinned ahead of timed events. `today` is the
+  local date already decided by the caller.
   """
   def today_events(kid_id, %Date{} = today) do
     tz = LocalTime.timezone()
@@ -146,9 +149,22 @@ defmodule BearCub.Calendars do
 
     list_calendars()
     |> Enum.filter(&(&1.kid_id == kid_id or is_nil(&1.kid_id)))
-    |> Enum.flat_map(&get_instances(&1.id))
+    |> Enum.flat_map(fn calendar ->
+      calendar.id
+      |> get_instances()
+      |> Enum.map(&Map.put(Map.from_struct(&1), :family?, is_nil(calendar.kid_id)))
+    end)
     |> Enum.filter(&overlaps?(&1, day_start, day_end))
-    |> Enum.sort_by(& &1.starts_at, DateTime)
+    |> Enum.map(&clip_to_window(&1, day_start, day_end))
+    |> sort_events()
+  end
+
+  @doc """
+  Whether any calendar has gone stale as of `local_now` — the kiosk's
+  staleness glyph is global (D4), not per-calendar.
+  """
+  def any_stale?(%DateTime{} = local_now) do
+    Enum.any?(list_calendars(), &stale?(&1, local_now))
   end
 
   defp handle_fetch({:ok, %Req.Response{status: 200, body: body}}, calendar, local_now) do
@@ -220,9 +236,27 @@ defmodule BearCub.Calendars do
     end
   end
 
-  defp overlaps?(%Instance{starts_at: starts_at, ends_at: ends_at}, window_start, window_end) do
+  defp overlaps?(%{starts_at: starts_at, ends_at: ends_at}, window_start, window_end) do
     DateTime.compare(starts_at, window_end) != :gt and
       DateTime.compare(ends_at, window_start) != :lt
+  end
+
+  defp clip_to_window(event, day_start, day_end) do
+    clipped_start? = DateTime.compare(event.starts_at, day_start) == :lt
+    clipped_end? = DateTime.compare(event.ends_at, day_end) == :gt
+
+    event
+    |> Map.put(:starts_at, if(clipped_start?, do: day_start, else: event.starts_at))
+    |> Map.put(:ends_at, if(clipped_end?, do: day_end, else: event.ends_at))
+    |> Map.put(:clipped_start?, clipped_start?)
+    |> Map.put(:clipped_end?, clipped_end?)
+  end
+
+  defp sort_events(events) do
+    {all_day, timed} = Enum.split_with(events, & &1.all_day)
+
+    Enum.sort_by(all_day, & &1.starts_at, DateTime) ++
+      Enum.sort_by(timed, & &1.starts_at, DateTime)
   end
 
   defp req_options do

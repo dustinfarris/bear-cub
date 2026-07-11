@@ -44,21 +44,69 @@ As a kid glancing at the fridge, I need to see today's events — mine and the f
 
 * Acceptance Criteria
 
-** [ ] Each kid's column shows a chronological list of today's events, blended from that kid's personal calendar(s) and the family calendar (FR-19).
-** [ ] Family events are visually distinct from the kid's personal events — a neutral chip + house glyph, versus the kid-color dot used for personal events — and appear in both kids' columns.
-** [ ] All-day events are pinned to the top of the events strip, ahead of timed events (FR-22).
-** [ ] An event spanning midnight renders clipped to today's portion (e.g., "until 2:00 PM") rather than its full multi-day span.
-** [ ] When any calendar's cache exceeds the staleness threshold, a small clock glyph appears alongside the existing socket-down indicator; it clears once every stale calendar has refreshed successfully (D4).
-** [ ] A calendar refresh (admin edits a calendar, or the Refresher's background fetch changes events) appears on the kiosk without a manual reload, consistent with the existing live-update pattern (FR-9 extended to the ="calendars"= topic).
-** [ ] With no calendars configured for a kid, that kid's events strip renders empty without error — chores render normally either way.
-** [ ] LiveView integration tests cover the blended per-kid + family event list, all-day pinning, the midnight-spanning clip, the staleness glyph, and the empty-calendars case (Repo conventions: §11 testing expectations fold into ACs wherever a flow is touched).
+** [X] Each kid's column shows a chronological list of today's events, blended from that kid's personal calendar(s) and the family calendar (FR-19).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:23] \\
+  =BearCub.Calendars.today_events/2= (lib/bear_cub/calendars.ex:145-160) blends a kid's calendars with family calendars (kid_id: nil) and sorts chronologically via =sort_events/1=; =KioskLive.load/2= (kiosk_live.ex:79) wires it per column. Verified by unit test "blends a kid's own calendar with family calendars, sorted by start time, excluding other kids" (test/bear_cub/calendars_test.exs:304) and LiveView test "blends a kid's personal event with a family event in one chronological list" (test/bear_cub_web/live/kiosk_live_test.exs:154), both passing.
+:END:
+** [X] Family events are visually distinct from the kid's personal events — a neutral chip + house glyph, versus the kid-color dot used for personal events — and appear in both kids' columns.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:23] \\
+  Template (kiosk_live.ex:168-178) gates the kid-color dot on =!event.family?= and a neutral chip + =hero-home= icon on =event.family?=; =family?= is tagged in =today_events/2= from the source calendar's =kid_id= (nil = family). Verified by LiveView test "renders a family event as a neutral chip with a house glyph in both columns" (test/bear_cub_web/live/kiosk_live_test.exs:137), asserting the glyph in both kid_a's and kid_b's columns; family? tagging itself covered by unit test "tags family-calendar events as family? and personal-calendar events as not" (test/bear_cub/calendars_test.exs:371). Both passing.
+:END:
+** [X] All-day events are pinned to the top of the events strip, ahead of timed events (FR-22).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:23] \\
+  =sort_events/1= (lib/bear_cub/calendars.ex:255-260) splits events by =all_day= and concatenates all-day-sorted ++ timed-sorted. Verified by unit test "pins an all-day event ahead of a timed event that starts earlier" (test/bear_cub/calendars_test.exs:465) and LiveView test "pins all-day events ahead of timed events regardless of start time" (test/bear_cub_web/live/kiosk_live_test.exs:186, using =:binary.match= to confirm render order), both passing.
+:END:
+** [X] An event spanning midnight renders clipped to today's portion (e.g., "until 2:00 PM") rather than its full multi-day span.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:23] \\
+  =clip_to_window/3= (lib/bear_cub/calendars.ex:244-253) marks =clipped_start?=/=clipped_end?= and clamps the timestamp to the day window; =KioskLive.event_time_label/1= (kiosk_live.ex:229-230) renders "until <end time>" when =clipped_start?= is true. Verified by unit tests "clips an event spanning midnight from yesterday to today's window" and "...from today into tomorrow" (test/bear_cub/calendars_test.exs:403, :427) and LiveView test "renders a midnight-spanning event clipped to today's portion" asserting the literal text "until 2:00 PM" (test/bear_cub_web/live/kiosk_live_test.exs:221), all passing.
+:END:
+** [X] When any calendar's cache exceeds the staleness threshold, a small clock glyph appears alongside the existing socket-down indicator; it clears once every stale calendar has refreshed successfully (D4).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:23] \\
+  =Calendars.any_stale?/1= (lib/bear_cub/calendars.ex:166-168) is a global =Enum.any?= over all calendars; =KioskLive.load/2= recomputes =calendars_stale?= on every load (kiosk_live.ex:87), and the =#calendar-stale-glyph= corner element (kiosk_live.ex:125-131) renders conditionally on it, positioned in the kiosk's top-left corner alongside the socket-down region. Verified by unit tests in the =any_stale?/1= describe block (test/bear_cub/calendars_test.exs:495-520, including a multi-calendar "true when at least one is stale" case) and LiveView test "the staleness clock glyph appears when a calendar is stale and clears once refreshed" (test/bear_cub_web/live/kiosk_live_test.exs:252) plus two negative cases (fresh-only, zero-calendars), all passing. Caveat recorded as a Deferred discovery in Technical Notes: the "existing socket-down indicator" this glyph sits alongside is still the stock Phoenix disconnect flash banner, not the restyled "dim corner dot" DESIGN.org §6.1 (D4) describes as pending — that restyle was never actually implemented in an earlier phase, despite this story's Technical Notes assuming it was.
+:END:
+** [X] A calendar refresh (admin edits a calendar, or the Refresher's background fetch changes events) appears on the kiosk without a manual reload, consistent with the existing live-update pattern (FR-9 extended to the ="calendars"= topic).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:24] \\
+  =KioskLive.mount/3= now calls =Calendars.subscribe()= alongside the existing =Chores.subscribe()= (kiosk_live.ex:13), and a new =handle_info(:calendars_changed, socket)= clause reloads (kiosk_live.ex:52-54). =Calendars.broadcast_change/1= fires on every successful admin write (calendars.ex:29-34); the Refresher's =handle_success/4= broadcasts only when instances actually changed (calendars.ex:185-202), unit-tested by =refresh_calendar/2= tests (test/bear_cub/calendars_test.exs:175, :198). Live-update path verified by LiveView test "a calendar refresh that adds an event appears on the kiosk without a manual reload" (test/bear_cub_web/live/kiosk_live_test.exs:237), which triggers the broadcast via the admin-edit path (=Calendars.update_calendar/2=); the Refresher's own conditional-broadcast branch is exercised only at the unit level, not through the LiveView, which is adequate for this AC's requirement (PubSub-driven reload) since both write paths broadcast on the same topic the kiosk subscribes to.
+:END:
+** [X] With no calendars configured for a kid, that kid's events strip renders empty without error — chores render normally either way.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:24] \\
+  Empty-events state preserved at kiosk_live.ex:161 ("No events today"). Verified by LiveView test "with no calendars configured, the events strip renders empty and chores still render" (test/bear_cub_web/live/kiosk_live_test.exs:99), asserting both the empty-state text and a chore row rendering, plus "no staleness glyph when there are no calendars at all" (test/bear_cub_web/live/kiosk_live_test.exs:286). Both passing.
+:END:
+** [X] LiveView integration tests cover the blended per-kid + family event list, all-day pinning, the midnight-spanning clip, the staleness glyph, and the empty-calendars case (Repo conventions: §11 testing expectations fold into ACs wherever a flow is touched).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:24] \\
+  All five flows have passing LiveView tests in test/bear_cub_web/live/kiosk_live_test.exs: blended list at :154 (added during closeout verification to combine a personal + family event in one kid's column and assert chronological render order, closing a gap the first story-verifier pass found — the initial coverage only tested personal-only and family-only scenarios separately), all-day pinning at :186, midnight clip at :221, staleness glyph appears/clears at :252 plus two negative cases, empty-calendars case at :99. Full suite (=mix test=) passes at 184 tests; =mix precommit= (compile --warnings-as-errors, format, test) clean.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:28] \\
+  All 8 ACs above marked [X] with LOGBOOK evidence. AC5's caveat (socket-down indicator is still the stock Phoenix flash banner, not a restyled "dim corner dot") is recorded as a Deferred discovery in Technical Notes rather than blocking the AC, since the new staleness glyph doesn't depend on that pre-existing gap.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:28] \\
+  =mix test= — 184 passed, 0 failures. Every test named in the 8 AC LOGBOOK entries confirmed to exist and exercise the described behavior (independently re-checked by story-verifier during Definition of Done audit); four stale line-number citations in kiosk_live_test.exs (AC4/5/6/7, drifted after formatter reflow) corrected in this pass.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:28] \\
+  story-verifier checked lib/bear_cub/calendars.ex and lib/bear_cub_web/live/kiosk_live.ex against CLAUDE.md: correct =<Layouts.app>= wrapping, =<.icon>= usage (never raw Heroicons modules), HEEx =class={[...]}= list syntax, no struct map-access, =Map.from_struct/1= used correctly to detach the =Instance= struct before tagging =family?=, predicate names (=family?=, =clipped_start?=, =any_stale?=) correctly avoid the =is_= prefix, comments are why-not-what. No violations found.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 15:28] \\
+  Both commands run clean: =mix format --check-formatted= exits 0 with no output; =mix test= reports 184 passed, 0 failures. =mix precommit= (compile --warnings-as-errors, deps.unlock --unused, format, test) also passes clean, confirming no compiler warnings were introduced.
+:END:
 
 * Technical Notes
 
@@ -67,3 +115,4 @@ As a kid glancing at the fridge, I need to see today's events — mine and the f
 - FR-20's on-device AC ("Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events") is a phase-close manual gate item per Repo conventions, not a story AC here — this story's "renders empty without error" and staleness-glyph ACs, plus Story 03's fetch-failure/boot-hydration coverage, are what's unit/integration-testable in CI.
 - §1's contexts paragraph (DESIGN.org) applies here too: rendering calendar data must never make chore/completion rendering depend on =BearCub.Calendars= being healthy — a calendar exception must not break the chores half of the kiosk view.
 - Design adjudication [2026-07-11 Sat 11:30]: DESIGN §5 is silent on glyph placement; the story generator initially assumed per-column/per-calendar granularity. Human ruled: global, matching the global socket-down dot — per-calendar diagnosis belongs in server logs per D4. Recorded here at the execution layer; promote to a DESIGN body edit (with D-entry + Advisory) only if this silence trips a future reader.
+- Deferred discovery: this story's "socket-down dim dot ... already exists from an earlier phase" claim (line above) does not hold — closeout verification (story-verifier) found the actual socket-down UI is still the stock Phoenix =phx-disconnected= flash banner ("We can't find the internet") in =lib/bear_cub_web/components/layouts.ex=, not a restyled "dim corner dot." DESIGN.org §6.1 already flags this restyle as pending cosmetic work (D4); it was never implemented in an earlier phase despite prior assumption. This story's =#calendar-stale-glyph= sits in the kiosk's top-left corner independent of the flash banner and does not depend on the restyle, so no AC here is blocked — but the restyle itself remains outstanding.

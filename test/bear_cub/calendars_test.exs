@@ -7,6 +7,7 @@ defmodule BearCub.CalendarsTest do
 
   import BearCub.CalendarsFixtures
   import BearCub.ChoresFixtures
+  import ExUnit.CaptureLog
 
   @invalid_attrs %{label: nil, ics_url: nil}
 
@@ -233,8 +234,10 @@ defmodule BearCub.CalendarsTest do
       Req.Test.stub(Refresher, fn conn -> Plug.Conn.send_resp(conn, 503, "nope") end)
 
       Calendars.subscribe()
-      assert {:ok, updated} = Calendars.refresh_calendar(calendar, now)
+      {result, log} = with_log(fn -> Calendars.refresh_calendar(calendar, now) end)
+      assert {:ok, updated} = result
 
+      assert log =~ "reason=http_503"
       assert updated.last_payload == ics
       assert updated.last_error
       refute updated.last_error =~ "secret-token-abc123"
@@ -260,8 +263,10 @@ defmodule BearCub.CalendarsTest do
         Plug.Conn.send_resp(conn, 200, ics_missing_dtstart("broken-evt"))
       end)
 
-      assert {:ok, updated} = Calendars.refresh_calendar(calendar, now)
+      {result, log} = with_log(fn -> Calendars.refresh_calendar(calendar, now) end)
+      assert {:ok, updated} = result
 
+      assert log =~ "reason=parse_error"
       assert updated.last_error
       assert [%{uid: "evt-1"}] = Calendars.today_events(calendar.kid_id, ~D[2026-07-11])
     end
@@ -287,8 +292,9 @@ defmodule BearCub.CalendarsTest do
         end
       end)
 
-      Calendars.refresh_all(now)
+      log = capture_log(fn -> Calendars.refresh_all(now) end)
 
+      assert log =~ "reason=http_500"
       assert [%{uid: "good-evt"}] = Calendars.today_events(good.kid_id, ~D[2026-07-11])
       assert Calendars.get_calendar!(bad.id).last_error
     end
@@ -360,6 +366,156 @@ defmodule BearCub.CalendarsTest do
       Calendars.hydrate_cache(now)
 
       assert Calendars.today_events(calendar.kid_id, ~D[2026-07-11]) == []
+    end
+
+    test "tags family-calendar events as family? and personal-calendar events as not" do
+      kid = kid_fixture()
+      now = la(~D[2026-07-11], ~T[12:00:00])
+
+      kid_calendar =
+        calendar_fixture(kid_id: kid.id, label: "Kid", ics_url: "https://example.com/kid.ics")
+
+      family_calendar =
+        calendar_fixture(label: "Family", ics_url: "https://example.com/family.ics")
+
+      kid_ics =
+        ics_with_event(
+          "kid-evt",
+          la(~D[2026-07-11], ~T[10:00:00]),
+          la(~D[2026-07-11], ~T[11:00:00])
+        )
+
+      family_ics =
+        ics_with_event(
+          "family-evt",
+          la(~D[2026-07-11], ~T[08:00:00]),
+          la(~D[2026-07-11], ~T[09:00:00])
+        )
+
+      {:ok, _} = Calendars.update_calendar_cache(kid_calendar, %{last_payload: kid_ics})
+      {:ok, _} = Calendars.update_calendar_cache(family_calendar, %{last_payload: family_ics})
+      Calendars.hydrate_cache(now)
+
+      assert [%{uid: "family-evt", family?: true}, %{uid: "kid-evt", family?: false}] =
+               Calendars.today_events(kid.id, ~D[2026-07-11])
+    end
+
+    test "clips an event spanning midnight from yesterday to today's window" do
+      calendar = calendar_fixture()
+      now = la(~D[2026-07-11], ~T[12:00:00])
+
+      ics =
+        ics_with_event(
+          "spans-midnight",
+          la(~D[2026-07-10], ~T[20:00:00]),
+          la(~D[2026-07-11], ~T[14:00:00])
+        )
+
+      {:ok, calendar} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(now)
+
+      assert [event] = Calendars.today_events(calendar.kid_id, ~D[2026-07-11])
+      assert event.clipped_start? == true
+      assert event.clipped_end? == false
+
+      assert event.starts_at ==
+               la(~D[2026-07-11], ~T[00:00:00]) |> DateTime.shift_zone!("Etc/UTC")
+
+      assert event.ends_at == la(~D[2026-07-11], ~T[14:00:00]) |> DateTime.shift_zone!("Etc/UTC")
+    end
+
+    test "clips an event spanning midnight from today into tomorrow" do
+      calendar = calendar_fixture()
+      now = la(~D[2026-07-11], ~T[12:00:00])
+
+      ics =
+        ics_with_event(
+          "spans-into-tomorrow",
+          la(~D[2026-07-11], ~T[22:00:00]),
+          la(~D[2026-07-12], ~T[02:00:00])
+        )
+
+      {:ok, calendar} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(now)
+
+      assert [event] = Calendars.today_events(calendar.kid_id, ~D[2026-07-11])
+      assert event.clipped_start? == false
+      assert event.clipped_end? == true
+    end
+
+    test "events without a clip keep clipped_start? and clipped_end? false" do
+      calendar = calendar_fixture()
+      now = la(~D[2026-07-11], ~T[12:00:00])
+
+      ics =
+        ics_with_event(
+          "same-day",
+          la(~D[2026-07-11], ~T[09:00:00]),
+          la(~D[2026-07-11], ~T[10:00:00])
+        )
+
+      {:ok, calendar} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(now)
+
+      assert [event] = Calendars.today_events(calendar.kid_id, ~D[2026-07-11])
+      assert event.clipped_start? == false
+      assert event.clipped_end? == false
+    end
+
+    test "pins an all-day event ahead of a timed event that starts earlier" do
+      calendar = calendar_fixture()
+      now = la(~D[2026-07-11], ~T[12:00:00])
+
+      ics = """
+      BEGIN:VCALENDAR
+      VERSION:2.0
+      BEGIN:VEVENT
+      UID:timed-evt
+      DTSTART:#{format_utc(la(~D[2026-07-11], ~T[07:00:00]))}
+      DTEND:#{format_utc(la(~D[2026-07-11], ~T[08:00:00]))}
+      SUMMARY:Timed
+      END:VEVENT
+      BEGIN:VEVENT
+      UID:all-day-evt
+      DTSTART;VALUE=DATE:20260711
+      DTEND;VALUE=DATE:20260712
+      SUMMARY:All Day
+      END:VEVENT
+      END:VCALENDAR
+      """
+
+      {:ok, calendar} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(now)
+
+      assert [%{uid: "all-day-evt"}, %{uid: "timed-evt"}] =
+               Calendars.today_events(calendar.kid_id, ~D[2026-07-11])
+    end
+  end
+
+  describe "any_stale?/1" do
+    test "false when there are no calendars" do
+      refute Calendars.any_stale?(la(~D[2026-07-11], ~T[12:00:00]))
+    end
+
+    test "false when every calendar has fetched within the staleness threshold" do
+      calendar = calendar_fixture()
+      fetched_at = la(~D[2026-07-11], ~T[11:00:00]) |> DateTime.shift_zone!("Etc/UTC")
+      {:ok, _} = Calendars.update_calendar_cache(calendar, %{last_fetched_at: fetched_at})
+
+      refute Calendars.any_stale?(la(~D[2026-07-11], ~T[12:00:00]))
+    end
+
+    test "true when at least one calendar is stale" do
+      fresh = calendar_fixture(label: "Fresh", ics_url: "https://example.com/fresh.ics")
+      stale = calendar_fixture(label: "Stale", ics_url: "https://example.com/stale.ics")
+
+      fresh_fetched_at = la(~D[2026-07-11], ~T[11:00:00]) |> DateTime.shift_zone!("Etc/UTC")
+      {:ok, _} = Calendars.update_calendar_cache(fresh, %{last_fetched_at: fresh_fetched_at})
+
+      stale_fetched_at = la(~D[2026-07-11], ~T[08:00:00]) |> DateTime.shift_zone!("Etc/UTC")
+      {:ok, _} = Calendars.update_calendar_cache(stale, %{last_fetched_at: stale_fetched_at})
+
+      assert Calendars.any_stale?(la(~D[2026-07-11], ~T[12:00:00]))
     end
   end
 end

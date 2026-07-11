@@ -3,7 +3,9 @@ defmodule BearCubWeb.KioskLiveTest do
 
   import Phoenix.LiveViewTest
   import BearCub.ChoresFixtures
+  import BearCub.CalendarsFixtures
 
+  alias BearCub.Calendars
   alias BearCub.LocalTime
   alias BearCub.Routines
 
@@ -16,6 +18,36 @@ defmodule BearCubWeb.KioskLiveTest do
 
   defp label(:morning), do: "Morning"
   defp label(:evening), do: "Evening"
+
+  # Events tests never mock the clock either — build ICS payloads relative
+  # to the real current local day so they land in today's window no matter
+  # when the suite runs.
+  defp today, do: LocalTime.now() |> DateTime.to_date()
+  defp tz, do: LocalTime.timezone()
+  defp local(time), do: DateTime.new!(today(), time, tz())
+
+  defp ics_with_event(uid, starts_at, ends_at, summary) do
+    """
+    BEGIN:VCALENDAR
+    VERSION:2.0
+    BEGIN:VEVENT
+    UID:#{uid}
+    DTSTART:#{format_utc(starts_at)}
+    DTEND:#{format_utc(ends_at)}
+    SUMMARY:#{summary}
+    END:VEVENT
+    END:VCALENDAR
+    """
+  end
+
+  defp format_utc(%DateTime{} = dt) do
+    dt
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> DateTime.to_naive()
+    |> NaiveDateTime.to_iso8601()
+    |> String.replace(["-", ":"], "")
+    |> Kernel.<>("Z")
+  end
 
   describe "with two kids" do
     setup do
@@ -62,6 +94,199 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert has_element?(view, "#events-#{kid_a.id}")
+    end
+
+    test "with no calendars configured, the events strip renders empty and chores still render",
+         %{conn: conn, kid_a: kid_a} do
+      chore =
+        chore_fixture(kid_a, %{
+          name: "Brush Teeth",
+          icon: "🪥",
+          routine: Atom.to_string(auto_routine())
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#events-#{kid_a.id}", "No events today")
+      assert has_element?(view, "#chore-#{chore.id}")
+    end
+
+    test "renders a kid's personal event as a kid-color dot with its start time",
+         %{conn: conn, kid_a: kid_a} do
+      calendar =
+        calendar_fixture(
+          kid_id: kid_a.id,
+          label: "Kid A",
+          ics_url: "https://example.com/kid-a.ics"
+        )
+
+      ics = ics_with_event("evt-1", local(~T[09:00:00]), local(~T[10:00:00]), "Soccer Practice")
+      {:ok, _} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#event-#{kid_a.id}-evt-1", "Soccer Practice")
+
+      assert has_element?(
+               view,
+               "#event-#{kid_a.id}-evt-1 [style*='background-color: #{kid_a.color}']"
+             )
+    end
+
+    test "renders a family event as a neutral chip with a house glyph in both columns",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      family_calendar =
+        calendar_fixture(label: "Family", ics_url: "https://example.com/family.ics")
+
+      ics = ics_with_event("family-evt", local(~T[08:00:00]), local(~T[08:30:00]), "Pickup")
+      {:ok, _} = Calendars.update_calendar_cache(family_calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#event-#{kid_a.id}-family-evt", "Pickup")
+      assert has_element?(view, "#event-#{kid_a.id}-family-evt .hero-home")
+      assert has_element?(view, "#event-#{kid_b.id}-family-evt", "Pickup")
+      assert has_element?(view, "#event-#{kid_b.id}-family-evt .hero-home")
+    end
+
+    test "blends a kid's personal event with a family event in one chronological list",
+         %{conn: conn, kid_a: kid_a} do
+      kid_calendar =
+        calendar_fixture(
+          kid_id: kid_a.id,
+          label: "Kid A",
+          ics_url: "https://example.com/kid-a.ics"
+        )
+
+      family_calendar =
+        calendar_fixture(label: "Family", ics_url: "https://example.com/family.ics")
+
+      family_ics =
+        ics_with_event("family-evt", local(~T[08:00:00]), local(~T[08:30:00]), "Pickup")
+
+      kid_ics = ics_with_event("kid-evt", local(~T[10:00:00]), local(~T[11:00:00]), "Soccer")
+
+      {:ok, _} = Calendars.update_calendar_cache(family_calendar, %{last_payload: family_ics})
+      {:ok, _} = Calendars.update_calendar_cache(kid_calendar, %{last_payload: kid_ics})
+      Calendars.hydrate_cache(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#event-#{kid_a.id}-family-evt", "Pickup")
+      assert has_element?(view, "#event-#{kid_a.id}-kid-evt", "Soccer")
+
+      html = render(view)
+      {family_index, _} = :binary.match(html, "Pickup")
+      {kid_index, _} = :binary.match(html, "Soccer")
+      assert family_index < kid_index
+    end
+
+    test "pins all-day events ahead of timed events regardless of start time",
+         %{conn: conn, kid_a: kid_a} do
+      calendar = calendar_fixture(kid_id: kid_a.id)
+      date_str = Date.to_iso8601(today(), :basic)
+      next_date_str = Date.to_iso8601(Date.add(today(), 1), :basic)
+
+      ics = """
+      BEGIN:VCALENDAR
+      VERSION:2.0
+      BEGIN:VEVENT
+      UID:timed-evt
+      DTSTART:#{format_utc(local(~T[07:00:00]))}
+      DTEND:#{format_utc(local(~T[08:00:00]))}
+      SUMMARY:Timed Thing
+      END:VEVENT
+      BEGIN:VEVENT
+      UID:all-day-evt
+      DTSTART;VALUE=DATE:#{date_str}
+      DTEND;VALUE=DATE:#{next_date_str}
+      SUMMARY:All Day Thing
+      END:VEVENT
+      END:VCALENDAR
+      """
+
+      {:ok, _} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      html = render(view)
+      {all_day_index, _} = :binary.match(html, "All Day Thing")
+      {timed_index, _} = :binary.match(html, "Timed Thing")
+      assert all_day_index < timed_index
+    end
+
+    test "renders a midnight-spanning event clipped to today's portion",
+         %{conn: conn, kid_a: kid_a} do
+      calendar = calendar_fixture(kid_id: kid_a.id)
+      yesterday = Date.add(today(), -1)
+      starts_at = DateTime.new!(yesterday, ~T[20:00:00], tz())
+      ends_at = local(~T[14:00:00])
+
+      ics = ics_with_event("spans-midnight", starts_at, ends_at, "Sleepover")
+      {:ok, _} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#event-#{kid_a.id}-spans-midnight", "until 2:00 PM")
+    end
+
+    test "a calendar refresh that adds an event appears on the kiosk without a manual reload",
+         %{conn: conn, kid_a: kid_a} do
+      calendar = calendar_fixture(kid_id: kid_a.id)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#event-#{kid_a.id}-evt-1")
+
+      ics = ics_with_event("evt-1", local(~T[09:00:00]), local(~T[10:00:00]), "New Event")
+      {:ok, calendar} = Calendars.update_calendar_cache(calendar, %{last_payload: ics})
+      Calendars.hydrate_cache(LocalTime.now())
+      {:ok, _} = Calendars.update_calendar(calendar, %{label: calendar.label})
+
+      assert has_element?(view, "#event-#{kid_a.id}-evt-1", "New Event")
+    end
+
+    test "the staleness clock glyph appears when a calendar is stale and clears once refreshed",
+         %{conn: conn} do
+      calendar = calendar_fixture()
+
+      stale_fetched_at =
+        LocalTime.now() |> DateTime.add(-3, :hour) |> DateTime.shift_zone!("Etc/UTC")
+
+      {:ok, calendar} =
+        Calendars.update_calendar_cache(calendar, %{last_fetched_at: stale_fetched_at})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#calendar-stale-glyph")
+
+      fresh_fetched_at = LocalTime.now() |> DateTime.shift_zone!("Etc/UTC")
+
+      {:ok, calendar} =
+        Calendars.update_calendar_cache(calendar, %{last_fetched_at: fresh_fetched_at})
+
+      {:ok, _} = Calendars.update_calendar(calendar, %{label: calendar.label})
+
+      refute has_element?(view, "#calendar-stale-glyph")
+    end
+
+    test "no staleness glyph when every calendar is fresh", %{conn: conn} do
+      calendar = calendar_fixture()
+      fresh_fetched_at = LocalTime.now() |> DateTime.shift_zone!("Etc/UTC")
+      {:ok, _} = Calendars.update_calendar_cache(calendar, %{last_fetched_at: fresh_fetched_at})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#calendar-stale-glyph")
+    end
+
+    test "no staleness glyph when there are no calendars at all", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#calendar-stale-glyph")
     end
 
     test "renders fine with zero chores (production first boot)", %{conn: conn} do
