@@ -33,6 +33,10 @@ defmodule BearCubWeb.Router do
 
     live "/kids", KidLive.Index, :index
     live "/kids/:id/edit", KidLive.Form, :edit
+
+    live "/calendars", CalendarLive.Index, :index
+    live "/calendars/new", CalendarLive.Form, :new
+    live "/calendars/:id/edit", CalendarLive.Form, :edit
   end
 
   # Other scopes may use custom stacks.
