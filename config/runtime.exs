@@ -25,21 +25,29 @@ config :bear_cub, :timezone, System.get_env("BEAR_CUB_TIMEZONE", "America/Los_An
 
 # Routine active windows (D1/D8, design §3): app config, env-overridable,
 # HH:MM-HH:MM local wall-clock, e.g. BEAR_CUB_MORNING_WINDOW=05:00-17:00.
-# Windows must not span midnight.
+# Windows must not span midnight: start must be before end, checked at boot.
 parse_window! = fn var, default ->
-  case System.get_env(var) do
-    nil ->
-      default
+  {starts, ends} =
+    case System.get_env(var) do
+      nil ->
+        default
 
-    value ->
-      case String.split(value, "-") do
-        [starts, ends] ->
-          {Time.from_iso8601!(starts <> ":00"), Time.from_iso8601!(ends <> ":00")}
+      value ->
+        case String.split(value, "-") do
+          [starts, ends] ->
+            {Time.from_iso8601!(starts <> ":00"), Time.from_iso8601!(ends <> ":00")}
 
-        _ ->
-          raise "#{var} must look like 05:00-17:00, got: #{inspect(value)}"
-      end
+          _ ->
+            raise "#{var} must look like 05:00-17:00, got: #{inspect(value)}"
+        end
+    end
+
+  if Time.compare(starts, ends) != :lt do
+    raise "#{var} start must be before end (windows must not span midnight), " <>
+            "got: #{starts}-#{ends}"
   end
+
+  {starts, ends}
 end
 
 config :bear_cub, :routine_windows,
@@ -48,7 +56,10 @@ config :bear_cub, :routine_windows,
 
 port = String.to_integer(System.get_env("PORT", "4000"))
 
-config :bear_cub, BearCubWeb.Endpoint, http: [port: port]
+# test.exs pins its own port; this line must not override it (Phase 2 review)
+if config_env() != :test do
+  config :bear_cub, BearCubWeb.Endpoint, http: [port: port]
+end
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.

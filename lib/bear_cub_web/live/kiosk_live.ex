@@ -9,7 +9,9 @@ defmodule BearCubWeb.KioskLive do
   def mount(_params, _session, socket) do
     if connected?(socket), do: Chores.subscribe()
 
-    {:ok, socket |> assign(:flipped, false) |> load(LocalTime.now()) |> schedule_boundary()}
+    # one clock read per mount — two could straddle a window edge
+    now = LocalTime.now()
+    {:ok, socket |> assign(:flipped, false) |> load(now) |> schedule_boundary(now)}
   end
 
   @impl true
@@ -41,7 +43,8 @@ defmodule BearCubWeb.KioskLive do
     # Window handoff (FR-3), flip reversion (FR-4), and the midnight
     # re-render of derived day state (design §2) are all one event:
     # recompute everything and schedule the next boundary.
-    {:noreply, socket |> assign(:flipped, false) |> load(LocalTime.now()) |> schedule_boundary()}
+    now = LocalTime.now()
+    {:noreply, socket |> assign(:flipped, false) |> load(now) |> schedule_boundary(now)}
   end
 
   defp load(socket, local_now) do
@@ -69,9 +72,8 @@ defmodule BearCubWeb.KioskLive do
     )
   end
 
-  defp schedule_boundary(socket) do
+  defp schedule_boundary(socket, now) do
     if connected?(socket) do
-      now = LocalTime.now()
       ms = DateTime.diff(Routines.next_boundary(now), now, :millisecond)
       # floor guards against a timer that fires a hair early re-arming hot
       Process.send_after(self(), :boundary, max(ms, 1_000))

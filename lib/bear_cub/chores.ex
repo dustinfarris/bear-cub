@@ -86,7 +86,8 @@ defmodule BearCub.Chores do
   end
 
   def delete_chore(%Chore{} = chore) do
-    Repo.delete(chore)
+    chore
+    |> Repo.delete()
     |> broadcast_change()
   end
 
