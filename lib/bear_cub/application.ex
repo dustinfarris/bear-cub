@@ -7,15 +7,19 @@ defmodule BearCub.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      BearCubWeb.Telemetry,
-      BearCub.Repo,
-      {Ecto.Migrator,
-       repos: Application.fetch_env!(:bear_cub, :ecto_repos), skip: skip_migrations?()},
-      {Phoenix.PubSub, name: BearCub.PubSub},
-      # Start to serve requests, typically the last entry
-      BearCubWeb.Endpoint
-    ]
+    children =
+      [
+        BearCubWeb.Telemetry,
+        BearCub.Repo,
+        {Ecto.Migrator,
+         repos: Application.fetch_env!(:bear_cub, :ecto_repos), skip: skip_migrations?()},
+        {Phoenix.PubSub, name: BearCub.PubSub}
+      ] ++
+        calendar_refresher_children() ++
+        [
+          # Start to serve requests, typically the last entry
+          BearCubWeb.Endpoint
+        ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
@@ -34,5 +38,15 @@ defmodule BearCub.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") == nil
+  end
+
+  # Disabled in test (config/test.exs) so specs drive BearCub.Calendars
+  # directly instead of starting the app's only periodic network process.
+  defp calendar_refresher_children do
+    if Application.get_env(:bear_cub, :calendar_refresher_enabled, true) do
+      [BearCub.Calendars.Refresher]
+    else
+      []
+    end
   end
 end

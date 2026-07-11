@@ -23,4 +23,12 @@ defmodule BearCub.Calendars.Calendar do
     |> validate_required([:label, :ics_url])
     |> assoc_constraint(:kid)
   end
+
+  @doc """
+  Refresher-only changeset for the fetch cache fields — never exposed to
+  the admin form, which only ever casts the fields above.
+  """
+  def cache_changeset(calendar, attrs) do
+    cast(calendar, attrs, [:last_payload, :last_fetched_at, :last_error])
+  end
 end

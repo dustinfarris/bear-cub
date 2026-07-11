@@ -30,3 +30,8 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Tests drive BearCub.Calendars.Refresher directly rather than starting the
+# supervised process, and stub its Req calls instead of hitting the network.
+config :bear_cub, :calendar_refresher_enabled, false
+config :bear_cub, :calendars_req_options, plug: {Req.Test, BearCub.Calendars.Refresher}

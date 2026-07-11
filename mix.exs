@@ -70,6 +70,7 @@ defmodule BearCub.MixProject do
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"},
       {:tzdata, "~> 1.1"},
+      {:req, "~> 0.5"},
       {:deps_nix, "~> 3.0", only: :dev}
     ]
   end

@@ -7,11 +7,16 @@ defmodule BearCub.Calendars do
   """
 
   import Ecto.Query, warn: false
+  require Logger
 
   alias BearCub.Repo
   alias BearCub.Calendars.Calendar
+  alias BearCub.Calendars.ICS
+  alias BearCub.Calendars.ICS.Instance
+  alias BearCub.LocalTime
 
   @topic "calendars"
+  @instances_table :bear_cub_calendar_instances
 
   @doc """
   Subscribes the caller to calendar-domain changes (design §4).
@@ -62,5 +67,191 @@ defmodule BearCub.Calendars do
 
   def change_calendar(%Calendar{} = calendar, attrs \\ %{}) do
     Calendar.changeset(calendar, attrs)
+  end
+
+  @doc "Writes the Refresher's fetch cache fields (never the admin-facing changeset)."
+  def update_calendar_cache(%Calendar{} = calendar, attrs) do
+    calendar
+    |> Calendar.cache_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc "Fetch interval (design §6, config, default 10 minutes)."
+  def refresh_interval_ms do
+    Application.get_env(:bear_cub, :calendar_refresh_interval_ms, :timer.minutes(10))
+  end
+
+  @doc "Staleness threshold (FR-20, config, default 2 hours)."
+  def staleness_threshold_ms do
+    Application.get_env(:bear_cub, :calendar_staleness_threshold_ms, :timer.hours(2))
+  end
+
+  @doc """
+  Whether `calendar` has gone stale — never successfully fetched, or its
+  last successful fetch is older than `staleness_threshold_ms/0` as of
+  `local_now`. A pure determination (FR-20); rendering the glyph is a
+  consumer's job (kiosk, Story 04).
+  """
+  def stale?(%Calendar{last_fetched_at: nil}, %DateTime{}), do: true
+
+  def stale?(%Calendar{last_fetched_at: last_fetched_at}, %DateTime{} = local_now) do
+    DateTime.diff(local_now, last_fetched_at, :millisecond) > staleness_threshold_ms()
+  end
+
+  @doc """
+  Parses every calendar's cached `last_payload` (if any) into the events
+  store, without touching the network — boot-time hydration (FR-20's
+  WAN-unplugged-reboot AC) so cached events are available immediately,
+  before the first fetch of this boot completes.
+  """
+  def hydrate_cache(%DateTime{} = local_now) do
+    list_calendars()
+    |> Enum.each(fn calendar ->
+      case calendar.last_payload && parse_and_expand(calendar.last_payload, local_now) do
+        {:ok, instances} -> put_instances(calendar.id, instances)
+        _ -> :ok
+      end
+    end)
+  end
+
+  @doc """
+  Fetches, parses, and stores `calendar`'s events. On success, updates its
+  cache fields and broadcasts on `"calendars"` only if the events changed.
+  On any failure (transport, non-2xx, or a parse error), the previously
+  stored events and `last_payload` are left untouched and `last_error` is
+  recorded — a calendar is a degradable overlay (FR-20), never a crash.
+  """
+  def refresh_calendar(%Calendar{} = calendar, %DateTime{} = local_now) do
+    calendar.ics_url
+    |> Req.get(req_options())
+    |> handle_fetch(calendar, local_now)
+  rescue
+    _ -> handle_failure(calendar, "fetch_error")
+  end
+
+  @doc "Refreshes every calendar; one calendar's failure never stops the rest."
+  def refresh_all(%DateTime{} = local_now) do
+    list_calendars() |> Enum.each(&refresh_calendar(&1, local_now))
+  end
+
+  @doc """
+  Today's events for `kid_id` (design §6, FR-19): that kid's own calendars
+  blended with family calendars (`kid_id: nil`), sorted by start time.
+  `today` is the local date already decided by the caller.
+  """
+  def today_events(kid_id, %Date{} = today) do
+    tz = LocalTime.timezone()
+    day_start = local_datetime(today, ~T[00:00:00], tz) |> DateTime.shift_zone!("Etc/UTC")
+    day_end = local_datetime(today, ~T[23:59:59], tz) |> DateTime.shift_zone!("Etc/UTC")
+
+    list_calendars()
+    |> Enum.filter(&(&1.kid_id == kid_id or is_nil(&1.kid_id)))
+    |> Enum.flat_map(&get_instances(&1.id))
+    |> Enum.filter(&overlaps?(&1, day_start, day_end))
+    |> Enum.sort_by(& &1.starts_at, DateTime)
+  end
+
+  defp handle_fetch({:ok, %Req.Response{status: 200, body: body}}, calendar, local_now) do
+    case parse_and_expand(body, local_now) do
+      {:ok, instances} -> handle_success(calendar, body, instances, local_now)
+      :error -> handle_failure(calendar, "parse_error")
+    end
+  end
+
+  defp handle_fetch({:ok, %Req.Response{status: status}}, calendar, _local_now) do
+    handle_failure(calendar, "http_#{status}")
+  end
+
+  defp handle_fetch({:error, _reason}, calendar, _local_now) do
+    handle_failure(calendar, "fetch_error")
+  end
+
+  defp handle_success(calendar, body, instances, local_now) do
+    previous = get_instances(calendar.id)
+    put_instances(calendar.id, instances)
+
+    {:ok, updated} =
+      update_calendar_cache(calendar, %{
+        last_payload: body,
+        last_fetched_at:
+          local_now |> DateTime.shift_zone!("Etc/UTC") |> DateTime.truncate(:second),
+        last_error: nil
+      })
+
+    if instances != previous do
+      Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :calendars_changed)
+    end
+
+    {:ok, updated}
+  end
+
+  defp handle_failure(calendar, reason) do
+    Logger.warning("calendar refresh failed label=#{calendar.label} reason=#{reason}")
+    update_calendar_cache(calendar, %{last_error: reason})
+  end
+
+  defp parse_and_expand(payload, local_now) do
+    {window_start, window_end} = parse_window(local_now)
+    ICS.parse(payload, window_start, window_end)
+  rescue
+    _ -> :error
+  end
+
+  defp parse_window(local_now) do
+    tz = LocalTime.timezone()
+    today = DateTime.to_date(local_now)
+
+    window_start =
+      today |> Date.add(-1) |> local_datetime(~T[00:00:00], tz) |> DateTime.shift_zone!("Etc/UTC")
+
+    window_end =
+      today |> Date.add(1) |> local_datetime(~T[23:59:59], tz) |> DateTime.shift_zone!("Etc/UTC")
+
+    {window_start, window_end}
+  end
+
+  # A wall-clock edge falling in a DST gap or fold resolves to a real
+  # nearby instant, matching BearCub.Routines' handling of the same case.
+  defp local_datetime(date, time, tz) do
+    case DateTime.new(date, time, tz) do
+      {:ok, dt} -> dt
+      {:gap, _just_before, just_after} -> just_after
+      {:ambiguous, first, _second} -> first
+    end
+  end
+
+  defp overlaps?(%Instance{starts_at: starts_at, ends_at: ends_at}, window_start, window_end) do
+    DateTime.compare(starts_at, window_end) != :gt and
+      DateTime.compare(ends_at, window_start) != :lt
+  end
+
+  defp req_options do
+    # No built-in retry: the 10-minute refresh loop (design §6) is already
+    # the retry mechanism, and a fetch failure must surface immediately so
+    # the previous cache keeps serving without a multi-second stall.
+    Keyword.merge(
+      [receive_timeout: 10_000, retry: false],
+      Application.get_env(:bear_cub, :calendars_req_options, [])
+    )
+  end
+
+  defp ensure_instances_table do
+    if :ets.whereis(@instances_table) == :undefined do
+      :ets.new(@instances_table, [:named_table, :public, :set, read_concurrency: true])
+    end
+  end
+
+  defp put_instances(calendar_id, instances) do
+    ensure_instances_table()
+    :ets.insert(@instances_table, {calendar_id, instances})
+  end
+
+  defp get_instances(calendar_id) do
+    ensure_instances_table()
+
+    case :ets.lookup(@instances_table, calendar_id) do
+      [{^calendar_id, instances}] -> instances
+      [] -> []
+    end
   end
 end

@@ -14,6 +14,10 @@ config :bear_cub,
 # Zone math for the configured local timezone (design §3).
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
+# The calendar Refresher (design §6) is the app's only periodic process;
+# disabled in test so specs drive its logic directly instead of over the wire.
+config :bear_cub, :calendar_refresher_enabled, true
+
 # The kiosk must work with the WAN down (§6.1) — never phone home for
 # tz updates; the compiled-in tables are refreshed by ordinary dep bumps.
 config :tzdata, :autoupdate, :disabled

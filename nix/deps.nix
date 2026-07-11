@@ -416,6 +416,31 @@ let
         in
         drv.override (workarounds.elixirMake { } drv);
 
+      finch =
+        let
+          version = "0.23.0";
+          drv = buildMix {
+            inherit version;
+            name = "finch";
+            appConfigPath = ../config;
+
+            src = fetchHex {
+              inherit version;
+              pkg = "finch";
+              sha256 = "80e58d3f936f57e3fdf404f83a3642897ae6d9fb642934e46da4d8fe761b99d5";
+            };
+
+            beamDeps = [
+              mime
+              mint
+              nimble_options
+              nimble_pool
+              telemetry
+            ];
+          };
+        in
+        drv;
+
       hackney =
         let
           version = "1.25.0";
@@ -551,6 +576,61 @@ let
               inherit version;
               pkg = "mimerl";
               sha256 = "db648ce065bae14ea84ca8b5dd123f42f49417cef693541110bf6f9e9be9ecc4";
+            };
+          };
+        in
+        drv;
+
+      mint =
+        let
+          version = "1.9.1";
+          drv = buildMix {
+            inherit version;
+            name = "mint";
+            appConfigPath = ../config;
+
+            src = fetchHex {
+              inherit version;
+              pkg = "mint";
+              sha256 = "831101bd560b086316fab5f7adb21a4f3455717d8e4bc8368b052e09aa9163e0";
+            };
+
+            beamDeps = [
+              hpax
+            ];
+          };
+        in
+        drv;
+
+      nimble_options =
+        let
+          version = "1.1.1";
+          drv = buildMix {
+            inherit version;
+            name = "nimble_options";
+            appConfigPath = ../config;
+
+            src = fetchHex {
+              inherit version;
+              pkg = "nimble_options";
+              sha256 = "821b2470ca9442c4b6984882fe9bb0389371b8ddec4d45a9504f00a66f650b44";
+            };
+          };
+        in
+        drv;
+
+      nimble_pool =
+        let
+          version = "1.1.0";
+          drv = buildMix {
+            inherit version;
+            name = "nimble_pool";
+            appConfigPath = ../config;
+
+            src = fetchHex {
+              inherit version;
+              pkg = "nimble_pool";
+              sha256 = "af2e4e6b34197db81f7aad230c1118eac993acc0dae6bc83bac0126d4ae0813a";
             };
           };
         in
@@ -764,6 +844,30 @@ let
               pkg = "plug_crypto";
               sha256 = "6470bce6ffe41c8bd497612ffde1a7e4af67f36a15eea5f921af71cf3e11247c";
             };
+          };
+        in
+        drv;
+
+      req =
+        let
+          version = "0.6.2";
+          drv = buildMix {
+            inherit version;
+            name = "req";
+            appConfigPath = ../config;
+
+            src = fetchHex {
+              inherit version;
+              pkg = "req";
+              sha256 = "cc9cd30a2ddd04989929b887178e1610c940456d962c6c3a52df6146d2eef9bf";
+            };
+
+            beamDeps = [
+              finch
+              jason
+              mime
+              plug
+            ];
           };
         in
         drv;

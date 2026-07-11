@@ -41,20 +41,64 @@ As a parent, I need the kiosk's calendar data to refresh automatically in the ba
 
 * Acceptance Criteria
 
-** [ ] A supervised =BearCub.Calendars.Refresher= GenServer fetches each calendar's =ics_url= on boot and again on a configured interval (default within the PRD's ~15-minute freshness target).
-** [ ] A successful fetch parses the payload (via the =Calendars.ICS= module from Story 01) and stores concrete event instances such that =Calendars.today_events(kid_id, today)= returns them.
-** [ ] When a fetch fails, the previously cached events keep being served without interruption or gap, and the failure is recorded server-side (=last_error=) without ever logging the calendar's =ics_url=.
-** [ ] The cached calendar payload survives a server restart: on boot, events from the last successful fetch are available immediately, before the next fetch completes.
-** [ ] When a calendar's cache exceeds the staleness threshold (default 2 hours) without a successful refresh, that calendar is marked stale so a consumer can detect it (verified by a test asserting the staleness determination, independent of any UI).
-** [ ] A successful refresh that changes a calendar's events broadcasts on the ="calendars"= PubSub topic.
-** [ ] Unit tests cover fetch success, fetch failure with cache fallback, boot-time cache hydration, and the staleness threshold determination.
+** [X] A supervised =BearCub.Calendars.Refresher= GenServer fetches each calendar's =ics_url= on boot and again on a configured interval (default within the PRD's ~15-minute freshness target).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:37] \\
+  =lib/bear_cub/calendars/refresher.ex= =init/1= (lines 24-30) hydrates then calls =Calendars.refresh_all/1= and schedules =:refresh=; =handle_info(:refresh, ...)= (lines 33-37) re-fetches and reschedules via =Process.send_after/3= using =Calendars.refresh_interval_ms/0= (default 10 min, =calendars.ex:80-82=). Registered as a supervised child in =lib/bear_cub/application.ex:45-51=. Verified by =test/bear_cub/calendars/refresher_test.exs= "boot performs an initial live fetch and stores its events" and "handling :refresh re-fetches every calendar and picks up new events" (both passing).
+:END:
+** [X] A successful fetch parses the payload (via the =Calendars.ICS= module from Story 01) and stores concrete event instances such that =Calendars.today_events(kid_id, today)= returns them.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  =calendars.ex:154-159= (=handle_fetch= on HTTP 200 calls =parse_and_expand/2= → =ICS.parse/3=) and =:169-186= (=handle_success= stores instances via ETS-backed =put_instances/2=). Verified by =test/bear_cub/calendars_test.exs= "refresh_calendar/2 success stores parsed instances, updates the cache fields, and broadcasts on change" (passing), which asserts =Calendars.today_events(calendar.kid_id, ~D[2026-07-11])= returns the parsed event.
+:END:
+** [X] When a fetch fails, the previously cached events keep being served without interruption or gap, and the failure is recorded server-side (=last_error=) without ever logging the calendar's =ics_url=.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  =handle_failure/2= (=calendars.ex:188-191=) logs only =calendar.label= and a static reason string ("http_#{status}", "fetch_error", "parse_error"); the raw Req error tuple and HTTP status are never interpolated with URL-bearing content, and =ics_url= appears nowhere near a =Logger= call (confirmed via grep). Verified by =test/bear_cub/calendars_test.exs= "refresh_calendar/2 failure keeps serving the previously cached events and records a last_error that never contains the ics_url" (passing) — uses a calendar fixture with a secret-bearing URL, stubs a 503, asserts the secret never appears in =last_error= and the old cached event still serves via =today_events/2=.
+:END:
+** [X] The cached calendar payload survives a server restart: on boot, events from the last successful fetch are available immediately, before the next fetch completes.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  =Refresher.init/1= calls =Calendars.hydrate_cache/1= (pure ETS load from =last_payload=, no network) strictly before =Calendars.refresh_all/1= (the live fetch). Verified by =test/bear_cub/calendars/refresher_test.exs= "boot hydrates cached events immediately, even when the boot-time fetch fails (FR-20 WAN-down)" (passing) — stubs a 503 boot-time fetch, starts the Refresher, and asserts =today_events/2= already returns the cached event regardless of the failing live fetch.
+:END:
+** [X] When a calendar's cache exceeds the staleness threshold (default 2 hours) without a successful refresh, that calendar is marked stale so a consumer can detect it (verified by a test asserting the staleness determination, independent of any UI).
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  =Calendars.stale?/2= (=calendars.ex:95-99=) is a pure =(calendar, local_now)= comparison against =staleness_threshold_ms/0= (config, default 2h) — no ETS, network, or UI dependency. Verified by three tests under =describe "stale?/2"= in =test/bear_cub/calendars_test.exs= (all passing): never-fetched → true, fetched within threshold → false, threshold elapsed → true.
+:END:
+** [X] A successful refresh that changes a calendar's events broadcasts on the ="calendars"= PubSub topic.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  =handle_success/4= (=calendars.ex:169-186=) reads =previous = get_instances(calendar.id)= before overwriting, then broadcasts only =if instances != previous=. Verified by two distinct passing tests in =test/bear_cub/calendars_test.exs=: "refresh_calendar/2 success stores parsed instances, updates the cache fields, and broadcasts on change" (empty previous → =assert_receive :calendars_changed=) and "success with unchanged events does not broadcast" (pre-hydrated with the identical payload → =refute_receive :calendars_changed=).
+:END:
+** [X] Unit tests cover fetch success, fetch failure with cache fallback, boot-time cache hydration, and the staleness threshold determination.
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:38] \\
+  All four covered: =describe "stale?/2"= (3 tests), =describe "hydrate_cache/1"= (2 tests), =describe "refresh_calendar/2"= (4 tests: success-broadcast, success-no-broadcast, failure-fallback, parse-failure-fallback), =describe "refresh_all/1"= (isolation test) in =test/bear_cub/calendars_test.exs=, plus 3 GenServer-level tests in =test/bear_cub/calendars/refresher_test.exs=. =mix test test/bear_cub/calendars_test.exs test/bear_cub/calendars/refresher_test.exs= → 25 passed, 0 failures.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:42] \\
+  All 7 Acceptance Criteria items above are =[X]= with LOGBOOK evidence; confirmed via =grep -n "^\*\* \[" docs/2026-07-09-mvp/stories/story-03-calendar-refresh-pipeline.org= showing all seven as =[X]=, spot-checked against source (=Refresher.init/1=, =handle_failure/2=, =stale?/2=).
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:43] \\
+  =mix test test/bear_cub/calendars_test.exs test/bear_cub/calendars/refresher_test.exs= → 25 passed, 0 failures. Coverage maps 1:1 onto the AC list (stale?/2, hydrate_cache/1, refresh_calendar/2 success/failure/parse-failure/broadcast, refresh_all/1 isolation, plus 3 GenServer-level Refresher tests).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:43] \\
+  Checked against CLAUDE.md's Elixir/Phoenix/Ecto conventions: no map access on structs, no =String.to_atom= on user input, =stale?/2= correctly =?=-suffixed, =Calendar.cache_changeset/2= kept separate from the admin-facing changeset (never exposed to the admin form), tests use =start_supervised!= and =:sys.get_state= (never =Process.sleep=), =Req= used per project guideline (promoted to a direct =mix.exs= dependency), no buried =DateTime.utc_now/0= in domain code, =ics_url= never reaches a =Logger= call.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-11 Sat 14:43] \\
+  =mix format --check-formatted= → exit 0, no output. =mix test= → "Result: 166 passed", exit 0. =mix compile --warnings-as-errors= also clean (extra check, not required by this item's literal text).
+:END:
 
 * Technical Notes
 
@@ -64,3 +108,5 @@ As a parent, I need the kiosk's calendar data to refresh automatically in the ba
 - The on-device/manual AC "Unplug the WAN, reboot the server → kiosk shows chores plus the last cached events" (PRD FR-20) is a phase-close on-device gate item per Repo conventions, not a story AC here — this story's ACs cover the equivalent behavior via fetch-failure and boot-hydration tests instead of a literal WAN pull.
 - §1's contexts paragraph applies: =BearCub.Calendars= must never be called by =BearCub.Chores=, and calendar trouble must structurally be unable to touch the tap-to-complete path.
 - Per story-01's closeout audit: =Calendars.ICS.parse/3= raises on recurrence shapes it can't expand — the Refresher must contain parse failures per-calendar (rescue, record =last_error=, keep serving the old payload), consistent with the degradable-overlay invariant; do not let one malformed feed take down the fetch cycle. Recorded here at the execution layer; promote to a DESIGN §6 body edit only if this silence trips a future reader.
+- =:req= was added as a direct =mix.exs= dependency (previously only transitive); the project's CLAUDE.md already mandated it over =:httpoison=/=:tesla=/=:httpc= but it wasn't actually declared.
+- Deferred discovery: a full =mix test= run occasionally logs a non-fatal =[error] Exqlite.Connection ... disconnected: ** (DBConnection.ConnectionError) client ... exited= line (no test failures; =Result: 166 passed= either way). Only appears in full-suite runs, not when running the calendar test files in isolation — likely a benign race between a =start_supervised!=-owned =Refresher= process and the Ecto Sandbox owner during another test's teardown. Not investigated further; flagging in case it recurs or worsens.
