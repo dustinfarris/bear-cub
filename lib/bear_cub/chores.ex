@@ -70,6 +70,12 @@ defmodule BearCub.Chores do
 
   def get_chore!(id), do: Repo.get!(Chore, id)
 
+  @doc """
+  Gets a single chore, or nil when it's gone — a stale tap racing an
+  admin delete must no-op, never crash the view.
+  """
+  def get_chore(id), do: Repo.get(Chore, id)
+
   @doc "Creates a chore owned by `kid`. `kid_id` is never cast from attrs."
   def create_chore(%Kid{} = kid, attrs) do
     %Chore{kid_id: kid.id}

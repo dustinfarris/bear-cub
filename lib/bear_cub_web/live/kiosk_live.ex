@@ -20,18 +20,24 @@ defmodule BearCubWeb.KioskLive do
   end
 
   def handle_event("toggle-chore", %{"chore-id" => id}, socket) do
-    chore = Chores.get_chore!(id)
     now = LocalTime.now()
 
-    if Map.has_key?(socket.assigns.completions, chore.id) do
-      # {:error, :not_completed} if another surface undid it first — no-op
-      Chores.undo_chore(chore, now)
-    else
-      # a racing double-complete hits the partial unique index — already done
-      Chores.complete_chore(chore, now, "kiosk")
-    end
+    case Chores.get_chore(id) do
+      # deleted from admin after this render — drop the tap, refresh the row away
+      nil ->
+        {:noreply, load(socket, now)}
 
-    {:noreply, load(socket, now)}
+      chore ->
+        if Map.has_key?(socket.assigns.completions, chore.id) do
+          # {:error, :not_completed} if another surface undid it first — no-op
+          Chores.undo_chore(chore, now)
+        else
+          # a racing double-complete hits the partial unique index — already done
+          Chores.complete_chore(chore, now, "kiosk")
+        end
+
+        {:noreply, load(socket, now)}
+    end
   end
 
   @impl true

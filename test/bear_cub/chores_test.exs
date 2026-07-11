@@ -132,6 +132,15 @@ defmodule BearCub.ChoresTest do
 
       assert_raise Ecto.NoResultsError, fn -> Chores.get_chore!(chore.id) end
     end
+
+    test "get_chore/1 returns nil for a vanished chore instead of raising" do
+      chore = chore_fixture()
+
+      assert Chores.get_chore(chore.id) == chore
+
+      Repo.delete!(chore)
+      assert Chores.get_chore(chore.id) == nil
+    end
   end
 
   describe "completions" do

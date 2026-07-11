@@ -262,5 +262,18 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert has_element?(view_b, "#chore-#{chore.id}[data-done]")
     end
+
+    test "a tap racing an admin delete no-ops instead of crashing", %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # Delete behind the context's back (no broadcast), so the stale row
+      # is still rendered when the tap arrives — the race window Phase 3's
+      # admin deletes open up.
+      Repo.delete!(chore)
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{chore.id}")
+    end
   end
 end
