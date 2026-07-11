@@ -41,6 +41,7 @@ defmodule BearCub.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.9"},
+      {:tidewave, "~> 0.6", only: :dev},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:ecto_sqlite3, ">= 0.0.0"},
