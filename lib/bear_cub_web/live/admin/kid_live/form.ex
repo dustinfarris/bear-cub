@@ -44,7 +44,7 @@ defmodule BearCubWeb.Admin.KidLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.admin flash={@flash} active={:kids}>
       <div id="admin-kid-form" class="mx-auto max-w-md px-4 py-6">
         <.header>{@page_title}</.header>
 
@@ -83,7 +83,7 @@ defmodule BearCubWeb.Admin.KidLive.Form do
           Back to kids
         </.link>
       </div>
-    </Layouts.app>
+    </Layouts.admin>
     """
   end
 end

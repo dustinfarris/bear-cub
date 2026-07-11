@@ -78,7 +78,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.admin flash={@flash} active={:chores}>
       <div id="admin-chore-form" class="mx-auto max-w-md px-4 py-6">
         <.header>
           {@page_title}
@@ -115,7 +115,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
           Back to chores
         </.link>
       </div>
-    </Layouts.app>
+    </Layouts.admin>
     """
   end
 end

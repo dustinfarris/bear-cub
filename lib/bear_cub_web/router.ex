@@ -25,6 +25,8 @@ defmodule BearCubWeb.Router do
   scope "/admin", BearCubWeb.Admin do
     pipe_through :browser
 
+    live "/", TodayLive
+
     live "/chores", ChoreLive.Index, :index
     live "/chores/new", ChoreLive.Form, :new
     live "/chores/:id/edit", ChoreLive.Form, :edit

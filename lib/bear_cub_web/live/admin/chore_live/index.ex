@@ -55,7 +55,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.admin flash={@flash} active={:chores}>
       <div id="admin-chores" class="mx-auto max-w-md px-4 py-6">
         <.header>Chores</.header>
 
@@ -141,7 +141,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Index do
           </ul>
         </section>
       </div>
-    </Layouts.app>
+    </Layouts.admin>
     """
   end
 end

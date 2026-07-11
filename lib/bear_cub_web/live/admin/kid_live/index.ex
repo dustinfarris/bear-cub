@@ -20,7 +20,7 @@ defmodule BearCubWeb.Admin.KidLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.admin flash={@flash} active={:kids}>
       <div id="admin-kids" class="mx-auto max-w-md px-4 py-6">
         <.header>
           Kids
@@ -41,7 +41,7 @@ defmodule BearCubWeb.Admin.KidLive.Index do
           </li>
         </ul>
       </div>
-    </Layouts.app>
+    </Layouts.admin>
     """
   end
 end
