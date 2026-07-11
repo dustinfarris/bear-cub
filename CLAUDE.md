@@ -1,11 +1,29 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
+Active initiative: docs/2026-07-09-mvp/
+
+## Repo conventions (pre-kit project, adopted at Phase 3)
+
+- Changelog convention: this repo uses the Design decision log (DESIGN.org §10, D-entries extending PRD §9) instead of the org-conventions Changelog format. /workflow-kit:update-design appends dated D-entries in the established format; the body-edit-required invariant applies unchanged.
+- Phases 1–2 predate the kit: no stories exist for them; git history is their record.
+- Stories are phase-scoped: /workflow-kit:user-stories is always invoked with an explicit phase scope and only excerpts the DESIGN sections that phase implements.
+- Phase close includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
+- Testing per DESIGN §11: LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
+
+## Weight class
+
+personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below. `mix precommit` is the repo's verification gate wherever the DoD or phase-close names format/test commands.
+
 ## Authoritative docs
 
-- `docs/2026-07-09-mvp/prd.org` — requirements (FR-x), decisions D1–D7
-- `docs/2026-07-09-mvp/design.org` — schema, topology, decisions D8–D14
+- `docs/2026-07-09-mvp/PRD.org` — requirements (FR-x), success criteria, decision log §9
+- `docs/2026-07-09-mvp/DESIGN.org` — schema, topology, decision log §10 (D-entries)
 
-When code and these docs disagree, the docs win. If a doc must change, amend it in the same commit and log the decision in the design doc's decision log (§10) as the next D-number, with the date it was made (e.g. `- *D17 (2026-07-12) — <title>:* …`).
+When code and these docs disagree, the docs win. DESIGN.org may be amended when implementation surfaces new information — body edit plus a new D-entry in §10, normally via /workflow-kit:update-design. PRD.org is the invariant contract and is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as an Amendment question, not fixed.
+
+## Workflow
+
+Pipeline from here: /workflow-kit:user-stories (phase-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close. One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
 
 ## Design invariants (do not violate)
 
