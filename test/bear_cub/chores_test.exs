@@ -250,6 +250,50 @@ defmodule BearCub.ChoresTest do
       assert {:ok, %{position: 0}} = Chores.move_chore(morning, :down)
     end
 
+    test "create_chore/2 appends extras (nil routine) to the end of their own bucket (D22)" do
+      kid = kid_fixture()
+
+      first = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+      second = chore_fixture(kid, %{name: "Water Plants", icon: "🪴", routine: nil})
+
+      assert first.position == 0
+      assert second.position == 1
+    end
+
+    test "update_chore/2 reclassifying morning -> evening re-appends to the evening bucket (D35)" do
+      kid = kid_fixture()
+      morning = chore_fixture(kid)
+      _evening_a = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      _evening_b = chore_fixture(kid, %{name: "Read Book", icon: "📖", routine: "evening"})
+
+      assert {:ok, moved} = Chores.update_chore(morning, %{routine: "evening"})
+
+      assert moved.routine == "evening"
+      assert moved.position == 2
+    end
+
+    test "update_chore/2 reclassifying into the extra bucket re-appends among existing extras" do
+      kid = kid_fixture()
+      _extra_a = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+      _extra_b = chore_fixture(kid, %{name: "Water Plants", icon: "🪴", routine: nil})
+      morning = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥"})
+
+      assert {:ok, moved} = Chores.update_chore(morning, %{routine: nil})
+
+      assert moved.routine == nil
+      assert moved.position == 2
+    end
+
+    test "update_chore/2 without a routine change does not touch position" do
+      kid = kid_fixture()
+      first = chore_fixture(kid)
+      _second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+
+      assert {:ok, updated} = Chores.update_chore(first, %{name: "Brush Teeth Well"})
+
+      assert updated.position == 0
+    end
+
     test "move_chore/2 swaps across position gaps left by deletes" do
       kid = kid_fixture()
       first = chore_fixture(kid)
@@ -261,6 +305,59 @@ defmodule BearCub.ChoresTest do
       assert moved.position == 2
 
       assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [last.id, first.id]
+    end
+  end
+
+  describe "extras" do
+    import BearCub.ChoresFixtures
+
+    defp extra_fixture(kid, attrs \\ %{}) do
+      chore_fixture(kid, Enum.into(attrs, %{name: "Wash Car", icon: "🚗", routine: nil}))
+    end
+
+    test "list_extras/2 returns outstanding and done-today extras, ordered by position" do
+      kid = kid_fixture()
+      outstanding = extra_fixture(kid)
+      done_today = extra_fixture(kid, %{name: "Water Plants", icon: "🪴"})
+      _morning = chore_fixture(kid)
+
+      {:ok, _} = Chores.complete_chore(done_today, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == [outstanding, done_today]
+    end
+
+    test "list_extras/2 excludes a retired extra — completed before today never returns" do
+      kid = kid_fixture()
+      retired = extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(retired, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == []
+    end
+
+    test "undoing a done-today extra returns it to outstanding in list_extras/2" do
+      kid = kid_fixture()
+      extra = extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      # done-today still lingers in the list
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == [extra]
+      assert Map.has_key?(Chores.current_completions(~D[2026-07-10]), extra.id)
+
+      {:ok, _} = Chores.undo_chore(extra, la(~D[2026-07-10], ~T[08:05:00]))
+
+      # back to outstanding: still in the list, no longer done
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == [extra]
+      refute Map.has_key?(Chores.current_completions(~D[2026-07-10]), extra.id)
+    end
+
+    test "current_completions/1 reflects an extra's done-today state exactly like a chore" do
+      kid = kid_fixture()
+      extra = extra_fixture(kid)
+      {:ok, completion} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      extra_id = extra.id
+      assert %{^extra_id => found} = Chores.current_completions(~D[2026-07-10])
+      assert found.id == completion.id
     end
   end
 

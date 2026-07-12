@@ -30,7 +30,7 @@ One migration. The =completions= table is *unchanged*.
 
 - =chores.routine=: drop =NOT NULL= at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. =nil= marks an extra. Because =nil= is now valid, =Routines= window logic never sees an extra: =list_chores(kid, "morning"|"evening")= already guards its routine arg, so =nil= rows never leak into routine lists.
   - Dropping =NOT NULL= on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place =ALTER=. Verify =ecto_sqlite3='s actual =ALTER TABLE= / column-modify support before writing the migration, and preserve the =completions= → =chores= foreign key through the rebuild so existing completion history is not orphaned.
-- =position=: extras occupy their own =kid + nil= bucket. =next_position/2= and the =[:kid_id, :routine, :position]= index already handle a =nil= routine group — no schema change beyond the nullability relaxation.
+- =position=: extras occupy their own =kid + nil= bucket, sharing the =[:kid_id, :routine, :position]= index — no schema change beyond the nullability relaxation. =next_position/2='s =nil= clause needed a code fix (Story 02): it had hardcoded =0= for the =nil= bucket regardless of existing rows, rather than querying =max(position)= like every other bucket; it now queries =is_nil(c.routine)= and follows the same max+1 pattern.
 
 An extra reuses the =completions= table wholesale: the =chore_id= FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
 
@@ -179,3 +179,9 @@ Explicitly removed MVP affordances (recorded as scope decisions, not omissions):
 /Sections affected: Key Behaviors — Messages are module constants; Key Behaviors — Post-evening-window is unconditional Good Night mode; Screens — Kiosk state 5/
 
 Earlier this document enumerated only =morning_complete/0= and =evening_complete/0= and was silent on which message the Good Night (state 5) band shows — the natural reading was to reuse =evening_complete/0= (the "goodnight line"). Do not reuse it: Good Night mode now renders its own =good_night/0= constant. The evening-routine-complete reward and the post-23:00 lockdown are distinct states with distinct copy; folding one into the other recouples them so that editing the reward silently changes the lockdown line. Rationale: D38.
+
+** [2026-07-12 Sun 12:08] §Data Model =next_position/2='s =nil= clause previously hardcoded =0=, not queried
+
+/Sections affected: Data Model/
+
+This document previously stated that =next_position/2= "already handle[d] a =nil= routine group" and needed no change for extras. In fact its =nil= clause was =defp next_position(_kid, nil), do: 0= — a hardcoded constant, not a =max(position)= query like every other bucket. A kid with more than one extra (or a second chore reclassified into the extras bucket) would collide at position =0=. Story 02 fixed the =nil= clause to query =max(position) where is_nil(c.routine)=, matching the pattern of every other routine bucket. No D-entry: this corrects a latent bug in existing code, not a design judgment.

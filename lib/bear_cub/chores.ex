@@ -68,6 +68,24 @@ defmodule BearCub.Chores do
     )
   end
 
+  @doc """
+  The kid's outstanding and done-today extras (nil-routine chores),
+  ordered by position — a retired extra (current completion dated
+  before `local_date`) never returns (design: extras visibility).
+  """
+  def list_extras(%Kid{} = kid, %Date{} = local_date) do
+    retired_ids =
+      from c in BearCub.Chores.Completion,
+        where: is_nil(c.undone_at) and c.local_date < ^local_date,
+        select: c.chore_id
+
+    Repo.all(
+      from c in Chore,
+        where: c.kid_id == ^kid.id and is_nil(c.routine) and c.id not in subquery(retired_ids),
+        order_by: [asc: c.position, asc: c.id]
+    )
+  end
+
   def get_chore!(id), do: Repo.get!(Chore, id)
 
   @doc """
@@ -91,9 +109,29 @@ defmodule BearCub.Chores do
     |> broadcast_change()
   end
 
+  @doc """
+  Updates a chore. On a detected `routine` change, `position` is set to
+  the next slot in the target bucket (`max+1`), never carrying the old
+  value over (D35, reclassify re-appends). `position` is never cast
+  from `attrs`.
+  """
   def update_chore(%Chore{} = chore, attrs) do
-    chore
-    |> Chore.changeset(attrs)
+    changeset = Chore.changeset(chore, attrs)
+
+    changeset =
+      case Ecto.Changeset.fetch_change(changeset, :routine) do
+        {:ok, new_routine} ->
+          Ecto.Changeset.put_change(
+            changeset,
+            :position,
+            next_position(%Kid{id: chore.kid_id}, new_routine)
+          )
+
+        :error ->
+          changeset
+      end
+
+    changeset
     |> Repo.update()
     |> broadcast_change()
   end
@@ -153,7 +191,16 @@ defmodule BearCub.Chores do
     )
   end
 
-  defp next_position(_kid, nil), do: 0
+  defp next_position(%Kid{} = kid, nil) do
+    max_position =
+      Repo.one(
+        from c in Chore,
+          where: c.kid_id == ^kid.id and is_nil(c.routine),
+          select: max(c.position)
+      )
+
+    (max_position || -1) + 1
+  end
 
   defp next_position(%Kid{} = kid, routine) do
     max_position =

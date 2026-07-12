@@ -44,19 +44,59 @@ As a parent, I need the app to know which extras are still outstanding for a kid
 
 * Acceptance Criteria
 
-** [ ] =list_extras(kid, today)= returns that kid's =nil=-routine chores that are outstanding (no current completion) or done-today (current completion dated =today=), ordered by =position=.
-** [ ] =list_extras(kid, today)= excludes a retired extra (current completion dated before =today=) — a retired extra never returns.
-** [ ] Undoing a done-today extra returns it to outstanding, and it appears in =list_extras/2= again.
-** [ ] The =current_completions/1= map reflects an extra's done-today state exactly as it does for a routine chore (extras need no separate done-today query).
-** [ ] =update_chore/2= on a chore whose =routine= changes sets =position= to =max+1= of the /target/ bucket (morning, evening, or the =nil=/extra bucket); the old position is not carried over. =position= is never cast from params.
-** [ ] =BearCub.Messages.morning_complete/0=, =BearCub.Messages.evening_complete/0=, and =BearCub.Messages.good_night/0= each return their static string.
+** [X] =list_extras(kid, today)= returns that kid's =nil=-routine chores that are outstanding (no current completion) or done-today (current completion dated =today=), ordered by =position=.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:04] \\
+  Verified by ~"extras list_extras/2 returns outstanding and done-today extras, ordered by position"~ (~test/bear_cub/chores_test.exs:318~), passing. Implementation in ~BearCub.Chores.list_extras/2~ (~lib/bear_cub/chores.ex:76-87~).
+:END:
+** [X] =list_extras(kid, today)= excludes a retired extra (current completion dated before =today=) — a retired extra never returns.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:04] \\
+  Verified by ~"extras list_extras/2 excludes a retired extra — completed before today never returns"~ (~test/bear_cub/chores_test.exs:329~), passing. The ~retired_ids~ subquery filters on ~is_nil(c.undone_at) and c.local_date < ^local_date~ (~lib/bear_cub/chores.ex:77-80,84~).
+:END:
+** [X] Undoing a done-today extra returns it to outstanding, and it appears in =list_extras/2= again.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:04] \\
+  Verified by ~"extras undoing a done-today extra returns it to outstanding in list_extras/2"~ (~test/bear_cub/chores_test.exs:337-351~), passing — asserts presence in ~list_extras/2~ both before and after ~undo_chore/2~, and cross-checks ~current_completions/1~ membership flips.
+:END:
+** [X] The =current_completions/1= map reflects an extra's done-today state exactly as it does for a routine chore (extras need no separate done-today query).
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:04] \\
+  Verified by ~"extras current_completions/1 reflects an extra's done-today state exactly like a chore"~ (~test/bear_cub/chores_test.exs:353-361~), passing. ~current_completions/1~ and ~current_of_day/1~ (~lib/bear_cub/chores.ex:297-299,306-309~) carry no ~routine~ filter, so extras fold in unchanged.
+:END:
+** [X] =update_chore/2= on a chore whose =routine= changes sets =position= to =max+1= of the /target/ bucket (morning, evening, or the =nil=/extra bucket); the old position is not carried over. =position= is never cast from params.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:04] \\
+  Verified by three tests in ~test/bear_cub/chores_test.exs~: ~"update_chore/2 reclassifying morning -> evening re-appends to the evening bucket (D35)"~ (263-273, lands at position 2 in a 2-item bucket, proving the old value 0 wasn't carried), ~"update_chore/2 reclassifying into the extra bucket re-appends among existing extras"~ (275-285, same proof for the =nil= bucket), and ~"update_chore/2 without a routine change does not touch position"~ (287-295). ~position~ is structurally never cast — ~Chore.changeset/2~ casts only ~[:routine, :name, :icon]~ (~lib/bear_cub/chores/chore.ex:19-24~), reinforced by the pre-existing ~"position is not mass-assignable"~ test. Also fixed a pre-existing bug in ~next_position/2~'s =nil= clause, which previously hardcoded 0 regardless of existing extras; now queries ~max(c.position)~ (~lib/bear_cub/chores.ex:194-203~), exercised by ~"create_chore/2 appends extras (nil routine) to the end of their own bucket (D22)"~ (253-261).
+:END:
+** [X] =BearCub.Messages.morning_complete/0=, =BearCub.Messages.evening_complete/0=, and =BearCub.Messages.good_night/0= each return their static string.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:05] \\
+  Verified by ~test/bear_cub/messages_test.exs:6-17~, all three tests passing, asserting the exact literals from the Design excerpt including the D38 distinctness assertion (~good_night() != evening_complete()~). Implementation in ~lib/bear_cub/messages.ex:10,13,16~.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:07] \\
+  All six AC items above are checked =[X]= with LOGBOOK entries citing specific tests; independently re-verified by a second story-verifier pass — every cited test confirmed present and passing.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:07] \\
+  ~mix test test/bear_cub/chores_test.exs test/bear_cub/messages_test.exs~ → 56 passed, 0 failures; full suite ~mix test~ → 200 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:07] \\
+  Spot-checked against CLAUDE.md's Elixir/Ecto guidelines: no ~String.to_atom/1~ on user input, no map-access syntax on structs, =position=/=kid_id= correctly excluded from ~cast~, ~@doc~ comments present on new/changed public functions. Two minor non-violating patterns recorded as Deferred discoveries in Technical Notes.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:07] \\
+  ~mix format --check-formatted~ → clean, exit 0. ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) → 200 passed, no compiler warnings.
+:END:
 
 * Technical Notes
 
@@ -68,3 +108,5 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - *Reclassify* (=update_chore/2=, line ~94): it currently just casts and updates. Add detection of a =routine= change (old vs. new); on change, set =position: next_position(kid, new_routine)= before the update, mirroring how =create_chore/2= sets position. =next_position/2= is private and already handles the =nil= bucket (→ 0 when empty). Keep =position= out of =cast=.
 - *=BearCub.Messages=* does not exist yet — create =lib/bear_cub/messages.ex= as a plain module with three zero-arity functions returning string literals. Mirrors how routine windows are app constants. The three strings are fixed: =morning_complete/0= is "Today is going to be a wonderful day", =evening_complete/0= is "You did great today!" (the affirming evening-routine reward), and =good_night/0= is "Good night" (the post-23:00 lockdown line, distinct from the evening reward — D38). =evening_complete/0= and =good_night/0= are deliberately separate constants for two distinct states. All three are created here even though the kiosk (Stories 04–05) consumes them: =morning_complete/0= in the morning reveal (05), =evening_complete/0= in the evening reveal (05), =good_night/0= in Good Night mode (04).
 - =complete_chore/3=, =undo_chore/2=, =toggle_completion/3=, and the ="chores"= broadcast (=broadcast_change/1= → bare =:chores_changed=) already work unchanged for extras; no change needed, but the AC on undo→outstanding exercises them against a =nil=-routine chore.
+- Deferred discovery: ~list_extras/2~ references ~BearCub.Chores.Completion~ fully-qualified rather than the ~alias BearCub.Chores.Completion~ declared later in the file — correct given Elixir's lexical alias scoping (the alias isn't in scope yet at that point in the file), but a future pass could hoist the alias earlier for consistency.
+- Deferred discovery: ~update_chore/2~ builds a partial ~%Kid{id: chore.kid_id}~ struct purely to satisfy ~next_position/2~'s ~%Kid{}~ guard clause, avoiding an extra query. Works correctly and is covered by tests, but is a slightly unusual pattern — a future pass could change ~next_position/2~'s signature to take a bare ~kid_id~ instead.
