@@ -359,6 +359,18 @@ defmodule BearCub.ChoresTest do
       assert %{^extra_id => found} = Chores.current_completions(~D[2026-07-10])
       assert found.id == completion.id
     end
+
+    test "move_chore/2 swaps positions within the extra (nil-routine) bucket" do
+      kid = kid_fixture()
+      first = extra_fixture(kid)
+      second = extra_fixture(kid, %{name: "Water Plants", icon: "🪴"})
+
+      assert {:ok, moved} = Chores.move_chore(first, :down)
+      assert moved.position == second.position
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) ==
+               [second.id, first.id]
+    end
   end
 
   describe "completions" do

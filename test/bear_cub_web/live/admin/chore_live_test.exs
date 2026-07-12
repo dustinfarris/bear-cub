@@ -93,6 +93,37 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
       assert has_element?(view, "#admin-chore-#{chore.id}")
     end
+
+    test "shows an Extras section listing outstanding + done-today extras; a retired extra never appears",
+         %{conn: conn, kid_a: kid_a} do
+      now = LocalTime.now()
+
+      outstanding = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil})
+      done_today = chore_fixture(kid_a, %{name: "Water Plants", icon: "🪴", routine: nil})
+      retired = chore_fixture(kid_a, %{name: "Rake Leaves", icon: "🍂", routine: nil})
+
+      {:ok, _} = Chores.complete_chore(done_today, now, "admin")
+      {:ok, _} = Chores.complete_chore(retired, DateTime.add(now, -1, :day), "admin")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores")
+
+      assert has_element?(view, "#chores-extras #admin-chore-#{outstanding.id}", "Wash Car")
+      assert has_element?(view, "#chores-extras #admin-chore-#{done_today.id}", "Water Plants")
+      refute has_element?(view, "#admin-chore-#{retired.id}")
+    end
+
+    test "the Extras + Add link carries no routine param", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores")
+
+      href =
+        view
+        |> element("#new-chore-extras")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+
+      assert href == ["/admin/chores/new?kid=#{kid_a.id}"]
+    end
   end
 
   describe "form" do
@@ -103,7 +134,7 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
 
       view
-      |> form("#chore-form", chore: %{name: "Make Bed", icon: "🛏️", routine: "morning"})
+      |> form("#chore-form", chore: %{name: "Make Bed", icon: "🛏️"})
       |> render_submit()
 
       assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
@@ -114,15 +145,29 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert created.position == 1
     end
 
-    test "kid_id and position cannot be forged through params",
+    test "the evening + Add link also files the new chore into the evening bucket",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=evening")
+
+      view
+      |> form("#chore-form", chore: %{name: "Pajamas On", icon: "🌙"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      assert [created] = Chores.list_chores(kid_a, "evening")
+      assert created.name == "Pajamas On"
+    end
+
+    test "kid_id, position, and routine cannot be forged through params",
          %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
-      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
 
       render_submit(view, :save, %{
         "chore" => %{
           "name" => "Sneaky",
           "icon" => "🕵️",
-          "routine" => "morning",
+          "routine" => "evening",
           "kid_id" => Integer.to_string(kid_b.id),
           "position" => "9"
         }
@@ -132,6 +177,27 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert chore.kid_id == kid_a.id
       assert chore.position == 0
       assert Chores.list_chores(kid_b, "morning") == []
+    end
+
+    test "the routine field is not shown on create", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      refute has_element?(view, "#chore_routine")
+    end
+
+    test "creates an extra when the new-chore link carries no routine param",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      view
+      |> form("#chore-form", chore: %{name: "Wash Car", icon: "🚗"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      [created] = Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date())
+      assert created.name == "Wash Car"
+      assert created.routine == nil
     end
 
     test "shows validation errors without saving", %{conn: conn, kid_a: kid_a} do
@@ -172,6 +238,71 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
       assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
       assert Chores.get_chore(chore.id) == nil
+    end
+
+    test "the edit form shows a single 'Shows in' select offering all three buckets",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      html = render(view)
+      assert html =~ "Shows in"
+
+      options =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#chore_routine option")
+
+      assert LazyHTML.attribute(options, "value") == ["morning", "evening", ""]
+
+      assert options |> LazyHTML.to_tree() |> Enum.map(fn {"option", _, [text]} -> text end) == [
+               "Morning routine",
+               "Evening routine",
+               "After routines (extra)"
+             ]
+    end
+
+    test "reclassifying to extra via Edit saves routine nil and appends to the extras bucket",
+         %{conn: conn, kid_a: kid_a} do
+      existing_extra = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil})
+      chore = chore_fixture(kid_a, %{name: "Make Bed", icon: "🛏️"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{routine: ""})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      updated = Chores.get_chore!(chore.id)
+      assert updated.routine == nil
+
+      assert Enum.map(Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date()), & &1.id) ==
+               [existing_extra.id, updated.id]
+    end
+
+    test "reclassifying an extra to evening via Edit re-appends to the evening bucket",
+         %{conn: conn, kid_a: kid_a} do
+      existing_evening =
+        chore_fixture(kid_a, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+
+      chore = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{routine: "evening"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      updated = Chores.get_chore!(chore.id)
+      assert updated.routine == "evening"
+
+      assert Enum.map(Chores.list_chores(kid_a, "evening"), & &1.id) ==
+               [existing_evening.id, updated.id]
     end
   end
 end

@@ -30,7 +30,7 @@ One migration. The =completions= table is *unchanged*.
 
 - =chores.routine=: drop =NOT NULL= at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. =nil= marks an extra. Because =nil= is now valid, =Routines= window logic never sees an extra: =list_chores(kid, "morning"|"evening")= already guards its routine arg, so =nil= rows never leak into routine lists.
   - Dropping =NOT NULL= on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place =ALTER=. Verify =ecto_sqlite3='s actual =ALTER TABLE= / column-modify support before writing the migration, and preserve the =completions= → =chores= foreign key through the rebuild so existing completion history is not orphaned.
-- =position=: extras occupy their own =kid + nil= bucket, sharing the =[:kid_id, :routine, :position]= index — no schema change beyond the nullability relaxation. =next_position/2='s =nil= clause needed a code fix (Story 02): it had hardcoded =0= for the =nil= bucket regardless of existing rows, rather than querying =max(position)= like every other bucket; it now queries =is_nil(c.routine)= and follows the same max+1 pattern.
+- =position=: extras occupy their own =kid + nil= bucket, sharing the =[:kid_id, :routine, :position]= index — no schema change beyond the nullability relaxation. =next_position/2='s =nil= clause needed a code fix (Story 02): it had hardcoded =0= for the =nil= bucket regardless of existing rows, rather than querying =max(position)= like every other bucket; it now queries =is_nil(c.routine)= and follows the same max+1 pattern. =move_chore/2='s neighbor lookup needed the same treatment (Story 03): its =c.routine == ^chore.routine= comparison is an Ecto-forbidden unsafe =NULL= comparison when the pinned value is =nil= (raises =ArgumentError=), so =neighbor/2= now has dedicated =is_nil(c.routine)= clauses for the extras bucket, mirroring =next_position/2='s fix.
 
 An extra reuses the =completions= table wholesale: the =chore_id= FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
 
@@ -185,3 +185,9 @@ Earlier this document enumerated only =morning_complete/0= and =evening_complete
 /Sections affected: Data Model/
 
 This document previously stated that =next_position/2= "already handle[d] a =nil= routine group" and needed no change for extras. In fact its =nil= clause was =defp next_position(_kid, nil), do: 0= — a hardcoded constant, not a =max(position)= query like every other bucket. A kid with more than one extra (or a second chore reclassified into the extras bucket) would collide at position =0=. Story 02 fixed the =nil= clause to query =max(position) where is_nil(c.routine)=, matching the pattern of every other routine bucket. No D-entry: this corrects a latent bug in existing code, not a design judgment.
+
+** [2026-07-12 Sun 12:55] §Data Model =move_chore/2='s neighbor lookup previously assumed no code change was needed for the extras bucket
+
+/Sections affected: Data Model/
+
+This document previously implied, via "no schema change beyond the nullability relaxation," that =move_chore/2='s reordering worked unchanged for the =nil=-routine (extras) bucket, since it shares the =[:kid_id, :routine, :position]= index like =next_position/2=. In fact its private =neighbor/2= helper compared =c.routine == ^chore.routine=, an Ecto-forbidden unsafe =NULL= comparison when the pinned value is =nil= — it raised =ArgumentError= rather than silently misordering. Story 03 added dedicated =is_nil(c.routine)= clauses to =neighbor/2=, the same treatment =next_position/2= needed in Story 02 (previous entry, above). No D-entry: this corrects a latent bug in existing code, not a design judgment.

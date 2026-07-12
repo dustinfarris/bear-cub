@@ -169,6 +169,19 @@ defmodule BearCub.Chores do
 
   # The adjacent chore within the same kid+routine — position-gap tolerant
   # (deletes leave gaps; the nearest position wins, ties broken by id).
+  # A pinned nil routine can't use `==` (Ecto forbids the unsafe NULL
+  # comparison) — the extra bucket needs `is_nil/1` instead.
+  defp neighbor(%Chore{routine: nil} = chore, :up) do
+    Repo.one(
+      from c in Chore,
+        where:
+          c.kid_id == ^chore.kid_id and is_nil(c.routine) and
+            c.position < ^chore.position,
+        order_by: [desc: c.position, desc: c.id],
+        limit: 1
+    )
+  end
+
   defp neighbor(%Chore{} = chore, :up) do
     Repo.one(
       from c in Chore,
@@ -176,6 +189,17 @@ defmodule BearCub.Chores do
           c.kid_id == ^chore.kid_id and c.routine == ^chore.routine and
             c.position < ^chore.position,
         order_by: [desc: c.position, desc: c.id],
+        limit: 1
+    )
+  end
+
+  defp neighbor(%Chore{routine: nil} = chore, :down) do
+    Repo.one(
+      from c in Chore,
+        where:
+          c.kid_id == ^chore.kid_id and is_nil(c.routine) and
+            c.position > ^chore.position,
+        order_by: [asc: c.position, asc: c.id],
         limit: 1
     )
   end

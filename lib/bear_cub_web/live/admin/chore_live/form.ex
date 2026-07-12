@@ -11,7 +11,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
 
   defp apply_action(socket, :new, params) do
     kid = Chores.get_kid!(params["kid"])
-    routine = if params["routine"] in ~w(morning evening), do: params["routine"], else: "morning"
+    routine = if params["routine"] in ~w(morning evening), do: params["routine"], else: nil
     chore = %Chore{kid_id: kid.id, routine: routine}
 
     socket
@@ -50,6 +50,11 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
   end
 
   defp save_chore(socket, :new, params) do
+    # the routine field is hidden on create — the bucket comes from the
+    # URL param captured at mount (socket.assigns.chore.routine), not
+    # from the submitted form
+    params = Map.put(params, "routine", socket.assigns.chore.routine)
+
     case Chores.create_chore(socket.assigns.kid, params) do
       {:ok, _chore} ->
         {:noreply,
@@ -89,10 +94,15 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
           <.input field={@form[:name]} type="text" label="Name" />
           <.input field={@form[:icon]} type="text" label="Icon (emoji)" placeholder="🪥" />
           <.input
+            :if={@live_action == :edit}
             field={@form[:routine]}
             type="select"
-            label="Routine"
-            options={[{"Morning", "morning"}, {"Evening", "evening"}]}
+            label="Shows in"
+            options={[
+              {"Morning routine", "morning"},
+              {"Evening routine", "evening"},
+              {"After routines (extra)", ""}
+            ]}
           />
 
           <.button class="btn btn-primary w-full">Save Chore</.button>

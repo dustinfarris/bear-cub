@@ -32,19 +32,59 @@ As a parent, I need to create a one-off extra for a specific kid and reclassify 
 
 * Acceptance Criteria
 
-** [ ] =ChoreLive.Index= shows an *Extras* section per kid, alongside Morning and Evening, listing that kid's outstanding + done-today extras; a retired extra does not appear.
-** [ ] The Extras "+ Add" link carries no =routine= param; a chore created through it is saved with =routine= = =nil= (an extra).
-** [ ] The Morning and Evening "+ Add" links still file a newly created chore into that routine bucket.
-** [ ] On the Create form, the =routine= field is not shown.
-** [ ] On the Edit form, a single select labeled *"Shows in"* offers Morning routine / Evening routine / After routines (extra); the extra option has =value=""=, and choosing it saves the chore with =routine= = =nil=.
-** [ ] Reclassifying a chore via Edit (e.g. morning → extra, or extra → evening) places it at the end of the target bucket; its old position is not carried over.
+** [X] =ChoreLive.Index= shows an *Extras* section per kid, alongside Morning and Evening, listing that kid's outstanding + done-today extras; a retired extra does not appear.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  ~lib/bear_cub_web/live/admin/chore_live/index.ex:112-136~ renders ~<section id="routine-extras">~/~<ul id="chores-extras">~ from ~Chores.list_extras/2~, which already filters retired rows (~lib/bear_cub/chores.ex:76-87~). Verified by ~test/bear_cub_web/live/admin/chore_live_test.exs:97-113~ ("shows an Extras section listing outstanding + done-today extras; a retired extra never appears"), passing.
+:END:
+** [X] The Extras "+ Add" link carries no =routine= param; a chore created through it is saved with =routine= = =nil= (an extra).
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  Link at ~index.ex:117-124~ uses ~~p"/admin/chores/new?kid=#{@selected_kid.id}"~ with no routine segment. Verified by ~chore_live_test.exs:115-126~ (href assertion) and ~chore_live_test.exs:188-201~ (full create flow asserting ~created.routine == nil~), both passing.
+:END:
+** [X] The Morning and Evening "+ Add" links still file a newly created chore into that routine bucket.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  ~index.ex:86-99~ generates both links from one shared template line, so morning/evening share a code path. Verified by ~chore_live_test.exs:130-146~ (morning) and ~chore_live_test.exs:148-160~ (evening, added during closeout to close a coverage gap the story-verifier flagged), both passing.
+:END:
+** [X] On the Create form, the =routine= field is not shown.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  ~lib/bear_cub_web/live/admin/chore_live/form.ex:96-106~ guards the routine ~<.input>~ with ~:if={@live_action == :edit}~. Verified by ~chore_live_test.exs:182-186~ (~refute has_element?(view, "#chore_routine")~), passing.
+:END:
+** [X] On the Edit form, a single select labeled *"Shows in"* offers Morning routine / Evening routine / After routines (extra); the extra option has =value=""=, and choosing it saves the chore with =routine= = =nil=.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  ~form.ex:96-106~ renders label "Shows in" with options ~[{"Morning routine","morning"},{"Evening routine","evening"},{"After routines (extra)",""}]~. Verified by ~chore_live_test.exs:243-264~ (label + option value/order assertions) and ~chore_live_test.exs:266-284~ (submitting ~routine: ""~ asserts ~updated.routine == nil~), both passing.
+:END:
+** [X] Reclassifying a chore via Edit (e.g. morning → extra, or extra → evening) places it at the end of the target bucket; its old position is not carried over.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:34] \\
+  ~Chores.update_chore/2~ (~lib/bear_cub/chores.ex:118-137~) recomputes position via ~next_position/2~ on a detected routine change, never carrying the old value. Verified end-to-end via the Edit form by ~chore_live_test.exs:266-284~ (morning → extra) and ~chore_live_test.exs:286-306~ (extra → evening, added during closeout to close a coverage gap), both passing; context-level coverage already existed in ~test/bear_cub/chores_test.exs:263-295~ (D35). Also fixed a real bug found via this story's Technical Notes "confirm" prompt: ~neighbor/2~'s ~c.routine == ^chore.routine~ comparison is unsafe when pinned to ~nil~ (Ecto raises ~ArgumentError~) — added ~is_nil(c.routine)~-specific clauses (~chores.ex:174-183, 196-205~), covered by ~chores_test.exs:363-373~.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:39] \\
+  All 6 Acceptance Criteria above are ~[X]~ with LOGBOOK evidence, independently re-verified by a second ~story-verifier~ pass against the current working tree (line-number citations for AC2/AC4/AC5 were found stale after a mid-file test insertion and corrected in place).
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:39] \\
+  ~mix test test/bear_cub_web/live/admin/chore_live_test.exs test/bear_cub/chores_test.exs --trace~ → 72 passed, every test named in the AC LOGBOOK entries present and passing by name.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:39] \\
+  Verified: function-component extraction (~chore_row/1~) instead of a LiveComponent, ~to_form/2~ + ~<.input>~ form conventions, ~<.link navigate=...>~ (no deprecated ~live_redirect~), ~:if~ for conditionals, unique DOM ids throughout, and the mass-assignment guard on ~save_chore(:new, params)~ (routine forced from ~socket.assigns.chore.routine~, never trusted from the submitted form) matching the "fields set programmatically must not be cast" rule. One pre-existing, out-of-scope observation: the Morning/Evening/Extras sections in ~index.ex~ render plain ~:for~ lists rather than LiveView streams — this predates this story (Morning/Evening already did) and is consistent with the rest of the admin/kiosk codebase at family-scale list sizes; not addressed here.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 12:39] \\
+  ~mix format --check-formatted~ → clean. ~mix test~ → 209 passed. ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format, test) → 209 passed, no warnings. All run directly, not inferred.
+:END:
 
 * Technical Notes
 
@@ -56,3 +96,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - *Form edit*: show the relabeled single select — label *"Shows in"*, options =[{"Morning routine","morning"}, {"Evening routine","evening"}, {"After routines (extra)",""}]=. The third option's =value=""= casts to =nil= natively via Ecto; do not invent an =extra= token. Since the changeset (Story 01) no longer requires =routine=, the empty selection validates.
 - *Reclassify position* is implemented in the context (=update_chore/2=, Story 02); this story's Edit save just needs to route through it. The AC verifies the observable outcome (target-bucket ordering), not the internal call.
 - The Extras "+ Add" link mirrors the Morning/Evening ones (=new-chore-{routine}=) but with no =&routine=...= query segment: =~p"/admin/chores/new?kid=#{@selected_kid.id}"=.
+- Deferred discovery: =ChoreLive.Index='s three list sections (Morning/Evening/Extras) render plain =:for= lists rather than LiveView streams, per CLAUDE.md's "always use streams" guideline. Predates this story — Morning/Evening already did before Story 03; the new Extras section just mirrors the existing pattern. Consistent with the rest of the admin/kiosk codebase at family-scale list sizes (single-digit item counts); flagged by the story-closeout DoD verifier, not fixed inline.
