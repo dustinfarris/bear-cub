@@ -36,19 +36,59 @@ As a kid looking at the fridge tablet, I need the kiosk to show the right routin
 
 * Acceptance Criteria
 
-** [ ] The kiosk has no flip control; each column always shows the auto-selected active routine (=shown= = the routine =Routines.current/1= reports, never a manually flipped one).
-** [ ] When =Routines.current(now)= is ={:upcoming, _}= (the 23:00–05:00 gap), both columns show the Good Night state: the =good_night/0= message (its own constant, not the =evening_complete/0= reward), no chore rows, and no extras.
-** [ ] The Good Night state is not tap-expandable — there is no band-tap affordance to reveal rows.
-** [ ] The Good Night state renders regardless of whether the evening routine was completed.
-** [ ] When the morning window opens (05:00), the column leaves Good Night and renders normal morning rows; the boundary timer drives the transition without a manual reload.
-** [ ] No dimmed / =opacity-40= rendering path remains anywhere in the kiosk.
+** [X] The kiosk has no flip control; each column always shows the auto-selected active routine (=shown= = the routine =Routines.current/1= reports, never a manually flipped one).
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:09] \\
+  =load/2= (~kiosk_live.ex:61-89~) derives chores from =auto= only; the =flipped= assign, ~handle_event("flip", ...)~, and the =#routine-flip= template element are gone (~grep~ for =flip= in the module returns no matches). Verified by ~routine selection shows the auto-selected routine's chores, never a manually flipped one~ and ~routine selection the kiosk has no flip control~ (~kiosk_live_test.exs:328,337~); ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → 30 passed.
+:END:
+** [X] When =Routines.current(now)= is ={:upcoming, _}= (the 23:00–05:00 gap), both columns show the Good Night state: the =good_night/0= message (its own constant, not the =evening_complete/0= reward), no chore rows, and no extras.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:10] \\
+  ~night? = state == :upcoming~ (~kiosk_live.ex:63~) gates the template: the goodnight =div= renders =Messages.good_night()= (a dedicated constant, ~messages.ex:16~, distinct from =evening_complete/0=) when =@night?=, and the chore =<ul>= is =:if={!@night?}=. Verified by both branches of ~for evening_state <- [:complete, :incomplete]~ in ~Good Night mode the boundary handler drops into Good Night mode...~ (~kiosk_live_test.exs:474-496~), asserting the message renders and =#chores-<kid>= is absent. "No extras" holds vacuously — this codebase has no extras-rendering path yet (Story 05's scope), so there's nothing for this clause to violate.
+:END:
+** [X] The Good Night state is not tap-expandable — there is no band-tap affordance to reveal rows.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:11] \\
+  The goodnight =div= (~kiosk_live.ex:169-177~) carries no =phx-click=. Verified by ~Good Night mode Good Night mode is not tap-expandable — no band affordance to reveal rows~ (~kiosk_live_test.exs:498-512~), which asserts the element exists and refutes a =[phx-click]= attribute on it.
+:END:
+** [X] The Good Night state renders regardless of whether the evening routine was completed.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:12] \\
+  The parameterized test ~for evening_state <- [:complete, :incomplete]~ (~kiosk_live_test.exs:474-496~) generates both an ~(evening complete)~ and ~(evening incomplete)~ case — the =:complete= branch calls ~Chores.complete_chore(evening_chore, now, "kiosk")~ before crossing the boundary — and both assert Good Night renders identically. Both variants pass.
+:END:
+** [X] When the morning window opens (05:00), the column leaves Good Night and renders normal morning rows; the boundary timer drives the transition without a manual reload.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:12] \\
+  ~handle_info(:boundary, socket)~ (~kiosk_live.ex:53-59~) calls ~load(now) |> schedule_boundary(now)~ with no client action required. Verified by ~Good Night mode the boundary handler leaves Good Night mode and renders normal morning rows when the morning window opens~ (~kiosk_live_test.exs:514-537~): mounts into Good Night, reconfigures the window boundary, sends =:boundary= directly to the view process (no re-~live/2~ call), and asserts normal morning rows replace the goodnight element.
+:END:
+** [X] No dimmed / =opacity-40= rendering path remains anywhere in the kiosk.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:13] \\
+  No =dimmed?= assign, =data-dimmed= attribute, or =opacity-40= class remain in ~kiosk_live.ex~ (confirmed by grep; the only remaining match is an unrelated prose comment about the header color band, ~line 128~). Verified by ~with two kids no dimmed / opacity-40 rendering path remains anywhere in the kiosk~ (~kiosk_live_test.exs:302-308~), refuting =[data-dimmed]= and =#kiosk [class*='opacity-40']=.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:15] \\
+  All six Acceptance Criteria are marked =[X]= with LOGBOOK evidence above. One out-of-scope docs staleness (~Routines.other/1~'s comment) is recorded as a Deferred discovery in Technical Notes rather than fixed inline.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:16] \\
+  ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → 30 passed. Full suite ~mix test~ → 210 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:16] \\
+  Verified against CLAUDE.md's Phoenix v1.8/LiveView conventions: =<Layouts.app>= wrapper, =<.icon>= usage, list-syntax class conditionals, =has_element?=/=element/2= only in tests with explicit DOM IDs, no dead code (=routine_label/1= removed since its only caller, the flip button, is gone). ~mix compile --warnings-as-errors~ clean.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 13:17] \\
+  ~mix format --check-formatted~ → exit 0, no output. ~mix test~ → 210 passed. ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format, test) run clean end to end.
+:END:
 
 * Technical Notes
 
@@ -60,3 +100,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - *Good Night uses its own message.* The GAP flagged during story-writing (which message state 5 shows) is resolved by D38: Good Night mode renders =good_night/0=, a dedicated constant, /not/ =evening_complete/0=. Good Night is an unconditional lockdown state distinct from the evening-complete reward, so it carries its own copy — do not fold the two together.
 - *Existing tests to update* (=test/bear_cub_web/live/kiosk_live_test.exs=): the "routine selection and flip" describe block (~line 315) tests the removed flip — delete/rewrite it to assert auto-selection instead. Night-mode boundary transitions (22:59→23:00 with evening complete and incomplete; night→05:00 morning rows) are new tests here, driven by local-datetime args (no clock mocking).
 - All time logic takes a local-datetime argument (CLAUDE.md invariant); =Routines.current/1= and =next_boundary/1= already accept one.
+- Deferred discovery: ~BearCub.Routines.other/1~'s doc comment (~routines.ex:55~) still describes it as "the manual flip target (FR-4)" — stale now that the kiosk flip is removed. The function itself is correctly retained (still used by =Admin.TodayLive= to list both routine sections), only the comment is out of date. Out of this story's file-touch list; a docs-only fix for a future pass.

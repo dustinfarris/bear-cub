@@ -17,8 +17,8 @@ defmodule BearCub.Routines do
 
   @doc """
   The routine the kiosk should show at `local_now`: `{:active, slug}`
-  inside a window, or `{:upcoming, slug}` in a gap (D1: overnight the
-  next morning shows, dimmed) — the routine whose window opens next.
+  inside a window, or `{:upcoming, slug}` in a gap (overnight, 23:00-05:00,
+  is Good Night mode — D32) — the routine whose window opens next.
   """
   def current(%DateTime{} = local_now, windows \\ windows()) do
     time = DateTime.to_time(local_now)

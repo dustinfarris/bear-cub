@@ -4,6 +4,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Calendars
   alias BearCub.Chores
   alias BearCub.LocalTime
+  alias BearCub.Messages
   alias BearCub.Routines
 
   @impl true
@@ -15,14 +16,10 @@ defmodule BearCubWeb.KioskLive do
 
     # one clock read per mount — two could straddle a window edge
     now = LocalTime.now()
-    {:ok, socket |> assign(:flipped, false) |> load(now) |> schedule_boundary(now)}
+    {:ok, socket |> load(now) |> schedule_boundary(now)}
   end
 
   @impl true
-  def handle_event("flip", _params, socket) do
-    {:noreply, socket |> update(:flipped, &(!&1)) |> load(LocalTime.now())}
-  end
-
   def handle_event("toggle-chore", %{"chore-id" => id}, socket) do
     now = LocalTime.now()
 
@@ -54,16 +51,16 @@ defmodule BearCubWeb.KioskLive do
   end
 
   def handle_info(:boundary, socket) do
-    # Window handoff (FR-3), flip reversion (FR-4), and the midnight
-    # re-render of derived day state (design §2) are all one event:
-    # recompute everything and schedule the next boundary.
+    # Window handoff (FR-3) and the midnight re-render of derived day state
+    # (design §2) are all one event: recompute everything and schedule the
+    # next boundary.
     now = LocalTime.now()
-    {:noreply, socket |> assign(:flipped, false) |> load(now) |> schedule_boundary(now)}
+    {:noreply, socket |> load(now) |> schedule_boundary(now)}
   end
 
   defp load(socket, local_now) do
     {state, auto} = Routines.current(local_now)
-    shown = if socket.assigns.flipped, do: Routines.other(auto), else: auto
+    night? = state == :upcoming
     today = DateTime.to_date(local_now)
 
     # done today? — derived, never stored (design §2)
@@ -72,8 +69,12 @@ defmodule BearCubWeb.KioskLive do
     columns =
       for kid <- Chores.list_kids() do
         chores =
-          for chore <- Chores.list_chores(kid, Atom.to_string(shown)) do
-            %{chore: chore, done?: Map.has_key?(completions, chore.id)}
+          if night? do
+            []
+          else
+            for chore <- Chores.list_chores(kid, Atom.to_string(auto)) do
+              %{chore: chore, done?: Map.has_key?(completions, chore.id)}
+            end
           end
 
         %{kid: kid, chores: chores, events: Calendars.today_events(kid.id, today)}
@@ -82,8 +83,7 @@ defmodule BearCubWeb.KioskLive do
     assign(socket,
       columns: columns,
       completions: completions,
-      shown: shown,
-      dimmed?: socket.assigns.flipped or state == :upcoming,
+      night?: night?,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
   end
@@ -104,20 +104,8 @@ defmodule BearCubWeb.KioskLive do
     <Layouts.app flash={@flash}>
       <div
         id="kiosk"
-        data-dimmed={@dimmed?}
         class="relative grid h-dvh grid-cols-2 gap-px overflow-hidden bg-base-300"
       >
-        <%!-- The single flip control (FR-4): deliberately small and styled
-             nothing like a chore row; reverts at the next boundary. --%>
-        <button
-          id="routine-flip"
-          phx-click="flip"
-          class="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-base-100/90 px-4 py-2 text-sm font-semibold text-base-content shadow-md transition active:scale-95"
-        >
-          {routine_label(@shown)}
-          <.icon name="hero-arrows-right-left" class="size-4" />
-        </button>
-
         <%!-- Corner glyph (D4): dim when the calendar cache has gone stale.
              Global, not per-calendar or per-column — per-calendar diagnosis
              belongs in server logs. Sits alongside the existing (unstyled)
@@ -151,13 +139,7 @@ defmodule BearCubWeb.KioskLive do
                (FR-19). All-day events pin to the top (FR-22); a family
                event renders as a neutral chip + house glyph in every
                column, a personal event as the kid-color dot. --%>
-          <div
-            id={"events-#{kid.id}"}
-            class={[
-              "border-b border-base-300 px-5 py-3 transition-opacity",
-              @dimmed? && "opacity-40"
-            ]}
-          >
+          <div id={"events-#{kid.id}"} class="border-b border-base-300 px-5 py-3">
             <p :if={events == []} class="text-sm text-base-content/40">No events today</p>
             <ul :if={events != []} class="flex flex-col gap-1.5">
               <li
@@ -182,18 +164,27 @@ defmodule BearCubWeb.KioskLive do
             </ul>
           </div>
 
+          <%!-- Good Night mode (state 5, D32): the 23:00–05:00 gap. No rows,
+               no extras, not expandable — corrections go to admin. --%>
+          <div
+            :if={@night?}
+            id={"goodnight-#{kid.id}"}
+            class="flex items-center justify-center overflow-hidden bg-base-100 px-6 text-center"
+          >
+            <p class="text-2xl font-semibold text-base-content/60">
+              {Messages.good_night()}
+            </p>
+          </div>
+
           <%!-- Chores: equal full-width rows; at ≤5 the 1fr region divides
                evenly, beyond 5 only this region scrolls (FR-6). Done = kid-color
                fill + check, emoji still visible (FR-7); tap again to undo, no
                confirmation (FR-8). phx-throttle swallows the excited rapid
-               double-tap (D15). Dimming is visual only — rows stay tappable
-               (D19). --%>
+               double-tap (D15). --%>
           <ul
+            :if={!@night?}
             id={"chores-#{kid.id}"}
-            class={[
-              "grid auto-rows-fr gap-px overflow-y-auto bg-base-300 transition-opacity",
-              @dimmed? && "opacity-40"
-            ]}
+            class="grid auto-rows-fr gap-px overflow-y-auto bg-base-300"
           >
             <li
               :for={%{chore: chore, done?: done?} <- chores}

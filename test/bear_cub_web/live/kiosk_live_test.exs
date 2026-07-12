@@ -16,9 +16,6 @@ defmodule BearCubWeb.KioskLiveTest do
     auto
   end
 
-  defp label(:morning), do: "Morning"
-  defp label(:evening), do: "Evening"
-
   # Events tests never mock the clock either — build ICS payloads relative
   # to the real current local day so they land in today's window no matter
   # when the suite runs.
@@ -301,6 +298,14 @@ defmodule BearCubWeb.KioskLiveTest do
 
       refute has_element?(view, "a")
     end
+
+    test "no dimmed / opacity-40 rendering path remains anywhere in the kiosk",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "[data-dimmed]")
+      refute has_element?(view, "#kiosk [class*='opacity-40']")
+    end
   end
 
   describe "with no kids yet (fresh production database)" do
@@ -312,7 +317,7 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
-  describe "routine selection and flip" do
+  describe "routine selection" do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
       morning = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
@@ -320,62 +325,19 @@ defmodule BearCubWeb.KioskLiveTest do
       %{kid: kid, chores: %{morning: morning, evening: evening}}
     end
 
-    test "shows the time-appropriate routine with its name on the flip control",
+    test "shows the auto-selected routine's chores, never a manually flipped one",
          %{conn: conn, chores: chores} do
       auto = auto_routine()
       {:ok, view, _html} = live(conn, ~p"/")
-
-      assert has_element?(view, "#routine-flip", label(auto))
-      assert has_element?(view, "#chore-#{chores[auto].id}")
-      refute has_element?(view, "#chore-#{chores[Routines.other(auto)].id}")
-    end
-
-    test "dims exactly when the shown routine is not active", %{conn: conn} do
-      {state, _auto} = Routines.current(LocalTime.now())
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      case state do
-        :active -> refute has_element?(view, "#kiosk[data-dimmed]")
-        :upcoming -> assert has_element?(view, "#kiosk[data-dimmed]")
-      end
-    end
-
-    test "flip shows the other routine, dimmed; flip again returns",
-         %{conn: conn, chores: chores} do
-      auto = auto_routine()
-      other = Routines.other(auto)
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      view |> element("#routine-flip") |> render_click()
-
-      assert has_element?(view, "#routine-flip", label(other))
-      assert has_element?(view, "#chore-#{chores[other].id}")
-      refute has_element?(view, "#chore-#{chores[auto].id}")
-      # a flipped-to routine is never the active one — always dimmed (design §5)
-      assert has_element?(view, "#kiosk[data-dimmed]")
-
-      view |> element("#routine-flip") |> render_click()
-      assert has_element?(view, "#chore-#{chores[auto].id}")
-    end
-
-    test "the boundary message reverts a manual flip to automatic selection (FR-4)",
-         %{conn: conn, chores: chores} do
-      auto = auto_routine()
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      view |> element("#routine-flip") |> render_click()
-      refute has_element?(view, "#chore-#{chores[auto].id}")
-
-      send(view.pid, :boundary)
 
       assert has_element?(view, "#chore-#{chores[auto].id}")
       refute has_element?(view, "#chore-#{chores[Routines.other(auto)].id}")
     end
 
-    test "the kiosk still contains zero links — the flip is a button", %{conn: conn} do
+    test "the kiosk has no flip control", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      refute has_element?(view, "a")
+      refute has_element?(view, "#routine-flip")
     end
   end
 
@@ -454,21 +416,6 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#chore-#{chore.id}[phx-throttle='1000']")
     end
 
-    test "a dimmed preview stays tappable (D19)", %{conn: conn, kid: kid} do
-      other = Routines.other(auto_routine())
-
-      flipped_chore =
-        chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: Atom.to_string(other)})
-
-      {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("#routine-flip") |> render_click()
-
-      view |> element("#chore-#{flipped_chore.id}") |> render_click()
-
-      assert has_element?(view, "#chore-#{flipped_chore.id}[data-done]")
-      assert Repo.exists?(from c in Completion, where: c.chore_id == ^flipped_chore.id)
-    end
-
     test "a completion from another surface appears without refresh (FR-9)",
          %{conn: conn, chore: chore} do
       {:ok, view, _html} = live(conn, ~p"/")
@@ -499,6 +446,94 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#chore-#{chore.id}") |> render_click()
 
       refute has_element?(view, "#chore-#{chore.id}")
+    end
+  end
+
+  describe "Good Night mode" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      evening_chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid, evening_chore: evening_chore, morning_chore: morning_chore}
+    end
+
+    # Windows are reconfigured relative to the real current time, never the
+    # clock itself (design invariant: no clock mocking) — this lets a
+    # boundary crossing be simulated deterministically between a mount and
+    # a `:boundary` message, regardless of when the suite actually runs.
+    defp put_windows(morning, evening) do
+      Application.put_env(:bear_cub, :routine_windows, morning: morning, evening: evening)
+    end
+
+    for evening_state <- [:complete, :incomplete] do
+      test "the boundary handler drops into Good Night mode when the evening window closes (evening #{evening_state})",
+           %{conn: conn, kid: kid, evening_chore: evening_chore} do
+        now = LocalTime.now()
+        time = DateTime.to_time(now)
+
+        put_windows({~T[00:00:00], time}, {time, Time.add(time, 30, :second)})
+
+        if unquote(evening_state) == :complete do
+          Chores.complete_chore(evening_chore, now, "kiosk")
+        end
+
+        {:ok, view, _html} = live(conn, ~p"/")
+        assert has_element?(view, "#chores-#{kid.id}")
+        refute has_element?(view, "#goodnight-#{kid.id}")
+
+        put_windows({~T[00:00:00], time}, {time, time})
+        send(view.pid, :boundary)
+
+        assert has_element?(view, "#goodnight-#{kid.id}", BearCub.Messages.good_night())
+        refute has_element?(view, "#chores-#{kid.id}")
+      end
+    end
+
+    test "Good Night mode is not tap-expandable — no band affordance to reveal rows",
+         %{conn: conn, kid: kid} do
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      put_windows(
+        {Time.add(time, 60, :second), Time.add(time, 90, :second)},
+        {~T[00:00:00], time}
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#goodnight-#{kid.id}")
+      refute has_element?(view, "#goodnight-#{kid.id}[phx-click]")
+    end
+
+    test "the boundary handler leaves Good Night mode and renders normal morning rows when the morning window opens",
+         %{conn: conn, kid: kid, morning_chore: morning_chore} do
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      put_windows(
+        {Time.add(time, 60, :second), Time.add(time, 90, :second)},
+        {~T[00:00:00], time}
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#goodnight-#{kid.id}", BearCub.Messages.good_night())
+      refute has_element?(view, "#chores-#{kid.id}")
+
+      put_windows(
+        {~T[00:00:00], Time.add(time, 90, :second)},
+        {Time.add(time, 90, :second), Time.add(time, 120, :second)}
+      )
+
+      send(view.pid, :boundary)
+
+      assert has_element?(view, "#chore-#{morning_chore.id}")
+      refute has_element?(view, "#goodnight-#{kid.id}")
     end
   end
 end
