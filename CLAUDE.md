@@ -22,11 +22,14 @@ The live chain is the active initiative (see the `Active initiative:` line above
 - `docs/2026-07-11-extras/PRD.org` — requirements, success criteria (invariant contract)
 - `docs/2026-07-11-extras/DESIGN.org` — schema, topology, `* Decision Log` (D-entries, continuing the repo-wide sequence)
 
+Repo-level, cumulative across initiatives (not scoped to any one chain):
+
+- `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
+
 Closed / historical — the shipped MVP chain, still the record for MVP-era behavior but superseded wherever this initiative's decisions say so:
 
 - `docs/2026-07-09-mvp/PRD.org` — MVP requirements (FR-x), success criteria, decision log §9
 - `docs/2026-07-09-mvp/DESIGN.org` — MVP schema, topology, decision log §10 (D-entries D1–D26)
-- `docs/2026-07-09-mvp/learnings.org` — Repo lessons (cumulative, cross-initiative): update rather than duplicate; delete entries that prove wrong.
 
 When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 

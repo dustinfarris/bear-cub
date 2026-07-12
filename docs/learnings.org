@@ -5,6 +5,30 @@ Things we learned building the MVP that are *not* recorded in commit
 messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
 of each section are fine; every entry carries the date it was learned.
 
+* [2026-07-12 Sun] Ecto/SQLite migrations: a disabled DDL transaction needs a pinned connection too
+With =@disable_ddl_transaction true=, =Ecto.Migration.Runner= dispatches each
+=execute=/=create table=/=drop table= call through a separate Agent process,
+not the migration module's own process. On a pooled (non-Sandbox) SQLite
+connection this means consecutive statements can land on different physical
+connections; a later statement (e.g. recreating an index right after a
+rename) can then observe a stale, pre-drop schema and fail with a spurious
+"already exists" error. This bites any migration that must run outside a
+transaction at all — most commonly a =PRAGMA= toggle (=foreign_keys=, needed
+before a table rebuild that would otherwise reject or cascade-delete through
+the drop) that SQLite makes a silent no-op inside a transaction. Fix: pin the
+whole migration body to one physical connection by issuing raw
+=Ecto.Adapters.SQL.query!/3= calls inside =repo().checkout/1=, bypassing the
+Runner's execute/create/drop macros entirely — wrapping the macros themselves
+in =repo().checkout(fn -> ... end)= does *not* help, since checkout pins the
+calling process, not the Agent process the macros actually dispatch to.
+Reproduced directly on both an isolated multi-connection test repo and the
+real =mix ecto.migrate= path (pool_size 2 default); see
+=priv/repo/migrations/20260712180527_relax_chores_routine_nullability.exs=
+and its migration test for the working pattern. Adjacent fact: =ecto_sqlite3=
+(0.24.1) has no working column-modify — any SQLite constraint change is
+always the create-new/copy-rows/drop-old/rename table rebuild, never an
+in-place =ALTER COLUMN=.
+
 * [2026-07-10 Fri] Nix deploy: every mix.lock change needs a fetchMixDeps hash bump
 The mix deps fetch in =nix/package.nix= is a fixed-output derivation:
 when =mix.lock= changes but the pinned =hash= does not, Nix silently
