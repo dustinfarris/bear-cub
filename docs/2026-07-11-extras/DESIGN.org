@@ -174,20 +174,4 @@ Explicitly removed MVP affordances (recorded as scope decisions, not omissions):
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
 
-** [2026-07-12 Sun 10:43] Good Night mode message is =good_night/0=, not a reuse of =evening_complete/0= (D38)
-
-/Sections affected: Key Behaviors — Messages are module constants; Key Behaviors — Post-evening-window is unconditional Good Night mode; Screens — Kiosk state 5/
-
-Earlier this document enumerated only =morning_complete/0= and =evening_complete/0= and was silent on which message the Good Night (state 5) band shows — the natural reading was to reuse =evening_complete/0= (the "goodnight line"). Do not reuse it: Good Night mode now renders its own =good_night/0= constant. The evening-routine-complete reward and the post-23:00 lockdown are distinct states with distinct copy; folding one into the other recouples them so that editing the reward silently changes the lockdown line. Rationale: D38.
-
-** [2026-07-12 Sun 12:08] §Data Model =next_position/2='s =nil= clause previously hardcoded =0=, not queried
-
-/Sections affected: Data Model/
-
-This document previously stated that =next_position/2= "already handle[d] a =nil= routine group" and needed no change for extras. In fact its =nil= clause was =defp next_position(_kid, nil), do: 0= — a hardcoded constant, not a =max(position)= query like every other bucket. A kid with more than one extra (or a second chore reclassified into the extras bucket) would collide at position =0=. Story 02 fixed the =nil= clause to query =max(position) where is_nil(c.routine)=, matching the pattern of every other routine bucket. No D-entry: this corrects a latent bug in existing code, not a design judgment.
-
-** [2026-07-12 Sun 12:55] §Data Model =move_chore/2='s neighbor lookup previously assumed no code change was needed for the extras bucket
-
-/Sections affected: Data Model/
-
-This document previously implied, via "no schema change beyond the nullability relaxation," that =move_chore/2='s reordering worked unchanged for the =nil=-routine (extras) bucket, since it shares the =[:kid_id, :routine, :position]= index like =next_position/2=. In fact its private =neighbor/2= helper compared =c.routine == ^chore.routine=, an Ecto-forbidden unsafe =NULL= comparison when the pinned value is =nil= — it raised =ArgumentError= rather than silently misordering. Story 03 added dedicated =is_nil(c.routine)= clauses to =neighbor/2=, the same treatment =next_position/2= needed in Story 02 (previous entry, above). No D-entry: this corrects a latent bug in existing code, not a design judgment.
+# (none — all three prior entries withdrawn at the Batch 1 gate; see PLAN.org's gate record)
