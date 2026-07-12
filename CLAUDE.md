@@ -9,6 +9,7 @@ Active initiative: docs/2026-07-09-mvp/
 - Stories are phase-scoped: /workflow-kit:user-stories is always invoked with an explicit phase scope and only excerpts the DESIGN sections that phase implements.
 - Phase close includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
 - Testing per DESIGN §11: LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
+- Brainstorm session outputs belong in docs/superpowers/specs/; initiative directories (docs/YYYY-MM-DD-<slug>/) contain only chain documents (PRD, DESIGN, PLAN, stories/).
 
 ## Weight class
 
