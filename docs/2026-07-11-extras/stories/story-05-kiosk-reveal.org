@@ -46,20 +46,64 @@ As a kid, I need my chores to collapse into a happy message when I finish a rout
 
 * Acceptance Criteria
 
-** [ ] When a kid has ≥1 morning chore and every morning chore is done today, and the morning window is active, the morning chore rows collapse to a tappable band showing the =morning_complete= message, and the kid's extras (outstanding + done-today) render below it.
-** [ ] The morning reveal (band + message + extras area) appears even when the kid has zero extras.
-** [ ] An outstanding extra in the reveal can be tapped to complete, and a done-today extra can be tapped to undo (back to outstanding); a retired extra never appears in the reveal.
-** [ ] The same morning-complete state does *not* reveal the band/message/extras when the morning window is not active (reveal is gated on the active window, not pure completion).
-** [ ] When a kid has ≥1 evening chore all done today and the evening window is active, the evening rows collapse to the band + =evening_complete= message, with *no* extras.
-** [ ] A routine with zero chores never collapses/reveals (the ≥1-chore guard); an empty evening column stays in its normal state.
-** [ ] Tapping a collapsed band re-expands the chore rows (all shown done, tap-to-undo) and hides extras; undoing any chore returns the column to normal incomplete rows. The re-expanded state is ephemeral (not persisted) and clears when completion state flips.
+** [X] When a kid has ≥1 morning chore and every morning chore is done today, and the morning window is active, the morning chore rows collapse to a tappable band showing the =morning_complete= message, and the kid's extras (outstanding + done-today) render below it.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:39] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "morning-complete-in-window collapses to a band with the message and reveals extras (outstanding + done-today), retired never appears" (line 586). ~build_column/6~ in ~lib/bear_cub_web/live/kiosk_live.ex~ derives ~state: :band~ from ~complete?~/~reveal?~ and the template renders ~#band-{kid.id}~ with ~band_message/1~ plus an ~#extras-{kid.id}~ list reusing the shared ~chore_row/1~ component.
+:END:
+** [X] The morning reveal (band + message + extras area) appears even when the kid has zero extras.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:39] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "the morning reveal appears even with zero extras" (line 610): asserts ~#extras-{kid.id}~ is present with no ~li[id]~ children. The template gates the extras ~<ul>~ on ~routine == :morning~ only, never on ~extras != []~.
+:END:
+** [X] An outstanding extra in the reveal can be tapped to complete, and a done-today extra can be tapped to undo (back to outstanding); a retired extra never appears in the reveal.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:39] \\
+  Tap-to-complete/undo verified by "an outstanding extra in the reveal can be tapped to complete, and a done-today extra can be tapped to undo" (line 687), reusing the existing ~toggle-chore~ handler since extras are plain chore rows. Retired-never-appears verified in the AC1 test (line 607, ~refute has_element?(view, "#chore-#{retired.id}")~), backed by ~BearCub.Chores.list_extras/2~'s retired-ids subquery (~lib/bear_cub/chores.ex~ lines 76-87).
+:END:
+** [X] The same morning-complete state does *not* reveal the band/message/extras when the morning window is not active (reveal is gated on the active window, not pure completion).
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:40] \\
+  Verified by "the same morning-complete state does not reveal when the morning window is not active (D33)" (line 624), which completes a morning chore while the evening window is active and also carries an incomplete evening chore, isolating the assertion from the ≥1-chore guard (AC6). Gating is structural in ~build_column/6~: ~chores~ is always fetched for the currently-~auto~ routine only (~lib/bear_cub_web/live/kiosk_live.ex~ line 113), so a completed-but-not-shown routine's rows are never queried, let alone revealed.
+:END:
+** [X] When a kid has ≥1 evening chore all done today and the evening window is active, the evening rows collapse to the band + =evening_complete= message, with *no* extras.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:40] \\
+  Verified by "evening-complete-in-window collapses to a band with the message and no extras" (line 646), which also asserts an assigned extra never renders as ~#chore-{extra.id}~ anywhere. ~extras~ is only computed ~if state == :band and auto == :morning~ (~lib/bear_cub_web/live/kiosk_live.ex~ line 126), and the template's extras ~<ul>~ is gated on ~routine == :morning~ (line 282).
+:END:
+** [X] A routine with zero chores never collapses/reveals (the ≥1-chore guard); an empty evening column stays in its normal state.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:40] \\
+  Verified by "a routine with zero chores never collapses or reveals, even with extras assigned" (line 663, morning) and "an empty evening column (zero evening chores) stays in its normal state when the evening window is active" (line 676, added during closeout to cover the evening case named explicitly in the Design excerpt). Both exercise the same ~complete? = chores != [] and Enum.all?(...)~ guard (~lib/bear_cub_web/live/kiosk_live.ex~ line 114), which is routine-agnostic.
+:END:
+** [X] Tapping a collapsed band re-expands the chore rows (all shown done, tap-to-undo) and hides extras; undoing any chore returns the column to normal incomplete rows. The re-expanded state is ephemeral (not persisted) and clears when completion state flips.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:41] \\
+  Verified by "tapping the band re-expands to chore rows (tap-to-undo) and hides extras; undo returns to normal rows; re-complete auto-collapses" (line 706): band tap → rows shown done + extras hidden → chore tap (undo) → normal incomplete rows, no band → chore tap (re-complete) → band reappears, proving the ~:expanded~ MapSet entry was cleared rather than merely toggled. ~handle_event("toggle-band", ...)~ toggles ~kid_id~ into ~:expanded~ (~lib/bear_cub_web/live/kiosk_live.ex~ lines 52-62); ~load/2~'s ~still_expanded~ (lines 97-102) intersects it against kids whose ~reveal?~ is still true, matching D34.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:43] \\
+  All 7 items in ==Acceptance Criteria== above are ~[X]~, each with a ~:LOGBOOK:~ entry naming a specific test and code evidence. No item is a bare TODO; none required deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:43] \\
+  ~describe "collapse band, reveal gating, and extras reveal"~ in ~test/bear_cub_web/live/kiosk_live_test.exs~ (line 557) covers all 7 ACs across 8 tests. ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → 38 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:43] \\
+  Spot-checked ~lib/bear_cub_web/live/kiosk_live.ex~ against CLAUDE.md's Phoenix v1.8/HEEx/LiveView conventions and this repo's design invariants: ~<Layouts.app>~ wraps ~render/1~, ~<.icon>~ used throughout, no deprecated navigation helpers, predicate names use ~?~ not ~is_~, ~local_now~ threaded as an argument rather than read from the clock inside domain logic, day-state stays derived (no stored flag), and the ~:expanded~ re-expand set is assign-level and cleared via intersection in ~load/2~ (D34). No violations found.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:43] \\
+  ~mix format --check-formatted~ → exit 0, no output. ~mix test~ (full suite) → 218 passed, 0 failures.
+:END:
 
 * Technical Notes
 

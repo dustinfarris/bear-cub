@@ -16,7 +16,12 @@ defmodule BearCubWeb.KioskLive do
 
     # one clock read per mount — two could straddle a window edge
     now = LocalTime.now()
-    {:ok, socket |> load(now) |> schedule_boundary(now)}
+
+    {:ok,
+     socket
+     |> assign(:expanded, MapSet.new())
+     |> load(now)
+     |> schedule_boundary(now)}
   end
 
   @impl true
@@ -41,6 +46,21 @@ defmodule BearCubWeb.KioskLive do
     end
   end
 
+  # Manual re-expand (state 4, D34): ephemeral, assign-level, never persisted.
+  # `load/2` drops a kid_id from this set the moment their routine stops
+  # being reveal-eligible (window closes or a chore gets undone).
+  def handle_event("toggle-band", %{"kid-id" => kid_id}, socket) do
+    kid_id = String.to_integer(kid_id)
+    expanded = socket.assigns.expanded
+
+    expanded =
+      if MapSet.member?(expanded, kid_id),
+        do: MapSet.delete(expanded, kid_id),
+        else: MapSet.put(expanded, kid_id)
+
+    {:noreply, socket |> assign(:expanded, expanded) |> load(LocalTime.now())}
+  end
+
   @impl true
   def handle_info(:chores_changed, socket) do
     {:noreply, load(socket, LocalTime.now())}
@@ -59,33 +79,68 @@ defmodule BearCubWeb.KioskLive do
   end
 
   defp load(socket, local_now) do
-    {state, auto} = Routines.current(local_now)
-    night? = state == :upcoming
+    {routine_state, auto} = Routines.current(local_now)
+    night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
 
     # done today? — derived, never stored (design §2)
     completions = Chores.current_completions(today)
+    expanded = socket.assigns.expanded
 
     columns =
       for kid <- Chores.list_kids() do
-        chores =
-          if night? do
-            []
-          else
-            for chore <- Chores.list_chores(kid, Atom.to_string(auto)) do
-              %{chore: chore, done?: Map.has_key?(completions, chore.id)}
-            end
-          end
-
-        %{kid: kid, chores: chores, events: Calendars.today_events(kid.id, today)}
+        build_column(kid, auto, night?, completions, today, expanded)
       end
+
+    # Reveal gating flips clear the ephemeral re-expand entry (D34): a kid
+    # stays in `expanded` only while their routine is still reveal-eligible.
+    still_expanded =
+      columns
+      |> Enum.filter(& &1.reveal?)
+      |> Enum.map(& &1.kid.id)
+      |> MapSet.new()
+      |> MapSet.intersection(expanded)
 
     assign(socket,
       columns: columns,
       completions: completions,
-      night?: night?,
+      expanded: still_expanded,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
+  end
+
+  defp build_column(kid, auto, night?, completions, today, expanded) do
+    chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
+    complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
+    reveal? = not night? and complete?
+    kid_expanded? = MapSet.member?(expanded, kid.id)
+
+    state =
+      cond do
+        night? -> :night
+        reveal? and not kid_expanded? -> :band
+        true -> :rows
+      end
+
+    extras =
+      if state == :band and auto == :morning do
+        for extra <- Chores.list_extras(kid, today) do
+          %{chore: extra, done?: Map.has_key?(completions, extra.id)}
+        end
+      else
+        []
+      end
+
+    %{
+      kid: kid,
+      state: state,
+      routine: auto,
+      reveal?: reveal?,
+      chores:
+        for(chore <- chores, do: %{chore: chore, done?: Map.has_key?(completions, chore.id)}),
+      extras: extras,
+      events: Calendars.today_events(kid.id, today)
+    }
   end
 
   defp schedule_boundary(socket, now) do
@@ -119,7 +174,17 @@ defmodule BearCubWeb.KioskLive do
         </div>
 
         <section
-          :for={%{kid: kid, chores: chores, events: events} <- @columns}
+          :for={
+            %{
+              kid: kid,
+              state: state,
+              routine: routine,
+              chores: chores,
+              extras: extras,
+              events: events
+            } <-
+              @columns
+          }
           id={"kid-column-#{kid.id}"}
           class="grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100"
         >
@@ -167,7 +232,7 @@ defmodule BearCubWeb.KioskLive do
           <%!-- Good Night mode (state 5, D32): the 23:00–05:00 gap. No rows,
                no extras, not expandable — corrections go to admin. --%>
           <div
-            :if={@night?}
+            :if={state == :night}
             id={"goodnight-#{kid.id}"}
             class="flex items-center justify-center overflow-hidden bg-base-100 px-6 text-center"
           >
@@ -180,37 +245,89 @@ defmodule BearCubWeb.KioskLive do
                evenly, beyond 5 only this region scrolls (FR-6). Done = kid-color
                fill + check, emoji still visible (FR-7); tap again to undo, no
                confirmation (FR-8). phx-throttle swallows the excited rapid
-               double-tap (D15). --%>
+               double-tap (D15). Also covers the manually re-expanded band
+               (state 4, D34): same rows, all shown done, tap-to-undo. --%>
           <ul
-            :if={!@night?}
+            :if={state == :rows}
             id={"chores-#{kid.id}"}
             class="grid auto-rows-fr gap-px overflow-y-auto bg-base-300"
           >
-            <li
+            <.chore_row
               :for={%{chore: chore, done?: done?} <- chores}
-              id={"chore-#{chore.id}"}
-              data-done={done?}
-              phx-click="toggle-chore"
-              phx-value-chore-id={chore.id}
-              phx-throttle="1000"
-              class={[
-                "flex min-h-[88px] cursor-pointer select-none items-center gap-5 px-6 transition-colors",
-                !done? && "bg-base-100"
-              ]}
-              style={done? && "background-color: #{kid.color}"}
-            >
-              <span class="text-[2.5rem] leading-none">{chore.icon}</span>
-              <span class={["text-2xl font-semibold", done? && "text-white drop-shadow-sm"]}>
-                {chore.name}
-              </span>
-              <.icon :if={done?} name="hero-check" class="ml-auto size-10 text-white drop-shadow-sm" />
-            </li>
+              chore={chore}
+              done?={done?}
+              kid={kid}
+            />
           </ul>
+
+          <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
+               active window, not pure completion. Morning additionally
+               reveals extras below the band; evening never does. Tapping
+               the band re-expands to the rows above. --%>
+          <div :if={state == :band} class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100">
+            <button
+              type="button"
+              id={"band-#{kid.id}"}
+              phx-click="toggle-band"
+              phx-value-kid-id={kid.id}
+              class="flex items-center justify-center px-6 py-8 text-center transition active:scale-[0.99]"
+              style={"background-color: #{kid.color}"}
+            >
+              <p class="text-2xl font-semibold text-white drop-shadow-sm">
+                {band_message(routine)}
+              </p>
+            </button>
+
+            <ul
+              :if={routine == :morning}
+              id={"extras-#{kid.id}"}
+              class="grid auto-rows-fr gap-px overflow-y-auto bg-base-300"
+            >
+              <.chore_row
+                :for={%{chore: chore, done?: done?} <- extras}
+                chore={chore}
+                done?={done?}
+                kid={kid}
+              />
+            </ul>
+          </div>
         </section>
       </div>
     </Layouts.app>
     """
   end
+
+  attr :chore, :map, required: true
+  attr :done?, :boolean, required: true
+  attr :kid, :map, required: true
+
+  # Shared row markup for both routine chores and extras (D34 technical
+  # notes: extras are chores, so this is the same tappable row).
+  defp chore_row(assigns) do
+    ~H"""
+    <li
+      id={"chore-#{@chore.id}"}
+      data-done={@done?}
+      phx-click="toggle-chore"
+      phx-value-chore-id={@chore.id}
+      phx-throttle="1000"
+      class={[
+        "flex min-h-[88px] cursor-pointer select-none items-center gap-5 px-6 transition-colors",
+        !@done? && "bg-base-100"
+      ]}
+      style={@done? && "background-color: #{@kid.color}"}
+    >
+      <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
+      <span class={["text-2xl font-semibold", @done? && "text-white drop-shadow-sm"]}>
+        {@chore.name}
+      </span>
+      <.icon :if={@done?} name="hero-check" class="ml-auto size-10 text-white drop-shadow-sm" />
+    </li>
+    """
+  end
+
+  defp band_message(:morning), do: Messages.morning_complete()
+  defp band_message(:evening), do: Messages.evening_complete()
 
   # FR-22: an event clipped at the start of today's window (it started
   # before today) shows only its end — "until 2:00 PM" — rather than a

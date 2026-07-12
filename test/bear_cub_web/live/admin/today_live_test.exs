@@ -87,7 +87,9 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     completion = Repo.one!(from c in Completion, where: c.chore_id == ^ctx.a_active.id)
     assert completion.source == "admin"
 
-    assert has_element?(kiosk, "#chore-#{ctx.a_active.id}[data-done]")
+    # kid_a's only active-routine chore is now done — the kiosk auto-collapses
+    # it to the reveal band (story 05) rather than showing a done row
+    assert has_element?(kiosk, "#band-#{ctx.kid_a.id}")
   end
 
   test "tapping a done chore undoes it", %{conn: conn} = ctx do

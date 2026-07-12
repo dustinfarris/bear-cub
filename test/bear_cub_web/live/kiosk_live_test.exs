@@ -360,6 +360,16 @@ defmodule BearCubWeb.KioskLiveTest do
           routine: Atom.to_string(auto_routine())
         })
 
+      # a companion chore that's never completed, so tapping `chore` never
+      # completes the whole routine and auto-collapses it to a band
+      # (story 05) — these tests are about single-row tap mechanics
+      _companion =
+        chore_fixture(kid, %{
+          name: "Comb Hair",
+          icon: "💇",
+          routine: Atom.to_string(auto_routine())
+        })
+
       %{kid: kid, chore: chore}
     end
 
@@ -484,8 +494,15 @@ defmodule BearCubWeb.KioskLiveTest do
         end
 
         {:ok, view, _html} = live(conn, ~p"/")
-        assert has_element?(view, "#chores-#{kid.id}")
         refute has_element?(view, "#goodnight-#{kid.id}")
+
+        # completing the sole evening chore while its window is active
+        # auto-collapses to the band (story 05); incomplete stays rows
+        if unquote(evening_state) == :complete do
+          assert has_element?(view, "#band-#{kid.id}")
+        else
+          assert has_element?(view, "#chores-#{kid.id}")
+        end
 
         put_windows({~T[00:00:00], time}, {time, time})
         send(view.pid, :boundary)
@@ -534,6 +551,185 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert has_element?(view, "#chore-#{morning_chore.id}")
       refute has_element?(view, "#goodnight-#{kid.id}")
+    end
+  end
+
+  describe "collapse band, reveal gating, and extras reveal" do
+    alias BearCub.Chores
+    alias BearCub.Messages
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    # Pins morning active all day, evening never active — deterministic
+    # regardless of when the suite runs, mirroring the Good Night helper.
+    defp morning_active do
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[00:00:00], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+    end
+
+    defp evening_active do
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[23:59:59], ~T[23:59:59]},
+        evening: {~T[00:00:00], ~T[23:59:59]}
+      )
+    end
+
+    test "morning-complete-in-window collapses to a band with the message and reveals extras (outstanding + done-today), retired never appears",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      outstanding = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+      done_today = chore_fixture(kid, %{name: "Water Plants", icon: "🪴", routine: nil})
+      {:ok, _} = Chores.complete_chore(done_today, now, "kiosk")
+      retired = chore_fixture(kid, %{name: "Rake Leaves", icon: "🍂", routine: nil})
+      {:ok, _} = Chores.complete_chore(retired, DateTime.add(now, -1, :day), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}", Messages.morning_complete())
+      refute has_element?(view, "#chores-#{kid.id}")
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{outstanding.id}")
+      refute has_element?(view, "#extras-#{kid.id} #chore-#{outstanding.id}[data-done]")
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{done_today.id}[data-done]")
+      refute has_element?(view, "#chore-#{retired.id}")
+    end
+
+    test "the morning reveal appears even with zero extras", %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}", Messages.morning_complete())
+      assert has_element?(view, "#extras-#{kid.id}")
+      refute has_element?(view, "#extras-#{kid.id} li[id]")
+    end
+
+    test "the same morning-complete state does not reveal when the morning window is not active (D33)",
+         %{conn: conn, kid: kid} do
+      evening_active()
+      now = LocalTime.now()
+
+      # a fully-completed morning routine — e.g. via an admin correction —
+      # must never leak into the reveal while the evening window is what's
+      # actually showing (the kiosk always shows one auto-selected routine).
+      # An incomplete evening chore isolates this from the zero-chore guard.
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      evening_chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#extras-#{kid.id}")
+      refute has_element?(view, "#chore-#{chore.id}")
+      refute has_element?(view, "#chore-#{evening_chore.id}[data-done]")
+      assert has_element?(view, "#chores-#{kid.id} #chore-#{evening_chore.id}")
+    end
+
+    test "evening-complete-in-window collapses to a band with the message and no extras",
+         %{conn: conn, kid: kid} do
+      evening_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}", Messages.evening_complete())
+      refute has_element?(view, "#chores-#{kid.id}")
+      refute has_element?(view, "#extras-#{kid.id}")
+      refute has_element?(view, "#chore-#{extra.id}")
+    end
+
+    test "a routine with zero chores never collapses or reveals, even with extras assigned",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#extras-#{kid.id}")
+      refute has_element?(view, "#chore-#{extra.id}")
+      assert has_element?(view, "#chores-#{kid.id}")
+    end
+
+    test "an empty evening column (zero evening chores) stays in its normal state when the evening window is active",
+         %{conn: conn, kid: kid} do
+      evening_active()
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#goodnight-#{kid.id}")
+      assert has_element?(view, "#chores-#{kid.id}")
+    end
+
+    test "an outstanding extra in the reveal can be tapped to complete, and a done-today extra can be tapped to undo",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#chore-#{extra.id}[data-done]")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+    end
+
+    test "tapping the band re-expands to chore rows (tap-to-undo) and hides extras; undo returns to normal rows; re-complete auto-collapses",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      _extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#band-#{kid.id}")
+
+      view |> element("#band-#{kid.id}") |> render_click()
+
+      refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#extras-#{kid.id}")
+      assert has_element?(view, "#chores-#{kid.id} #chore-#{chore.id}[data-done]")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{chore.id}[data-done]")
+      refute has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#chores-#{kid.id}")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#band-#{kid.id}")
     end
   end
 end
