@@ -118,38 +118,6 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     assert has_element?(view, "#progress-#{kid_a.id}-#{ctx.inactive}", "1/1")
   end
 
-  test "reset day for one kid bulk-undoes only that kid (D21)",
-       %{conn: conn, kid_a: kid_a} = ctx do
-    now = LocalTime.now()
-    {:ok, _} = Chores.complete_chore(ctx.a_active, now, "kiosk")
-    {:ok, _} = Chores.complete_chore(ctx.a_inactive, now, "kiosk")
-    {:ok, _} = Chores.complete_chore(ctx.b_active, now, "kiosk")
-
-    {:ok, view, _html} = live(conn, ~p"/admin")
-
-    view |> element("#reset-kid-#{kid_a.id}") |> render_click()
-
-    refute has_element?(view, "#today-chore-#{ctx.a_active.id}[data-done]")
-    assert has_element?(view, "#today-chore-#{ctx.b_active.id}[data-done]")
-
-    # bulk undo, never delete (FR-17): all three rows survive
-    assert Repo.aggregate(Completion, :count) == 3
-  end
-
-  test "reset whole day clears both kids", %{conn: conn} = ctx do
-    now = LocalTime.now()
-    {:ok, _} = Chores.complete_chore(ctx.a_active, now, "kiosk")
-    {:ok, _} = Chores.complete_chore(ctx.b_active, now, "kiosk")
-
-    {:ok, view, _html} = live(conn, ~p"/admin")
-
-    view |> element("#reset-day") |> render_click()
-
-    refute has_element?(view, "#today-chore-#{ctx.a_active.id}[data-done]")
-    refute has_element?(view, "#today-chore-#{ctx.b_active.id}[data-done]")
-    assert Chores.current_completions(DateTime.to_date(now)) == %{}
-  end
-
   test "kiosk taps appear live in the progress counts (FR-9)",
        %{conn: conn, kid_a: kid_a} = ctx do
     {:ok, view, _html} = live(conn, ~p"/admin")
@@ -170,10 +138,97 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     refute has_element?(view, "#today-chore-#{ctx.a_active.id}")
   end
 
-  test "both reset buttons ask for confirmation", %{conn: conn, kid_a: kid_a} do
+  test "the reset controls are gone (D31)", %{conn: conn, kid_a: kid_a} do
     {:ok, view, _html} = live(conn, ~p"/admin")
 
-    assert has_element?(view, "#reset-kid-#{kid_a.id}[data-confirm]")
-    assert has_element?(view, "#reset-day[data-confirm]")
+    refute has_element?(view, "#reset-kid-#{kid_a.id}")
+    refute has_element?(view, "#reset-day")
+  end
+
+  describe "extras" do
+    import BearCub.ChoresFixtures
+
+    defp la(date, time), do: DateTime.new!(date, time, LocalTime.timezone())
+
+    setup %{kid_a: kid_a} do
+      outstanding = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil})
+      done_today = chore_fixture(kid_a, %{name: "Water Plants", icon: "🪴", routine: nil})
+      retired = chore_fixture(kid_a, %{name: "Rake Leaves", icon: "🍂", routine: nil})
+
+      now = LocalTime.now()
+      yesterday = DateTime.to_date(now) |> Date.add(-1)
+
+      {:ok, _} = Chores.complete_chore(done_today, now, "kiosk")
+      {:ok, _} = Chores.complete_chore(retired, la(yesterday, ~T[12:00:00]), "kiosk")
+
+      %{outstanding: outstanding, done_today: done_today, retired: retired}
+    end
+
+    test "the kid's card lists outstanding and done-today extras; a retired extra never appears",
+         %{conn: conn} = ctx do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#today-chore-#{ctx.outstanding.id}[data-done]")
+      assert has_element?(view, "#today-chore-#{ctx.outstanding.id}")
+      assert has_element?(view, "#today-chore-#{ctx.done_today.id}[data-done]")
+      refute has_element?(view, "#today-chore-#{ctx.retired.id}")
+    end
+
+    test "marking an outstanding extra done on the kid's behalf", %{conn: conn} = ctx do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#today-chore-#{ctx.outstanding.id}") |> render_click()
+
+      assert has_element?(view, "#today-chore-#{ctx.outstanding.id}[data-done]")
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^ctx.outstanding.id)
+      assert completion.source == "admin"
+    end
+
+    test "unmarking a done-today extra", %{conn: conn} = ctx do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#today-chore-#{ctx.done_today.id}") |> render_click()
+
+      refute has_element?(view, "#today-chore-#{ctx.done_today.id}[data-done]")
+    end
+  end
+
+  describe "on-behalf extras toggle reaches the kiosk" do
+    import BearCub.ChoresFixtures
+
+    # Pins morning active all day, deterministically — extras only reveal
+    # in the kiosk band while the morning window is active (D33).
+    defp morning_active do
+      original = Application.fetch_env!(:bear_cub, :routine_windows)
+
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[00:00:00], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+
+      original
+    end
+
+    test "an on-behalf extra toggle broadcasts on the chores topic so a live kiosk re-renders",
+         %{conn: conn} do
+      original_windows = morning_active()
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      kid = kid_fixture(%{name: "Kid C", color: "#a855f7", position: 2})
+      morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, _} = Chores.complete_chore(morning_chore, LocalTime.now(), "kiosk")
+
+      {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(kiosk, "#chore-#{extra.id}")
+      refute has_element?(kiosk, "#chore-#{extra.id}[data-done]")
+
+      view |> element("#today-chore-#{extra.id}") |> render_click()
+
+      assert has_element?(kiosk, "#chore-#{extra.id}[data-done]")
+    end
   end
 end

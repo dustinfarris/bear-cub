@@ -292,32 +292,6 @@ defmodule BearCub.Chores do
     end
   end
 
-  @doc """
-  Bulk undo (D21): stamps `undone_at` on every *current* completion for
-  the local day of `local_now`, all kids. Rows are retained (FR-17);
-  one `:chores_changed` broadcast. Returns `{:ok, count}`.
-  """
-  def reset_day(%DateTime{} = local_now) do
-    reset(current_of_day(DateTime.to_date(local_now)), local_now)
-  end
-
-  @doc "Bulk undo (D21) scoped to `kid`'s chores. Returns `{:ok, count}`."
-  def reset_kid_day(%Kid{} = kid, %DateTime{} = local_now) do
-    kid_chore_ids = from c in Chore, where: c.kid_id == ^kid.id, select: c.id
-
-    from(c in current_of_day(DateTime.to_date(local_now)),
-      where: c.chore_id in subquery(kid_chore_ids)
-    )
-    |> reset(local_now)
-  end
-
-  defp reset(query, local_now) do
-    now_utc = to_utc(local_now)
-    {count, _} = Repo.update_all(query, set: [undone_at: now_utc, updated_at: now_utc])
-
-    broadcast_change({:ok, count})
-  end
-
   defp current_of_day(%Date{} = local_date) do
     from c in Completion, where: c.local_date == ^local_date and is_nil(c.undone_at)
   end

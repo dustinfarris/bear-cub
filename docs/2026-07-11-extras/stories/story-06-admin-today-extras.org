@@ -35,18 +35,54 @@ As a parent, I need to mark or unmark a kid's extras on their behalf in the Toda
 
 * Acceptance Criteria
 
-** [ ] Each kid card in =Admin.TodayLive= shows an *Extras* section listing that kid's outstanding + done-today extras; a retired extra does not appear.
-** [ ] A parent can mark an outstanding extra done on behalf of the kid, and unmark a done extra, from the Extras section.
-** [ ] An on-behalf extra toggle broadcasts on the ="chores"= topic so a live kiosk re-renders the change.
-** [ ] The reset-kid and reset-day controls are gone from =Admin.TodayLive=, and no reset event handlers remain.
-** [ ] =reset_day/1= and =reset_kid_day/1= are removed from =BearCub.Chores=, and their tests are deleted.
+** [X] Each kid card in =Admin.TodayLive= shows an *Extras* section listing that kid's outstanding + done-today extras; a retired extra does not appear.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:54] \\
+  ~load/2~ in ~lib/bear_cub_web/live/admin/today_live.ex:78-84~ builds per-kid ~extras~ from ~Chores.list_extras(kid, today)~, rendered per-kid (id ~today-extras-#{kid.id}~) at ~today_live.ex:137-149~; ~Chores.list_extras/2~ (~lib/bear_cub/chores.ex:76-87~) already excludes retired extras. Verified by "the kid's card lists outstanding and done-today extras; a retired extra never appears" (~test/bear_cub_web/live/admin/today_live_test.exs:167~), passing.
+:END:
+** [X] A parent can mark an outstanding extra done on behalf of the kid, and unmark a done extra, from the Extras section.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:54] \\
+  Extras render via the shared ~chore_row/1~ component, firing the existing ~phx-click="toggle-chore"~ handler (~today_live.ex:23-36~) into ~Chores.toggle_completion/3~. Verified by "marking an outstanding extra done on the kid's behalf" and "unmarking a done-today extra" (~today_live_test.exs:177,187~), both passing.
+:END:
+** [X] An on-behalf extra toggle broadcasts on the ="chores"= topic so a live kiosk re-renders the change.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:54] \\
+  ~toggle_completion/3~ routes through ~complete_chore/3~/~undo_chore/2~ into ~broadcast_change/1~, which broadcasts ~:chores_changed~ on the ="chores"= topic; ~BearCubWeb.KioskLive~ subscribes and reloads on receipt. Verified end-to-end (two independent ~live/2~ processes, not same-process) by "an on-behalf extra toggle broadcasts on the chores topic so a live kiosk re-renders" (~today_live_test.exs:196~), which pins ~routine_windows~ so morning stays active and asserts the kiosk reflects the admin-side toggle. Passing, re-run 3x with different seeds.
+:END:
+** [X] The reset-kid and reset-day controls are gone from =Admin.TodayLive=, and no reset event handlers remain.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:54] \\
+  The =#reset-kid-{id}= header button, the bottom =#reset-day= button, and both ~handle_event("reset-kid", ...)~/~handle_event("reset-day", ...)~ clauses are deleted with no residue (~grep -rn "reset-kid\|reset-day" lib/~ returns nothing). Verified by "the reset controls are gone (D31)" (~today_live_test.exs:141~), passing.
+:END:
+** [X] =reset_day/1= and =reset_kid_day/1= are removed from =BearCub.Chores=, and their tests are deleted.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:54] \\
+  ~reset_day/1~, ~reset_kid_day/2~, and the shared private ~reset/2~ helper are removed from ~lib/bear_cub/chores.ex~; ~current_of_day/1~ is correctly retained since ~current_completions/1~ still depends on it. The four reset-specific tests are deleted from ~test/bear_cub/chores_test.exs~ and its describe block renamed from "on-behalf toggling and day resets" to "on-behalf toggling". Verified by full suite (~mix test~: 216 passed, 0 failures) and ~mix precommit~ (compile --warnings-as-errors, format, test), all green.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:57] \\
+  All five Acceptance Criteria items above are marked =[X]= with LOGBOOK evidence; none deferred. Independently re-verified by a second ~story-verifier~ pass: extras section, on-behalf toggle reuse, retired-extra exclusion, PubSub-to-kiosk broadcast, and reset removal from both ~today_live.ex~ and ~chores.ex~ all confirmed against the working tree.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:57] \\
+  Each AC has a corresponding passing test: ~today_live_test.exs:141,167,177,187,196~ and the renamed ~"on-behalf toggling"~ describe block in ~chores_test.exs~ (reset tests deleted). ~mix test test/bear_cub_web/live/admin/today_live_test.exs test/bear_cub/chores_test.exs~ → 62 passed; full ~mix test~ → 216 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:57] \\
+  Spot-checked ~today_live.ex~ and ~chores.ex~ against the Phoenix v1.8/HEEx/Ecto conventions in CLAUDE.md: layout wrapping, ~attr~-declared function component with unique DOM ids, bracket ~class={[...]}~ list syntax, ~{...}~ interpolation, ~:for~/~:if~ directives, idiomatic ~Ecto.Query~ subquery. No violations found in the diffed regions.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 15:57] \\
+  ~mix format --check-formatted~ exits 0; ~mix test~ → 216 passed, 0 failures; ~mix precommit~ (compile --warnings-as-errors, format, test) also green. The benign ~Exqlite.Connection~ teardown log noted in Technical Notes reproduces but causes no failures.
+:END:
 
 * Technical Notes
 
@@ -58,3 +94,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - *Remove context functions*: delete =reset_day/1= (~229), =reset_kid_day/1= (~234), and the shared private =reset/2= (~243) from =lib/bear_cub/chores.ex= if nothing else uses it. Removing the callers (above) and the functions must land together so the app still compiles.
 - *Delete tests*: in =test/bear_cub/chores_test.exs=, the reset tests inside the "on-behalf toggling and day resets" describe block (~lines 361–412) — keep the on-behalf toggle tests, delete the reset ones (rename the describe if it now only covers toggling). In =test/bear_cub_web/live/admin/today_live_test.exs=, delete the reset-kid click (~128), reset-day click (~144), and the =#reset-kid-*= / =#reset-day= data-confirm assertions (~174–175).
 - On-behalf toggles already broadcast via =broadcast_change/1= (=:chores_changed=); the kiosk re-render is the existing PubSub path, exercised here against a =nil=-routine chore.
+- Deferred discovery: the new PubSub-to-kiosk test in =today_live_test.exs= spins up two independent LiveView processes (admin + kiosk), and this reliably logs a benign ~Exqlite.Connection ... disconnected: DBConnection.ConnectionError~ line during test teardown (confirmed absent before this story, present after; test suite still reports 0 failures across repeated runs with different seeds). Orthogonal to this story's scope — noted for later cleanup if the log noise becomes bothersome.
