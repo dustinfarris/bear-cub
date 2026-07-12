@@ -5,6 +5,39 @@ Things we learned building the MVP that are *not* recorded in commit
 messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
 of each section are fine; every entry carries the date it was learned.
 
+* [2026-07-12 Sun] A pinned =nil= in an Ecto query comparison raises, it doesn't match
+Comparing a field against a pinned =nil= (=c.routine == ^value=, where =value=
+is =nil=) raises =ArgumentError= at query time rather than silently matching
+=nil= rows — Ecto only treats literal, unpinned =nil= as an =IS NULL= rewrite,
+never a pinned variable that happens to hold =nil=. Any query bucketing rows
+by a nullable discriminator needs a dedicated =is_nil/1= clause for the =nil=
+bucket; the pin-and-compare form that works for every other bucket value
+silently doesn't generalize to it. Bit twice in the same initiative on
+latent, pre-existing code exposed the moment a nullable column arrived:
+=next_position/2= (Story 02) and the =neighbor/2= helper behind =move_chore/2=
+(Story 03) — both had compared against a bucket value that was always
+non-nil until extras introduced =routine = nil= as a real bucket. Evidence:
+the two withdrawn repair-class advisories in
+docs/2026-07-11-extras/DESIGN.org's git history (§Data Model, =next_position/2=
+and =move_chore/2='s neighbor lookup) and both stories' PLAN.org LOGBOOK
+entries.
+
+* [2026-07-12 Sun] Confirmed pattern: give a new entity an existing entity's satellite machinery via a nullable discriminator, not a parallel table
+When a new entity needs everything an existing entity already has —
+completions, undo, history, PubSub, admin toggles — extending the existing
+table with a nullable discriminator column beats adding a parallel table with
+its own copy of that machinery. The Extras initiative's D27
+(docs/2026-07-11-extras/DESIGN.org) modeled an extra as a =chores= row with
+=routine = nil=, reusing the =completions= table's FK, partial-unique-per-day
+index, undo, on-behalf marking, and history verbatim; the entire schema cost
+was one nullability migration plus the =is_nil/1= query-clause discipline
+above. Rejected alternatives (D27): a separate =extras= table (forfeits
+completion reuse, forcing a duplicate =extra_completions= table or a
+polymorphic FK on SQLite/Ecto) and a third routine constant =:extra= (a
+category error dragging windowless, reset-free extras through window logic
+built for routines). Held across all six of that initiative's stories with
+zero new state machinery introduced.
+
 * [2026-07-12 Sun] Ecto/SQLite migrations: a disabled DDL transaction needs a pinned connection too
 With =@disable_ddl_transaction true=, =Ecto.Migration.Runner= dispatches each
 =execute=/=create table=/=drop table= call through a separate Agent process,

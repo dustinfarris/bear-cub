@@ -1,10 +1,10 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
-Active initiative: docs/2026-07-11-extras/
+Active initiative: none (see historical chains below)
 
 ## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 
-- Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — D-entries flow continuously through each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9). The next entry continues from the highest number anywhere in the chain regardless of which initiative it lands in; next entry is D38. Advisories adopted per kit default.
+- Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — D-entries flow continuously through each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9). The next entry continues from the highest number anywhere in the chain regardless of which initiative it lands in; next entry is D39. Advisories adopted per kit default.
 - Early work predates the kit: no stories exist for it; git history is its record.
 - Stories are batch-scoped: /workflow-kit:user-stories is always invoked with an explicit batch scope and only excerpts the DESIGN sections that batch implements. ("Phase N" is at most a decorative label an initiative puts on a batch heading — never a repo-level concept.)
 - Gate close (`/workflow-kit:phase-close`) includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
@@ -17,19 +17,19 @@ personal-mvp. Personal family software with a real correctness bar: the mvp DoD 
 
 ## Authoritative docs
 
-The live chain is the active initiative (see the `Active initiative:` line above) — resolve the current PRD/DESIGN from there, not from a hardcoded path:
-
-- `docs/2026-07-11-extras/PRD.org` — requirements, success criteria (invariant contract)
-- `docs/2026-07-11-extras/DESIGN.org` — schema, topology, `* Decision Log` (D-entries, continuing the repo-wide sequence)
+The live chain is the active initiative (see the `Active initiative:` line above) — resolve the current PRD/DESIGN from there, not from a hardcoded path. No initiative is currently active.
 
 Repo-level, cumulative across initiatives (not scoped to any one chain):
 
 - `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
+- `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms.
 
-Closed / historical — the shipped MVP chain, still the record for MVP-era behavior but superseded wherever this initiative's decisions say so:
+Closed / historical — record for each initiative's era, superseded wherever a later initiative's decisions say so:
 
 - `docs/2026-07-09-mvp/PRD.org` — MVP requirements (FR-x), success criteria, decision log §9
 - `docs/2026-07-09-mvp/DESIGN.org` — MVP schema, topology, decision log §10 (D-entries D1–D26)
+- `docs/2026-07-11-extras/PRD.org` — Extras requirements, success criteria (invariant contract)
+- `docs/2026-07-11-extras/DESIGN.org` — Extras schema, topology, `* Decision Log` (D-entries D27–D38)
 
 When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 

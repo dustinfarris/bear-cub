@@ -1,0 +1,64 @@
+#+title: Backlog
+#+startup: showall
+
+Repo-level backlog, cumulative across initiatives. Items land here from PLAN
+Deferred sections at initiative close and from ad-hoc discovery; future
+initiative brainstorms read this file as input. Items leave by being done,
+claimed by an initiative, or deliberately dropped.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 01, 2026-07-12
+=mix test= occasionally logs a non-fatal =Exqlite.Connection ... disconnected: (DBConnection.ConnectionError)
+client ... exited= line during teardown (no test failures). Traced to the
+scratch =BearCub.MigrationTestRepo= pool
+(=test/support/migration_test_repo.ex=), started per-test via
+=start_supervised!= with the default (non-Sandbox) pool, shutting down at
+test-process exit. Never affects =mix precommit='s exit code. Act only if
+fully log-clean =mix precommit= output becomes a goal.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 01, 2026-07-12
+The DDL-transaction/connection-pool hazard the nullability migration works
+around (=Ecto.Migration.Runner= dispatching =execute=/=create table=/
+=drop table= through a separate Agent process, so a disabled-DDL-transaction
+migration on a pooled connection can observe a stale pre-drop schema) was
+promoted directly to docs/learnings.org (2026-07-12 entry) rather than
+waiting for a second occurrence. No further action pending — recorded here
+only for sweep completeness.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12
+=list_extras/2= (=lib/bear_cub/chores.ex=) references
+=BearCub.Chores.Completion= fully-qualified rather than the =alias
+BearCub.Chores.Completion= declared later in the file — correct given
+Elixir's lexical alias scoping, but a future pass could hoist the alias
+earlier for consistency.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12
+=update_chore/2= (=lib/bear_cub/chores.ex=) builds a partial
+=%Kid{id: chore.kid_id}= struct purely to satisfy =next_position/2='s
+=%Kid{}= guard clause, avoiding an extra query. Works correctly and is
+covered by tests, but is a slightly unusual pattern — a future pass could
+change =next_position/2='s signature to take a bare =kid_id= instead.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
+=ChoreLive.Index='s three list sections (Morning/Evening/Extras)
+(=lib/bear_cub_web/live/admin/chore_live/index.ex=) render plain =:for= lists
+rather than LiveView streams, per CLAUDE.md's "always use streams"
+guideline. Pre-existing pattern — Morning/Evening already did this before
+Story 03; Extras just mirrors it. Consistent with the rest of the
+admin/kiosk codebase at family-scale list sizes (single-digit item counts).
+Act only if that scale assumption changes.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 04, 2026-07-12
+=BearCub.Routines.other/1='s doc comment (=lib/bear_cub/routines.ex=) still
+describes it as "the manual flip target (FR-4)" — stale now that the kiosk
+flip is removed. The function itself is correctly retained (still used by
+=Admin.TodayLive= to list both routine sections); only the comment is out of
+date. A docs-only fix for a future pass.
+
+* From the extras initiative (docs/2026-07-11-extras/), story 06, 2026-07-12
+The admin→kiosk cross-process PubSub test in =today_live_test.exs= (two
+independent =live/2= processes) reliably logs a benign
+=Exqlite.Connection ... disconnected: DBConnection.ConnectionError= line
+during teardown — same class of non-fatal sandbox-connection race as the
+story 01 item above, triggered here by a second LiveView process outliving
+the first. Never affects =mix precommit='s exit code. Act only if fully
+log-clean test output becomes a goal.

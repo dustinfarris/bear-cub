@@ -1,5 +1,9 @@
 #+title: PLAN — Bear Cub: Extras (one-off to-dos)
 #+date: 2026-07-12
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 16:27] \\
+  Initiative closed — extraction pass complete. Lessons a (pinned-nil Ecto query comparisons raise, don't match) and b (D27's nullable-discriminator pattern confirmed across all six stories) promoted to docs/learnings.org. All 7 Deferred items swept to docs/backlog.org. CLAUDE.md's Active initiative cleared. Nothing else in this chain changes after this note.
+:END:
 
 # Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
 
