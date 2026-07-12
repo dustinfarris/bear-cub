@@ -2,18 +2,18 @@ Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted ta
 
 Active initiative: docs/2026-07-11-extras/
 
-## Repo conventions (pre-kit project, adopted at Phase 3)
+## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 
 - Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — D-entries flow continuously through each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9). The next entry continues from the highest number anywhere in the chain regardless of which initiative it lands in; next entry is D38. Advisories adopted per kit default.
-- Phases 1–2 predate the kit: no stories exist for them; git history is their record.
-- Stories are phase-scoped: /workflow-kit:user-stories is always invoked with an explicit phase scope and only excerpts the DESIGN sections that phase implements.
-- Phase close includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
+- Early work predates the kit: no stories exist for it; git history is its record.
+- Stories are batch-scoped: /workflow-kit:user-stories is always invoked with an explicit batch scope and only excerpts the DESIGN sections that batch implements. ("Phase N" is at most a decorative label an initiative puts on a batch heading — never a repo-level concept.)
+- Gate close (`/workflow-kit:phase-close`) includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
 - Testing per DESIGN §11: LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
 - Brainstorm session outputs belong in docs/superpowers/specs/; initiative directories (docs/YYYY-MM-DD-<slug>/) contain only chain documents (PRD, DESIGN, PLAN, stories/).
 
 ## Weight class
 
-personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below. `mix precommit` is the repo's verification gate wherever the DoD or phase-close names format/test commands.
+personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below. `mix precommit` is the repo's verification gate wherever the DoD or gate close names format/test commands.
 
 ## Authoritative docs
 
@@ -32,7 +32,7 @@ When code and these docs disagree, the docs win. DESIGN.org is amendable per the
 
 ## Workflow
 
-Pipeline from here: /workflow-kit:user-stories (phase-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close. One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
+Pipeline from here: /workflow-kit:user-stories (batch-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close (gate close). One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
 
 ## Design invariants (do not violate)
 
@@ -44,7 +44,7 @@ Pipeline from here: /workflow-kit:user-stories (phase-scoped) → per story: TDD
 - **All time logic takes a local datetime argument** (configured timezone, default `America/Los_Angeles`) — no `DateTime.utc_now()` buried in domain code, no clock mocking in tests.
 - **Kids and chores are data**, seeded as placeholders only when the kids table is empty; seeding never modifies existing rows. Kid names never enter git (public repo).
 - **Chore icons are emoji strings** (required field) — no icon asset pipeline.
-- The reference render target is **Fully Kiosk's Android WebView on the tablet**, not desktop Chrome; on-device QA gates each phase.
+- The reference render target is **Fully Kiosk's Android WebView on the tablet**, not desktop Chrome; on-device QA gates each batch.
 
 ## Implementation conventions
 
