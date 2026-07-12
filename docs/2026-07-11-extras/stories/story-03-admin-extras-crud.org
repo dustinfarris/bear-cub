@@ -1,0 +1,58 @@
+#+title: Story 03 — Admin: create, reclassify, and list extras
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Admin — =ChoreLive.Index=
+
+A third *Extras* section per kid, alongside Morning / Evening, listing outstanding + done-today extras (retired filtered out).
+
+** Admin — =ChoreLive.Form=
+
+- /Create/ hides the =routine= field. The Morning and Evening "+ Add" links carry =?routine=morning= / =?routine=evening=; the Extras "+ Add" link carries *no routine param at all* — absence means =nil=. The handler treats any param value other than =morning= or =evening= (absent, empty, garbage) as =nil=: an unclassified chore is an extra. No =extra= token exists anywhere in params or in a mapping.
+- /Edit/ shows a single select, relabeled to describe behavior rather than name a routine — *"Shows in":* Morning routine / Evening routine / After routines (extra) — so a parent can reclassify. The third option is =value=""=; Ecto casts the empty string to =nil= natively. (D36)
+
+** Reclassify re-appends position
+
+Moving a chore between buckets (morning ↔ evening ↔ extra) via Edit sets =position= to the next slot in the /target/ bucket (=max+1=), never carrying the old value. =position= is still never cast from params; the context sets it on a detected routine change. (D35)
+
+** Retired extras stay inert (relevant fragment)
+
+A retired extra (current completion dated before today) is filtered from the kiosk /and/ from both admin surfaces. It is an inert historical row — "gone tomorrow" means gone everywhere; the completion history is still retained. (D29)
+
+Retirement also removes reachability for *edit and delete*: because a retired extra is filtered from =ChoreLive.Index=, there is no admin affordance to edit or remove it, so inert retired rows accumulate in the =chores= table over time. Accepted at family scale.
+
+* User Story
+
+As a parent, I need to create a one-off extra for a specific kid and reclassify any chore between morning, evening, and extra, so that I can hand a kid a task that surfaces as a morning reward without it cluttering their routine.
+
+* Acceptance Criteria
+
+** [ ] =ChoreLive.Index= shows an *Extras* section per kid, alongside Morning and Evening, listing that kid's outstanding + done-today extras; a retired extra does not appear.
+** [ ] The Extras "+ Add" link carries no =routine= param; a chore created through it is saved with =routine= = =nil= (an extra).
+** [ ] The Morning and Evening "+ Add" links still file a newly created chore into that routine bucket.
+** [ ] On the Create form, the =routine= field is not shown.
+** [ ] On the Edit form, a single select labeled *"Shows in"* offers Morning routine / Evening routine / After routines (extra); the extra option has =value=""=, and choosing it saves the chore with =routine= = =nil=.
+** [ ] Reclassifying a chore via Edit (e.g. morning → extra, or extra → evening) places it at the end of the target bucket; its old position is not carried over.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01 (=nil= routine storable) and Story 02 (=list_extras/2= for the Index section; =update_chore/2= reclassify re-append for the Edit path).
+- *Index* (=lib/bear_cub_web/live/admin/chore_live/index.ex=): =load/1= builds =sections= as =for routine <- [:morning, :evening]=. Add the Extras section — it is /not/ another =list_chores/2= call (that guards on morning/evening); it uses =list_extras(kid)= from Story 02, so retired rows are already filtered. Render it as a third =<section id="routine-extras">=-style block after Evening. The move up/down buttons already operate within the =kid + routine= bucket; the =nil= bucket works the same, but confirm =move_chore/2= ordering behaves for the =nil= group (it swaps positions within the same bucket).
+- *Form create* (=lib/bear_cub_web/live/admin/chore_live/form.ex=, =apply_action(:new)=): today it does =routine = if params["routine"] in ~w(morning evening), do: params["routine"], else: "morning"=. Change the fallback from ="morning"= to =nil= so an absent/empty/garbage param yields an extra — this is the whole "no =extra= token" mechanism. Hide the =routine= =<.input type="select">= on the new form (lines ~91–96 render it today).
+- *Form edit*: show the relabeled single select — label *"Shows in"*, options =[{"Morning routine","morning"}, {"Evening routine","evening"}, {"After routines (extra)",""}]=. The third option's =value=""= casts to =nil= natively via Ecto; do not invent an =extra= token. Since the changeset (Story 01) no longer requires =routine=, the empty selection validates.
+- *Reclassify position* is implemented in the context (=update_chore/2=, Story 02); this story's Edit save just needs to route through it. The AC verifies the observable outcome (target-bucket ordering), not the internal call.
+- The Extras "+ Add" link mirrors the Morning/Evening ones (=new-chore-{routine}=) but with no =&routine=...= query segment: =~p"/admin/chores/new?kid=#{@selected_kid.id}"=.

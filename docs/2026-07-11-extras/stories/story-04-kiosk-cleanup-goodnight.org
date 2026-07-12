@@ -1,0 +1,62 @@
+#+title: Story 04 — Kiosk: retire flip/dimmed, add Good Night mode
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk (=KioskLive=) — states in scope
+
+Per kid column, the chores =1fr= region renders exactly one of five states (see Key Behaviors for the derivation):
+
+1. *Normal* — active routine incomplete: chore rows exactly as today.
+5. *Good Night mode* — =Routines.current(now)= is ={:upcoming, _}= (23:00–05:00): goodnight band / message, /no rows, no extras/, not expandable, unconditional. Kiosk undo is unavailable here by design; corrections go to admin.
+
+Removed from the kiosk: the flip button, the =flipped= assign, =handle_event("flip")=, the boundary timer's flip-reset, and the =dimmed?= assign + =opacity-40= path. =shown= is always the auto-selected routine. (D30, D32)
+
+** Post-evening-window is unconditional Good Night mode
+
+When the evening window ends (23:00), each column drops to a night state: goodnight band + the =good_night/0= message, /no chore rows, no extras/ — unconditionally, whether or not the evening routine was completed. The day is over. It holds until the morning window opens (05:00), then normal morning rows render. The boundary timer drives both transitions. Mechanically this /is/ the ={:upcoming, _}= state (the only out-of-window gap). It supersedes the MVP's overnight dimmed preview; the =dimmed?= assign and =opacity-40= path are deleted entirely (their only remaining trigger was the removed flip). (D32)
+
+** Messages are module constants (relevant fragment)
+
+Good Night mode (the post-23:00 lockdown, state 5) renders =good_night/0=, /not/ =evening_complete/0=: the two are distinct states — evening-complete is the affirming reward for finishing the evening routine in-window, Good Night is the unconditional end-of-day lockdown — so they carry distinct copy. (D37, D38)
+
+** Decisions
+
+- *D30 — Manual routine flip removed:* the kiosk becomes strictly auto-selected routine + reveal; the flip's two jobs (parent preview, late-finish write path 17:00–midnight) both go away. Missed morning chores after the handoff are corrected in =Admin.TodayLive= on-behalf mark/unmark.
+- *D32 — Post-evening-window is unconditional Good Night mode:* when the evening window ends, each column drops to a goodnight band/message with no rows and no extras, unconditionally, until the morning window opens; the boundary timer drives both transitions. =dimmed?= had two triggers, =flipped= (removed) and overnight (now night mode, not dimmed rows); no scenario remains, so the =dimmed?= assign and =opacity-40= path are deleted.
+- *D38 — Good Night mode gets a dedicated message, not =evening_complete= reuse:* =BearCub.Messages= exposes a third constant =good_night/0= ("Good night"); the post-23:00 Good Night lockdown (state 5) renders it, while =evening_complete/0= stays the reward shown when the evening routine is completed in-window. Good Night is an unconditional end-of-day lockdown distinct from evening-complete, so sharing copy would couple two unrelated states.
+
+* User Story
+
+As a kid looking at the fridge tablet, I need the kiosk to show the right routine automatically and a calm Good Night screen after the evening ends, so that there is no manual flip to fumble and no half-lit next-day preview overnight.
+
+* Acceptance Criteria
+
+** [ ] The kiosk has no flip control; each column always shows the auto-selected active routine (=shown= = the routine =Routines.current/1= reports, never a manually flipped one).
+** [ ] When =Routines.current(now)= is ={:upcoming, _}= (the 23:00–05:00 gap), both columns show the Good Night state: the =good_night/0= message (its own constant, not the =evening_complete/0= reward), no chore rows, and no extras.
+** [ ] The Good Night state is not tap-expandable — there is no band-tap affordance to reveal rows.
+** [ ] The Good Night state renders regardless of whether the evening routine was completed.
+** [ ] When the morning window opens (05:00), the column leaves Good Night and renders normal morning rows; the boundary timer drives the transition without a manual reload.
+** [ ] No dimmed / =opacity-40= rendering path remains anywhere in the kiosk.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 02 for =BearCub.Messages= — specifically =good_night/0= ("Good night"), the dedicated lockdown constant. Story 05 builds the reveal/collapse states (2, 3, 4) on top of this cleaned-up base; do this cleanup first so the state derivation starts from a flip-free, dimmed-free =load/2=.
+- *=lib/bear_cub_web/live/kiosk_live.ex=*: remove the =assign(:flipped, false)= in =mount/3=, =handle_event("flip", ...)=, and the =flipped=-reset inside the =:boundary= handler. In =load/2=, =shown= becomes just the =auto= routine (drop the =if flipped, do: other(auto), else: auto=). Delete the =dimmed?= assign (currently =flipped or state == :upcoming=, ~line 86) and the =opacity-40= path in the template. Remove the flip button from the template.
+- *Good Night is the ={:upcoming, _}= branch.* =Routines.current/1= already returns ={:upcoming, slug}= in the 23:00–05:00 gap; =load/2= already destructures =current(now)=. Branch the per-column render: when state is =:upcoming=, render the goodnight band/message with no rows and no extras and no tap handler. Normal (state 1) rows are unchanged for the =:active= incomplete case. The boundary timer (=schedule_boundary/2=, =next_boundary/1=) already fires at 05:00 and 23:00 — it just reloads; no flip-reset needed anymore.
+- *Good Night uses its own message.* The GAP flagged during story-writing (which message state 5 shows) is resolved by D38: Good Night mode renders =good_night/0=, a dedicated constant, /not/ =evening_complete/0=. Good Night is an unconditional lockdown state distinct from the evening-complete reward, so it carries its own copy — do not fold the two together.
+- *Existing tests to update* (=test/bear_cub_web/live/kiosk_live_test.exs=): the "routine selection and flip" describe block (~line 315) tests the removed flip — delete/rewrite it to assert auto-selection instead. Night-mode boundary transitions (22:59→23:00 with evening complete and incomplete; night→05:00 morning rows) are new tests here, driven by local-datetime args (no clock mocking).
+- All time logic takes a local-datetime argument (CLAUDE.md invariant); =Routines.current/1= and =next_boundary/1= already accept one.

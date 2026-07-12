@@ -1,0 +1,32 @@
+#+title: PRD — Bear Cub: Extras (one-off to-dos)
+#+date: 2026-07-11
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+Kids' days hold occasional non-routine to-dos — "write grandma a thank-you letter", "study for the test" — that don't belong in the daily morning/evening routines and shouldn't clutter them. Off-the-shelf chore apps fold such one-offs into the same list a kid works through, which breaks Bear Cub's core stance: routine first. Parents need a way to hand a specific kid a one-off task that surfaces only as a reward once that kid has finished their morning routine, never during it and never in the evening.
+
+* Success Criteria
+
+1. A parent can create a one-off to-do for a specific kid in admin without it entering that kid's daily routine, and reclassify a task between morning / evening / extra.
+2. A kid sees their extras only after completing the morning routine while the morning window is active — never during the routine, never in the evening.
+3. Finishing a routine collapses it into an affirming message; the morning message and the extras reveal appear even when the kid has zero extras.
+4. An outstanding extra reappears at every morning reveal until it is checked off; a completed extra lingers the rest of that day, is gone the next, and never returns once retired.
+5. After the evening window ends, both columns show an unconditional Good Night state — no chores, no extras — until the morning window opens.
+6. The kiosk auto-selects the active routine (no manual flip). A kid can undo a mistaken routine chore completion on the kiosk while that chore's routine's window is active, even after collapse; once the window has passed, per-item correction in admin is the sole path.
+
+* Out of Scope
+
+- Due dates, scheduled dates, or recurrence on extras — extras are one-off and "until-done".
+- Family-shared extras — per-kid only this version.
+- Rewards beyond the affirming message; message rotation or per-kid copy.
+- Extras revealed in the evening, or any evening reward.
+- Notifications of any kind.
+- Manual routine flip, bulk day reset (kid or whole-day), and the overnight dimmed next-morning preview — all removed from the MVP; evening-time morning visibility and all corrections move to admin, and Good Night mode supersedes the dimmed preview.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)

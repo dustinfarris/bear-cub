@@ -1,0 +1,53 @@
+#+title: Story 01 — Nullable routine: migration + changeset
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Data Model
+
+One migration. The =completions= table is *unchanged*.
+
+- =chores.routine=: drop =NOT NULL= at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. =nil= marks an extra. Because =nil= is now valid, =Routines= window logic never sees an extra: =list_chores(kid, "morning"|"evening")= already guards its routine arg, so =nil= rows never leak into routine lists.
+  - Dropping =NOT NULL= on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place =ALTER=. Verify =ecto_sqlite3='s actual =ALTER TABLE= / column-modify support before writing the migration, and preserve the =completions= → =chores= foreign key through the rebuild so existing completion history is not orphaned.
+- =position=: extras occupy their own =kid + nil= bucket. =next_position/2= and the =[:kid_id, :routine, :position]= index already handle a =nil= routine group — no schema change beyond the nullability relaxation.
+
+An extra reuses the =completions= table wholesale: the =chore_id= FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
+
+** Key Behaviors (relevant fragment)
+
+*** Extras are chore rows with =routine = nil=
+
+An extra is a =chores= row whose =routine= is =nil=. This is the decisive modeling choice: it lets an extra reuse the =completions= table and all its machinery unchanged. =Routines= never sees a =nil= row, so extras have no window and no daily-reset semantics — exactly the separation wanted. (D27)
+
+* User Story
+
+As a parent of a kid using the Bear Cub dashboard, I need the data model to accept a chore that belongs to no routine, so that a one-off "extra" can be stored and tracked with the same completion machinery as a daily chore without a parallel system.
+
+* Acceptance Criteria
+
+** [ ] A chore can be created and persisted with =routine= = =nil= (an extra); the row is accepted by the database and by the changeset.
+** [ ] Creating or updating a chore with =routine= = ="morning"= or ="evening"= still succeeds; a non-nil routine value that is neither is rejected by the changeset.
+** [ ] Existing completion history is preserved after the migration runs — every prior =completions= row still resolves to its =chores= row (the =completions= → =chores= foreign key survives the table rebuild).
+** [ ] =list_chores(kid, "morning")= and =list_chores(kid, "evening")= never return a =nil=-routine chore.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- This is the foundation story: nullable =routine= is the entire schema change for the initiative. All later stories depend on it.
+- *Schema* (=lib/bear_cub/chores/chore.ex=): the field is =field :routine, :string= with =@routines ~w(morning evening)=. The changeset currently does =validate_required([:routine, :name, :icon])= and =validate_inclusion(:routine, @routines)=. Drop =:routine= from =validate_required= (keep =:name=, =:icon= required). Keep =validate_inclusion(:routine, @routines)= — Ecto validations skip =nil= by default, so =nil= passes, ="morning"=/="evening"= pass, and any other non-nil value is rejected. Verify this nil-skip behavior with a test rather than assuming.
+- *Migration*: generate with =mix ecto.gen.migration=. Dropping =NOT NULL= on SQLite is not an in-place =ALTER COLUMN= — SQLite has no such statement. Confirm what =ecto_sqlite3= (0.24.1 in mix.lock) supports for column modification; if it does not emit a working relaxation, perform the create-new / copy-rows / drop-old / rename table rebuild by hand. Whichever path, the =completions.chore_id= foreign key and the =completions= partial unique index must remain intact, and the existing =[:kid_id, :routine, :position]= index on =chores= must be recreated. Consider consulting Tidewave / the running app to confirm the emitted DDL.
+- The =chores= table was created by =priv/repo/migrations/20260710082929_create_chores.exs= (all columns NOT NULL, incl. =routine=; index =[:kid_id, :routine, :position]=). The completions partial unique index lives in =20260710083403_create_completions.exs=.
+- =next_position/2= (private, =lib/bear_cub/chores.ex=) already returns =0= for a =nil= routine bucket — no change needed here; extras get their own =kid + nil= position group.
+- =list_chores/2= already guards =routine in ~w(morning evening)=, so a =nil= row cannot leak into a routine list; the AC verifies this holds after the change.

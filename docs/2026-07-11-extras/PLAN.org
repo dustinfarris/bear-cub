@@ -1,0 +1,23 @@
+#+title: PLAN — Bear Cub: Extras (one-off to-dos)
+#+date: 2026-07-12
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1 — Extras
+
+# Stories nest below as org TODOs in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time.
+
+# Order rationale: Story 01 is the schema foundation (nullable routine) every other story rides on. 02 adds the pure context + Messages. 03 makes extras creatable/manageable in admin. 04 cleans the kiosk (retire flip/dimmed, add Good Night) as the base for 05, which delivers the morning reveal — the feature payoff. 06 completes the correction path and retires day-reset. The app runs after every story.
+
+** TODO [[file:stories/story-01-nullable-routine.org][Story 01 — Nullable routine: migration + changeset]]
+** TODO [[file:stories/story-02-extras-context.org][Story 02 — Extras queries, reclassify position, and Messages]]
+** TODO [[file:stories/story-03-admin-extras-crud.org][Story 03 — Admin: create, reclassify, and list extras]]
+** TODO [[file:stories/story-04-kiosk-cleanup-goodnight.org][Story 04 — Kiosk: retire flip/dimmed, add Good Night mode]]
+** TODO [[file:stories/story-05-kiosk-reveal.org][Story 05 — Kiosk: collapse band, reveal gating, extras reveal]]
+** TODO [[file:stories/story-06-admin-today-extras.org][Story 06 — Admin Today: extras correction, remove day reset]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

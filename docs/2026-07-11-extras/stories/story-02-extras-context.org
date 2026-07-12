@@ -1,0 +1,70 @@
+#+title: Story 02 — Extras queries, reclassify position, and Messages
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Extras visibility is derived from completion date (no stored flag)
+
+An extra's state comes purely from its completions, honoring the derived-state doctrine:
+
+#+begin_src
+Outstanding : no current completion (none, or all undone)      -> shown in reveal
+Done today  : current completion, local_date = today           -> shown done (lingers today)
+Retired     : current completion, local_date < today           -> filtered EVERYWHERE
+#+end_src
+
+- *"Until-done"*: an outstanding extra has no current completion, so it reappears at every morning reveal until it is checked off.
+- *"Lingers today, gone tomorrow"*: a done extra shows today (=local_date = today=), then falls out tomorrow (=local_date < today=).
+- *Undo* returns a done extra to outstanding, same as any chore.
+
+This is a /different query/ from a daily chore — a chore completed yesterday reappears incomplete today, whereas a retired extra never returns — but it uses the same table and the same undo machinery. (D28)
+
+** Reclassify re-appends position
+
+Moving a chore between buckets (morning ↔ evening ↔ extra) via Edit sets =position= to the next slot in the /target/ bucket (=max+1=), never carrying the old value. =position= is still never cast from params; the context sets it on a detected routine change. (D35)
+
+** Context (=BearCub.Chores=) — relevant fragment
+
+- Add =list_extras(kid)= — =nil= routine, /non-retired/ (no current completion dated before today), ordered by position. Used by the kiosk reveal and admin.
+- "Done today" for extras folds into the existing =current_completions/1= map — extras are just chores.
+- =complete_chore= / =undo_chore= / =toggle_completion= and the ="chores"= broadcast work unchanged for extras.
+- =update_chore/2=: on a detected routine change, set =position = next_position(kid, new_routine)= (reclassify re-append).
+
+** Messages are module constants
+
+=BearCub.Messages= exposes =morning_complete/0=, =evening_complete/0=, and =good_night/0= — static copy, changed in code, no schema and no config ceremony (mirroring how routine windows are constants): "Today is going to be a wonderful day", the evening-routine-complete affirmation "You did great today!", and the Good Night lockdown line "Good night". Good Night mode (the post-23:00 lockdown, state 5) renders =good_night/0=, /not/ =evening_complete/0=: the two are distinct states — evening-complete is the affirming reward for finishing the evening routine in-window, Good Night is the unconditional end-of-day lockdown — so they carry distinct copy. (D37, D38)
+
+* User Story
+
+As a parent, I need the app to know which extras are still outstanding for a kid and to keep bucket ordering sane when I reclassify a chore, so that the kiosk and admin can show the right one-off tasks and completion copy without a stored flag or reset job.
+
+* Acceptance Criteria
+
+** [ ] =list_extras(kid, today)= returns that kid's =nil=-routine chores that are outstanding (no current completion) or done-today (current completion dated =today=), ordered by =position=.
+** [ ] =list_extras(kid, today)= excludes a retired extra (current completion dated before =today=) — a retired extra never returns.
+** [ ] Undoing a done-today extra returns it to outstanding, and it appears in =list_extras/2= again.
+** [ ] The =current_completions/1= map reflects an extra's done-today state exactly as it does for a routine chore (extras need no separate done-today query).
+** [ ] =update_chore/2= on a chore whose =routine= changes sets =position= to =max+1= of the /target/ bucket (morning, evening, or the =nil=/extra bucket); the old position is not carried over. =position= is never cast from params.
+** [ ] =BearCub.Messages.morning_complete/0=, =BearCub.Messages.evening_complete/0=, and =BearCub.Messages.good_night/0= each return their static string.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01: =nil=-routine chores must be storable before =list_extras/2= is meaningful.
+- *=list_extras/2= is a different query from =list_chores/2=.* =list_chores/2= is date-agnostic (a chore reappears every day); =list_extras/2= must filter out /retired/ rows — those with a current completion (=undone_at IS NULL=) whose =local_date < today=. Outstanding and done-today rows stay. The design writes =list_extras(kid)= as shorthand, but all time logic takes a local-date argument (CLAUDE.md invariant; the reset tests use the =la/2= helper in =test/support=), so the real signature carries the date: =list_extras(kid, local_date)=. The retired-vs-today derivation is exercised with plain local-date args, no clock mocking.
+- Existing context helpers to reuse (=lib/bear_cub/chores.ex=): =current_of_day/1= / =current_completion/2= (private) show the "current completion" pattern (=is_nil(undone_at)= scoped to a =local_date=); =current_completions/1= returns the chore_id-keyed map the kiosk already uses — extras fold in for free since they are just chores.
+- *Reclassify* (=update_chore/2=, line ~94): it currently just casts and updates. Add detection of a =routine= change (old vs. new); on change, set =position: next_position(kid, new_routine)= before the update, mirroring how =create_chore/2= sets position. =next_position/2= is private and already handles the =nil= bucket (→ 0 when empty). Keep =position= out of =cast=.
+- *=BearCub.Messages=* does not exist yet — create =lib/bear_cub/messages.ex= as a plain module with three zero-arity functions returning string literals. Mirrors how routine windows are app constants. The three strings are fixed: =morning_complete/0= is "Today is going to be a wonderful day", =evening_complete/0= is "You did great today!" (the affirming evening-routine reward), and =good_night/0= is "Good night" (the post-23:00 lockdown line, distinct from the evening reward — D38). =evening_complete/0= and =good_night/0= are deliberately separate constants for two distinct states. All three are created here even though the kiosk (Stories 04–05) consumes them: =morning_complete/0= in the morning reveal (05), =evening_complete/0= in the evening reveal (05), =good_night/0= in Good Night mode (04).
+- =complete_chore/3=, =undo_chore/2=, =toggle_completion/3=, and the ="chores"= broadcast (=broadcast_change/1= → bare =:chores_changed=) already work unchanged for extras; no change needed, but the AC on undo→outstanding exercises them against a =nil=-routine chore.

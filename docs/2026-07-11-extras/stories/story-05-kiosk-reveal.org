@@ -1,0 +1,78 @@
+#+title: Story 05 — Kiosk: collapse band, reveal gating, extras reveal
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk (=KioskLive=) — states in scope
+
+Per kid column, the chores =1fr= region renders exactly one of five states:
+
+2. *Morning complete + morning window active* — rows auto-collapse to a /tappable band/ + the =morning_complete= message + *extras* (outstanding + done-today, each tap-to-complete / undo). The message shows even with zero extras. Extras render in the same =1fr= region.
+3. *Evening complete + evening window active* — same band + the =evening_complete= affirming message, *no extras*. Re-expandable for undo, like morning.
+4. *Manually re-expanded band* (state 2 or 3, band tapped) — chore rows return (all done, tap-to-undo), extras hidden. Undoing any chore → routine no longer complete → derivation returns to state 1.
+
+** The reveal is gated by the active window, not pure completion
+
+A routine's "complete" state reveals its band only while /that routine's window is active/. Both facts — =Routines.current(now)= and the completions map — are already in the kiosk's state builder, so the reveal stays fully derived with no stored flag. Gating on the window is what keeps a morning completion (e.g. via an admin correction) from triggering "Today is going to be a wonderful day" + extras at bedtime. (D33)
+
+** A completed active routine collapses into a message band
+
+Morning and evening share one collapse mechanic; morning additionally reveals extras (the only asymmetry).
+
+- *"Complete"* = the kid has *≥1* chore in the active routine AND every one of them is done today.
+- *Empty ≠ complete.* The ≥1-chore guard prevents a vacuous reveal and covers the empty-Evening case (Evening may ship with zero chores).
+- *Zero morning chores → no extras, by design.* A kid with no morning chores never satisfies the reveal gate (there is no ≥1-chore-complete state to reach), so their extras never surface even when extras are assigned to that kid. This is chosen behavior — extras are strictly a reward for finishing the morning routine — not an edge-case surprise.
+
+The manual re-expand (state 4) is an assign-level =MapSet= of =kid_id= — ephemeral view state, like the old =flipped=: never persisted, and cleared when a routine's completion state flips. (D34)
+
+** Extras visibility is derived from completion date (relevant fragment)
+
+#+begin_src
+Outstanding : no current completion (none, or all undone)      -> shown in reveal
+Done today  : current completion, local_date = today           -> shown done (lingers today)
+Retired     : current completion, local_date < today           -> filtered EVERYWHERE
+#+end_src
+
+- *"Until-done"*: an outstanding extra has no current completion, so it reappears at every morning reveal until it is checked off.
+- *Undo* returns a done extra to outstanding, same as any chore.
+
+* User Story
+
+As a kid, I need my chores to collapse into a happy message when I finish a routine and — in the morning — reveal my extras, so that finishing the routine feels like an accomplishment and the extras arrive only as a reward, never during the routine and never at night.
+
+* Acceptance Criteria
+
+** [ ] When a kid has ≥1 morning chore and every morning chore is done today, and the morning window is active, the morning chore rows collapse to a tappable band showing the =morning_complete= message, and the kid's extras (outstanding + done-today) render below it.
+** [ ] The morning reveal (band + message + extras area) appears even when the kid has zero extras.
+** [ ] An outstanding extra in the reveal can be tapped to complete, and a done-today extra can be tapped to undo (back to outstanding); a retired extra never appears in the reveal.
+** [ ] The same morning-complete state does *not* reveal the band/message/extras when the morning window is not active (reveal is gated on the active window, not pure completion).
+** [ ] When a kid has ≥1 evening chore all done today and the evening window is active, the evening rows collapse to the band + =evening_complete= message, with *no* extras.
+** [ ] A routine with zero chores never collapses/reveals (the ≥1-chore guard); an empty evening column stays in its normal state.
+** [ ] Tapping a collapsed band re-expands the chore rows (all shown done, tap-to-undo) and hides extras; undoing any chore returns the column to normal incomplete rows. The re-expanded state is ephemeral (not persisted) and clears when completion state flips.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 04 (flip-free, dimmed-free, Good-Night-aware =load/2= as the base) and Story 02 (=list_extras/2=, =BearCub.Messages=). Delivers PRD Success Criteria 2, 3, and the same-day kiosk-undo half of 6.
+- *State derivation* (=load/2= in =lib/bear_cub_web/live/kiosk_live.ex=): per kid column, compute "complete" = (≥1 chore in =shown= routine) AND (all of them present in the =current_completions= map for today). Combine with =Routines.current(now)= (=:active=/=:upcoming= + slug) to pick the state:
+  - =:upcoming= → Good Night (Story 04);
+  - =:active= + complete + kid_id in the re-expand =MapSet= → state 4 (rows, tap-to-undo, extras hidden);
+  - =:active= + complete → state 2 (morning) or 3 (evening): band + message (+ extras for morning);
+  - otherwise → state 1 normal rows.
+- *Re-expand MapSet*: add an assign (e.g. =:expanded=, a =MapSet= of =kid_id=), mirroring the old =flipped= lifecycle — never persisted; a band tap toggles the kid in the set; it must be cleared when a kid's completion state flips (e.g. on reload after an undo drops them out of "complete"). =Admin.TodayLive= already keeps a comparable =expanded= MapSet keyed by ={kid_id, routine}= for reference.
+- *Extras render in the same =1fr= region* as the collapsed band, only in the morning reveal. Reuse the existing chore-row markup (=phx-click="toggle-chore"=, =phx-throttle="1000"=, kid-color done fill, emoji) for extra rows — extras are chores, so =toggle-chore= / =complete_chore= / =undo_chore= already handle them. Outstanding extras are tap-to-complete; done-today extras are tap-to-undo.
+- *Reveal gating* is the reason both =Routines.current(now)= and the completions map feed the derivation — a morning completion via admin correction must not trigger the morning message + extras during the evening window (D33). Test this explicitly: same completion state, morning window vs. not.
+- The morning-complete band should still allow same-window undo through re-expand (state 4 → state 1), satisfying "undo a mistaken routine chore completion while that chore's routine's window is active, even after collapse" (PRD SC 6).
+- Existing kiosk tests (=test/bear_cub_web/live/kiosk_live_test.exs=): "tap to complete and undo" (~line 382) and "with two kids" (~52) may need extension; add reveal-gating, collapse/expand/undo, and extras-3-state tests per DESIGN Testing strategy. All driven by local-datetime args, no clock mocking.

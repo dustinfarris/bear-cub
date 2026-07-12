@@ -1,10 +1,10 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
-Active initiative: docs/2026-07-09-mvp/
+Active initiative: docs/2026-07-11-extras/
 
 ## Repo conventions (pre-kit project, adopted at Phase 3)
 
-- Decision Log: DESIGN.org §10 ('Design decision log', extending PRD §9) is this repo's * Decision Log; continue the existing sequence — next entry is D25. Advisories adopted per kit default.
+- Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — D-entries flow continuously through each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9). The next entry continues from the highest number anywhere in the chain regardless of which initiative it lands in; next entry is D38. Advisories adopted per kit default.
 - Phases 1–2 predate the kit: no stories exist for them; git history is their record.
 - Stories are phase-scoped: /workflow-kit:user-stories is always invoked with an explicit phase scope and only excerpts the DESIGN sections that phase implements.
 - Phase close includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
@@ -17,11 +17,18 @@ personal-mvp. Personal family software with a real correctness bar: the mvp DoD 
 
 ## Authoritative docs
 
-- `docs/2026-07-09-mvp/PRD.org` — requirements (FR-x), success criteria, decision log §9
-- `docs/2026-07-09-mvp/DESIGN.org` — schema, topology, decision log §10 (D-entries)
-- `docs/2026-07-09-mvp/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
+The live chain is the active initiative (see the `Active initiative:` line above) — resolve the current PRD/DESIGN from there, not from a hardcoded path:
 
-When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in §10 and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
+- `docs/2026-07-11-extras/PRD.org` — requirements, success criteria (invariant contract)
+- `docs/2026-07-11-extras/DESIGN.org` — schema, topology, `* Decision Log` (D-entries, continuing the repo-wide sequence)
+
+Closed / historical — the shipped MVP chain, still the record for MVP-era behavior but superseded wherever this initiative's decisions say so:
+
+- `docs/2026-07-09-mvp/PRD.org` — MVP requirements (FR-x), success criteria, decision log §9
+- `docs/2026-07-09-mvp/DESIGN.org` — MVP schema, topology, decision log §10 (D-entries D1–D26)
+- `docs/2026-07-09-mvp/learnings.org` — Repo lessons (cumulative, cross-initiative): update rather than duplicate; delete entries that prove wrong.
+
+When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 
 ## Workflow
 

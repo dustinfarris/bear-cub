@@ -1,0 +1,181 @@
+#+title: DESIGN — Bear Cub: Extras (one-off to-dos)
+#+date: 2026-07-11
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Extras let a parent hand a specific kid a one-off, non-routine to-do ("write grandma a thank-you letter", "study for the test") that surfaces only as a /morning reward/: it appears after that kid finishes the morning routine while the morning window is still active, and never during the routine or in the evening. Routine first, always.
+
+The whole feature rides on the shipped MVP's existing machinery rather than adding a parallel system. An extra is a =chores= row with =routine = nil=; its state is derived from the same =completions= table (tap, undo, on-behalf marking, history) that daily chores use. No new state flag, no reset job, no second completions surface. The single schema change is dropping =NOT NULL= from =chores.routine=. Everything else is new /queries/ and new /render states/ over the data model already in place.
+
+Alongside Extras, this initiative retires three MVP affordances that no longer fit: the manual routine flip, the day-reset (bulk-undo), and the overnight dimmed preview. Their jobs move to admin corrections and to a new unconditional Good Night mode, and dropping them dissolves a bug class (bulk-undo would resurrect retired extras).
+
+** MVP context this design builds on (restated, self-contained)
+
+This is a new initiative; the MVP context it depends on is restated here rather than linked as if the =docs/2026-07-09-mvp/= chain were live. Extras depends on these and does not change them:
+
+- *Routines are app constants* =:morning= / =:evening= (=BearCub.Routines=), never DB rows. Active windows live in config (=runtime.exs=, env-overridable): Morning 05:00–17:00, Evening 17:00–23:00, local time, edge-to-edge. =Routines.current(now)= returns ={:active, slug}= inside a window or ={:upcoming, slug}= outside all windows (the only such gap is 23:00–05:00). =next_boundary(now)= drives the kiosk's re-render timer.
+- *Day state is derived, never stored.* No =completed= flag. A chore is "done today" iff a =completions= row exists with =local_date = today AND undone_at IS NULL=. Tap inserts a dated fact; undo stamps =undone_at= (row retained — history is never deleted); midnight needs no job (the date-scoped query self-heals).
+- *=chores=* table: =kid_id=, =routine= (was =morning=/=evening=, =NOT NULL=), =name=, =icon= (emoji, required), =position= (order within kid+routine). *=completions=*: =chore_id=, =local_date=, =completed_at=, =undone_at= (null = current), =source= (=kiosk=/=admin=), with a partial unique index on =(chore_id, local_date) WHERE undone_at IS NULL=.
+- *Kiosk* (=/=, =KioskLive=): viewport-locked =h-dvh= grid, two equal columns (one kid each), zero page scroll. Each column is =auto / auto / 1fr=: header band / events strip / chores region. At ≤5 chores the =1fr= region divides evenly and fits by construction; beyond 5, only that region scrolls. Done rows fill with the kid's color + a check (emoji stays visible). Rows carry =phx-throttle ~1s=.
+- *Live updates*: =Phoenix.PubSub= topic ="chores"=; context writes broadcast, kiosk and admin re-fetch (never patch from payload).
+- *Admin* (phone-first, over Tailscale): =Admin.ChoreLive.Index/Form= (per-kid CRUD + reorder), =Admin.TodayLive= (per-kid progress + on-behalf mark/unmark). No app-level auth; the network is the trust boundary. The kiosk has zero navigation to admin.
+
+* Data Model
+
+One migration. The =completions= table is *unchanged*.
+
+- =chores.routine=: drop =NOT NULL= at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. =nil= marks an extra. Because =nil= is now valid, =Routines= window logic never sees an extra: =list_chores(kid, "morning"|"evening")= already guards its routine arg, so =nil= rows never leak into routine lists.
+  - Dropping =NOT NULL= on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place =ALTER=. Verify =ecto_sqlite3='s actual =ALTER TABLE= / column-modify support before writing the migration, and preserve the =completions= → =chores= foreign key through the rebuild so existing completion history is not orphaned.
+- =position=: extras occupy their own =kid + nil= bucket. =next_position/2= and the =[:kid_id, :routine, :position]= index already handle a =nil= routine group — no schema change beyond the nullability relaxation.
+
+An extra reuses the =completions= table wholesale: the =chore_id= FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
+
+* Screens / Interfaces
+
+** Kiosk (=KioskLive=)
+
+Per kid column, the chores =1fr= region renders exactly one of five states (see Key Behaviors for the derivation):
+
+1. *Normal* — active routine incomplete: chore rows exactly as today.
+2. *Morning complete + morning window active* — rows auto-collapse to a /tappable band/ + the =morning_complete= message + *extras* (outstanding + done-today, each tap-to-complete / undo). The message shows even with zero extras. Extras render in the same =1fr= region.
+3. *Evening complete + evening window active* — same band + the =evening_complete= affirming message, *no extras*. Re-expandable for undo, like morning.
+4. *Manually re-expanded band* (state 2 or 3, band tapped) — chore rows return (all done, tap-to-undo), extras hidden. Undoing any chore → routine no longer complete → derivation returns to state 1.
+5. *Good Night mode* — =Routines.current(now)= is ={:upcoming, _}= (23:00–05:00): goodnight band / message, /no rows, no extras/, not expandable, unconditional. Kiosk undo is unavailable here by design; corrections go to admin.
+
+Removed from the kiosk: the flip button, the =flipped= assign, =handle_event("flip")=, the boundary timer's flip-reset, and the =dimmed?= assign + =opacity-40= path. =shown= is always the auto-selected routine. (D30, D32)
+
+** Admin — =ChoreLive.Index=
+
+A third *Extras* section per kid, alongside Morning / Evening, listing outstanding + done-today extras (retired filtered out).
+
+** Admin — =ChoreLive.Form=
+
+- /Create/ hides the =routine= field. The Morning and Evening "+ Add" links carry =?routine=morning= / =?routine=evening=; the Extras "+ Add" link carries *no routine param at all* — absence means =nil=. The handler treats any param value other than =morning= or =evening= (absent, empty, garbage) as =nil=: an unclassified chore is an extra. No =extra= token exists anywhere in params or in a mapping.
+- /Edit/ shows a single select, relabeled to describe behavior rather than name a routine — *"Shows in":* Morning routine / Evening routine / After routines (extra) — so a parent can reclassify. The third option is =value=""=; Ecto casts the empty string to =nil= natively. (D36)
+
+** Admin — =Admin.TodayLive=
+
+An *Extras* section per kid card with on-behalf mark / unmark. This is the correction path, now also load-bearing for missed-morning-chore late finishes after the window handoff. The reset-kid / reset-day controls and handlers are *removed*. (D30, D31)
+
+* Key Behaviors
+
+** Extras are chore rows with =routine = nil=
+
+An extra is a =chores= row whose =routine= is =nil=. This is the decisive modeling choice: it lets an extra reuse the =completions= table and all its machinery unchanged. =Routines= never sees a =nil= row, so extras have no window and no daily-reset semantics — exactly the separation wanted. (D27)
+
+** Extras visibility is derived from completion date (no stored flag)
+
+An extra's state comes purely from its completions, honoring the derived-state doctrine:
+
+#+begin_src
+Outstanding : no current completion (none, or all undone)      -> shown in reveal
+Done today  : current completion, local_date = today           -> shown done (lingers today)
+Retired     : current completion, local_date < today           -> filtered EVERYWHERE
+#+end_src
+
+- *"Until-done"*: an outstanding extra has no current completion, so it reappears at every morning reveal until it is checked off.
+- *"Lingers today, gone tomorrow"*: a done extra shows today (=local_date = today=), then falls out tomorrow (=local_date < today=).
+- *Undo* returns a done extra to outstanding, same as any chore.
+
+This is a /different query/ from a daily chore — a chore completed yesterday reappears incomplete today, whereas a retired extra never returns — but it uses the same table and the same undo machinery. (D28)
+
+** Retired extras stay inert
+
+A retired extra (current completion dated before today) is filtered from the kiosk /and/ from both admin surfaces. It is an inert historical row — "gone tomorrow" means gone everywhere; the completion history is still retained. There is deliberately *no prior-day un-mark* of an extra: same-day undo works on the kiosk during the reveal, and the on-behalf toggle works in admin for today, but re-doing a retired task means creating a new extra. (D29)
+
+Retirement also removes reachability for *edit and delete*: because a retired extra is filtered from =ChoreLive.Index=, there is no admin affordance to edit or remove it, so inert retired rows accumulate in the =chores= table over time. Accepted at family scale — the row count is trivially small and history retention is the point.
+
+** The reveal is gated by the active window, not pure completion
+
+A routine's "complete" state reveals its band only while /that routine's window is active/. Both facts — =Routines.current(now)= and the completions map — are already in the kiosk's state builder, so the reveal stays fully derived with no stored flag. Gating on the window is what keeps a morning completion (e.g. via an admin correction) from triggering "Today is going to be a wonderful day" + extras at bedtime. (D33)
+
+** A completed active routine collapses into a message band
+
+Morning and evening share one collapse mechanic; morning additionally reveals extras (the only asymmetry).
+
+- *"Complete"* = the kid has *≥1* chore in the active routine AND every one of them is done today.
+- *Empty ≠ complete.* The ≥1-chore guard prevents a vacuous reveal and covers the empty-Evening case (Evening may ship with zero chores).
+- *Zero morning chores → no extras, by design.* A kid with no morning chores never satisfies the reveal gate (there is no ≥1-chore-complete state to reach), so their extras never surface even when extras are assigned to that kid. This is chosen behavior — extras are strictly a reward for finishing the morning routine — not an edge-case surprise.
+
+The manual re-expand (state 4) is an assign-level =MapSet= of =kid_id= — ephemeral view state, like the old =flipped=: never persisted, and cleared when a routine's completion state flips. (D34)
+
+** Post-evening-window is unconditional Good Night mode
+
+When the evening window ends (23:00), each column drops to a night state: goodnight band + the =good_night/0= message, /no chore rows, no extras/ — unconditionally, whether or not the evening routine was completed. The day is over. It holds until the morning window opens (05:00), then normal morning rows render. The boundary timer drives both transitions. Mechanically this /is/ the ={:upcoming, _}= state (the only out-of-window gap). It supersedes the MVP's overnight dimmed preview; the =dimmed?= assign and =opacity-40= path are deleted entirely (their only remaining trigger was the removed flip). (D32)
+
+** Reclassify re-appends position
+
+Moving a chore between buckets (morning ↔ evening ↔ extra) via Edit sets =position= to the next slot in the /target/ bucket (=max+1=), never carrying the old value. =position= is still never cast from params; the context sets it on a detected routine change. (D35)
+
+** Context (=BearCub.Chores=)
+
+- Add =list_extras(kid)= — =nil= routine, /non-retired/ (no current completion dated before today), ordered by position. Used by the kiosk reveal and admin.
+- "Done today" for extras folds into the existing =current_completions/1= map — extras are just chores.
+- =complete_chore= / =undo_chore= / =toggle_completion= and the ="chores"= broadcast work unchanged for extras.
+- =update_chore/2=: on a detected routine change, set =position = next_position(kid, new_routine)= (reclassify re-append).
+- *Remove* =reset_day/1= and =reset_kid_day/1= (and their tests). Tap-through is cheap at this chore count, and bulk-undo interacts badly with extras — un-marking a prior-day completion would resurrect a retired extra. Corrections are per-item on-behalf toggles (=Admin.TodayLive=), which stay. (D31)
+
+** Messages are module constants
+
+=BearCub.Messages= exposes =morning_complete/0=, =evening_complete/0=, and =good_night/0= — static copy, changed in code, no schema and no config ceremony (mirroring how routine windows are constants): "Today is going to be a wonderful day", the evening-routine-complete affirmation "You did great today!", and the Good Night lockdown line "Good night". Good Night mode (the post-23:00 lockdown, state 5) renders =good_night/0=, /not/ =evening_complete/0=: the two are distinct states — evening-complete is the affirming reward for finishing the evening routine in-window, Good Night is the unconditional end-of-day lockdown — so they carry distinct copy. (D37, D38)
+
+* Testing strategy
+
+LiveView integration tests at every touched flow; unit tests for pure logic. All time logic takes a local-datetime argument — no clock mocking; retired-vs-today is exercised with plain local-date args.
+
+- *Reveal gating:* morning-complete-in-window reveals band + message + extras; the same completion state outside the morning window does /not/ reveal; an empty routine never reveals (≥1-chore guard); the message shows with zero extras.
+- *Band collapse / expand / undo:* auto-collapse on last completion; tap band → rows return and extras hide; undo a chore → back to normal rows; re-complete → auto-collapse.
+- *Extras 3-state derivation across a midnight boundary:* outstanding reappears at reveal; done-today lingers; retired is filtered from the kiosk and both admin surfaces.
+- *Night-mode boundary transitions:* 22:59 → 23:00 with the evening routine /complete/ and with it /incomplete/ (both drop to night mode); night → morning window open (05:00) renders normal morning rows.
+- *Admin:* Create hides routine and files the item into the tapped bucket; Edit reclassify moves buckets; reclassify re-appends position (target bucket =max+1=, old value dropped); on-behalf extra toggle → PubSub → kiosk re-render.
+- *Removed-feature cleanup:* delete the reset-day / reset-kid tests.
+
+* Out of Scope for This Design
+
+Per PRD "Out of Scope", and restated here as design boundaries:
+
+- Due dates, scheduled dates, or recurrence on extras — extras are one-off and "until-done".
+- Family-shared extras — per-kid only this version.
+- Rewards beyond the affirming message; message rotation or per-kid copy.
+- Extras revealed in the evening, or any evening reward.
+- Notifications of any kind.
+
+Explicitly removed MVP affordances (recorded as scope decisions, not omissions): the manual routine flip (evening-time morning visibility moves to admin — D30), the day reset / whole-day bulk-undo (per-item on-behalf mark/unmark is the sole correction path — D31), and the overnight dimmed next-morning preview (superseded by Good Night mode — D32).
+
+* Decision Log
+
+# Judgments about the system being built, Dn-numbered, append-only — see the workflow-kit org-conventions skill. Design-time entries are minted freely during promotion; post-canon entries pair with a body edit and an Advisory.
+#
+# Numbering: this repo runs one monotonic Decision Log sequence across initiatives (D1–D26 live in the MVP chain, docs/2026-07-09-mvp/DESIGN.org). This new initiative continues that sequence from D27. See CLAUDE.md "Repo conventions".
+
+- *D27 (2026-07-11) — Extras are chore rows with =routine = nil=:* an extra is a =chores= row whose =routine= is =nil=; nullable =routine= is the entire schema change. Decisive factor: an extra then reuses the =completions= table wholesale (FK, partial-unique-per-day index, undo, on-behalf marking, history) with zero new machinery, and =Routines= never sees the row. Rejected — a separate =extras= table: forfeits completion reuse, forcing either a duplicate =extra_completions= table or an awkward polymorphic FK on SQLite/Ecto. Rejected — a third routine constant =:extra=: a category error that would drag windowless, reset-free extras through =Routines= window logic. → Data Model, Key Behaviors.
+- *D28 (2026-07-11) — Extras visibility is derived from completion date, no stored flag:* an extra is Outstanding (no current completion), Done-today (current completion, =local_date = today=), or Retired (current completion, =local_date < today=) — computed from =completions=, honoring the derived-state doctrine. "Until-done" and "lingers today, gone tomorrow" both fall out of this without a flag. A different query from a daily chore (retired never returns) but the same table and undo machinery. → Key Behaviors, Data Model.
+- *D29 (2026-07-11) — Retired extras stay inert everywhere, no prior-day un-mark:* a retired extra is filtered from the kiosk and both admin surfaces; history is retained but the row is inert. Same-day undo (kiosk reveal) and today's on-behalf toggle (admin) are the only reversals; re-doing a retired task means creating a new extra. Rejected — keep retired extras listed/un-markable in admin: adds a "completed extras" surface and a prior-day un-mark path, reintroducing exactly the state the one-off/until-done model sheds. → Key Behaviors, Screens.
+- *D30 (2026-07-11) — Manual routine flip removed:* the kiosk becomes strictly auto-selected routine + reveal; the flip's two jobs (parent preview, late-finish write path 17:00–midnight) both go away. Missed morning chores after the handoff are corrected in =Admin.TodayLive= on-behalf mark/unmark, now load-bearing for exactly this. Rejected — keep the flip narrowed: a parent control on a kid surface whose =flipped= axis would interact with the new collapse/reveal gating for marginal value. Rejected — fold the flip into the collapse band: a category error (the band is a within-routine axis, the flip a between-routine axis; the band has no meaning in the evening column). Removes the MVP manual-flip requirement and its evening-time morning visibility, which moves to admin. → Screens, Out of Scope.
+- *D31 (2026-07-11) — Day reset removed entirely:* the MVP's reset-a-kid's-day / reset-whole-day bulk-undo is dropped from the context and admin. Tap-through is cheap at this chore count, and bulk-undo interacts badly with extras — un-marking a prior-day completion would resurrect a retired extra; dropping the feature dissolves that bug class. Corrections are per-item on-behalf toggles, which stay. Rejected — keep reset, special-case extras: carve-outs to shield retired extras from bulk-undo are more machinery than the feature is worth at this scale. Loses the MVP's reset half; the mark/unmark half stays and is now the sole correction path. → Key Behaviors, Screens, Out of Scope.
+- *D32 (2026-07-11) — Post-evening-window is unconditional Good Night mode:* when the evening window ends, each column drops to a goodnight band/message with no rows and no extras, unconditionally (regardless of evening completion), until the morning window opens; the boundary timer drives both transitions. Mechanically the ={:upcoming, _}= gap (23:00–05:00). Rejected — the MVP overnight "next morning, dimmed preview": dies with the flip and the dimming concept. Consequence: =dimmed?= had two triggers, =flipped= (removed) and overnight (now night mode, not dimmed rows); no scenario remains, so the =dimmed?= assign and =opacity-40= path are deleted. → Key Behaviors, Screens, Out of Scope.
+- *D33 (2026-07-11) — The reveal is gated by the active window, not pure completion:* a routine's completion reveals its band only while that routine's window is active; both =Routines.current(now)= and the completions map are already in the kiosk state builder, so the reveal stays fully derived. Rejected — pure completion-derived reveal: misfires in the evening, where finishing the last morning chore (via admin correction) would trigger the morning message + extras at bedtime, violating "routine first / extras are a morning reward." → Key Behaviors.
+- *D34 (2026-07-11) — A completed active routine collapses into a message band:* morning and evening share one collapse mechanic (morning additionally reveals extras). "Complete" = ≥1 chore in the active routine AND all done today; empty ≠ complete, guarding the vacuous-reveal and empty-Evening cases. The manual re-expand is an ephemeral assign-level =MapSet= of =kid_id=, never persisted, cleared when completion state flips. → Key Behaviors, Screens.
+- *D35 (2026-07-11) — Reclassify re-appends position:* moving a chore between morning/evening/extra buckets via Edit sets =position= to =max+1= in the target bucket, never carrying the old value; =position= is still never cast from params — the context sets it on a detected routine change. → Key Behaviors, Screens.
+- *D36 (2026-07-11) — Admin reuses the chore CRUD; Create hides routine, Edit relabels the select:* extras are chores, so the Index/Form/reorder plumbing is reused rather than duplicated. Create hides the =routine= field: the Extras "+ Add" link carries no routine param, and the handler maps any non-=morning=/=evening= value (absent, empty, garbage) to =nil= — no =extra= token exists in the domain. Edit shows a single select relabeled to behavior ("Shows in": Morning routine / Evening routine / After routines (extra)), with the third option =value=""= (Ecto casts to =nil=). Rejected — a dedicated =/admin/extras= page: duplicates the CRUD plumbing for a surface parents rarely touch. Rejected — a =?routine=extra= token + mapping: invents a domain value that does not exist; =nil= is the absence of a routine, not a third routine. Rejected — a =routine_chore?= virtual field + checkbox with a conditional select: double-models one nullable column and adds changeset/interaction machinery — the field *label* ("Routine" implies a routine is expected), not the control count, was the source of the problem, and relabeling the select fixes it without a second control. → Screens.
+- *D37 (2026-07-11) — Messages are module constants:* =BearCub.Messages= exposes =morning_complete/0= and =evening_complete/0= as static string constants, changed in code with no schema and no config ceremony, mirroring how routine windows are app constants. → Key Behaviors.
+- *D38 (2026-07-12) — Good Night mode gets a dedicated message, not =evening_complete= reuse:* =BearCub.Messages= exposes a third constant =good_night/0= ("Good night"); the post-23:00 Good Night lockdown (kiosk state 5) renders it, while =evening_complete/0= stays the reward shown when the evening routine is completed in-window. Decisive factor: Good Night is an unconditional end-of-day lockdown state distinct from evening-complete, so sharing copy would couple two unrelated states — changing one silently changes the other. Resolves the design silence, flagged during story-writing, on which message the Good Night band shows. Rejected — reuse =evening_complete/0= for Good Night: saves one constant but recouples the lockdown line to the evening-completion reward. → Key Behaviors (Messages are module constants; Post-evening-window is unconditional Good Night mode), Screens (Kiosk state 5).
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
+
+** [2026-07-12 Sun 10:43] Good Night mode message is =good_night/0=, not a reuse of =evening_complete/0= (D38)
+
+/Sections affected: Key Behaviors — Messages are module constants; Key Behaviors — Post-evening-window is unconditional Good Night mode; Screens — Kiosk state 5/
+
+Earlier this document enumerated only =morning_complete/0= and =evening_complete/0= and was silent on which message the Good Night (state 5) band shows — the natural reading was to reuse =evening_complete/0= (the "goodnight line"). Do not reuse it: Good Night mode now renders its own =good_night/0= constant. The evening-routine-complete reward and the post-23:00 lockdown are distinct states with distinct copy; folding one into the other recouples them so that editing the reward silently changes the lockdown line. Rationale: D38.

@@ -1,0 +1,60 @@
+#+title: Story 06 — Admin Today: extras correction, remove day reset
+#+date: 2026-07-12
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Admin — =Admin.TodayLive=
+
+An *Extras* section per kid card with on-behalf mark / unmark. This is the correction path, now also load-bearing for missed-morning-chore late finishes after the window handoff. The reset-kid / reset-day controls and handlers are *removed*. (D30, D31)
+
+** Context (=BearCub.Chores=) — relevant fragment
+
+- *Remove* =reset_day/1= and =reset_kid_day/1= (and their tests). Tap-through is cheap at this chore count, and bulk-undo interacts badly with extras — un-marking a prior-day completion would resurrect a retired extra. Corrections are per-item on-behalf toggles (=Admin.TodayLive=), which stay. (D31)
+
+** Retired extras stay inert (relevant fragment)
+
+A retired extra (current completion dated before today) is filtered from the kiosk /and/ from both admin surfaces. (D29)
+
+** Decisions
+
+- *D30 — Manual routine flip removed:* missed morning chores after the handoff are corrected in =Admin.TodayLive= on-behalf mark/unmark, now load-bearing for exactly this.
+- *D31 — Day reset removed entirely:* the MVP's reset-a-kid's-day / reset-whole-day bulk-undo is dropped from the context and admin. Bulk-undo interacts badly with extras — un-marking a prior-day completion would resurrect a retired extra; dropping the feature dissolves that bug class. Corrections are per-item on-behalf toggles, which stay.
+
+** Testing strategy (relevant fragment)
+
+- *Admin:* ... on-behalf extra toggle → PubSub → kiosk re-render.
+- *Removed-feature cleanup:* delete the reset-day / reset-kid tests.
+
+* User Story
+
+As a parent, I need to mark or unmark a kid's extras on their behalf in the Today view, and I no longer want a bulk day-reset, so that I can correct a specific extra without a blunt reset that would resurrect a retired one-off.
+
+* Acceptance Criteria
+
+** [ ] Each kid card in =Admin.TodayLive= shows an *Extras* section listing that kid's outstanding + done-today extras; a retired extra does not appear.
+** [ ] A parent can mark an outstanding extra done on behalf of the kid, and unmark a done extra, from the Extras section.
+** [ ] An on-behalf extra toggle broadcasts on the ="chores"= topic so a live kiosk re-renders the change.
+** [ ] The reset-kid and reset-day controls are gone from =Admin.TodayLive=, and no reset event handlers remain.
+** [ ] =reset_day/1= and =reset_kid_day/1= are removed from =BearCub.Chores=, and their tests are deleted.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01 (=nil= routine) and Story 02 (=list_extras/2=). Independent of the kiosk stories, but the PubSub AC is best verified against the kiosk built in Stories 04–05.
+- *=Admin.TodayLive=* (=lib/bear_cub_web/live/admin/today_live.ex=): =load/2= builds per-kid =cards= with morning/evening sections. Add an Extras section per kid card sourced from =list_extras(kid)= (Story 02 — retired already filtered). Reuse the existing on-behalf toggle: =handle_event("toggle-chore", ...)= calls =toggle_completion(chore, now, "admin")=; extras are chores, so the same handler and row markup (=#today-chore-{id}=) apply. The =expanded= MapSet keyed by ={kid_id, routine}= may need an extras key or the extras section may render unconditionally — match the existing morning/evening section pattern.
+- *Remove reset controls*: delete the per-kid "Reset day" button (=#reset-kid-{kid.id}=, ~lines 114–122) and the bottom =#reset-day= button (~lines 172–179), and the =handle_event("reset-kid", ...)= (~49) and =handle_event("reset-day", ...)= (~56) handlers.
+- *Remove context functions*: delete =reset_day/1= (~229), =reset_kid_day/1= (~234), and the shared private =reset/2= (~243) from =lib/bear_cub/chores.ex= if nothing else uses it. Removing the callers (above) and the functions must land together so the app still compiles.
+- *Delete tests*: in =test/bear_cub/chores_test.exs=, the reset tests inside the "on-behalf toggling and day resets" describe block (~lines 361–412) — keep the on-behalf toggle tests, delete the reset ones (rename the describe if it now only covers toggling). In =test/bear_cub_web/live/admin/today_live_test.exs=, delete the reset-kid click (~128), reset-day click (~144), and the =#reset-kid-*= / =#reset-day= data-confirm assertions (~174–175).
+- On-behalf toggles already broadcast via =broadcast_change/1= (=:chores_changed=); the kiosk re-render is the existing PubSub path, exercised here against a =nil=-routine chore.
