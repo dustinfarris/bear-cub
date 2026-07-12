@@ -29,17 +29,49 @@ As a parent of a kid using the Bear Cub dashboard, I need the data model to acce
 
 * Acceptance Criteria
 
-** [ ] A chore can be created and persisted with =routine= = =nil= (an extra); the row is accepted by the database and by the changeset.
-** [ ] Creating or updating a chore with =routine= = ="morning"= or ="evening"= still succeeds; a non-nil routine value that is neither is rejected by the changeset.
-** [ ] Existing completion history is preserved after the migration runs — every prior =completions= row still resolves to its =chores= row (the =completions= → =chores= foreign key survives the table rebuild).
-** [ ] =list_chores(kid, "morning")= and =list_chores(kid, "evening")= never return a =nil=-routine chore.
+** [X] A chore can be created and persisted with =routine= = =nil= (an extra); the row is accepted by the database and by the changeset.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:26] \\
+  Verified at the changeset level (~lib/bear_cub/chores/chore.ex:19-25~ drops =:routine= from ~validate_required/2~, keeps ~validate_inclusion(:routine, @routines)~) and by test: ~test/bear_cub/chores_test.exs~ ~"create_chore/2 with a nil routine creates an extra"~ and ~"create_chore/2 with routine omitted creates an extra"~ both assert =chore.routine == nil=. DB-level acceptance (not just Ecto) confirmed in ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs:66-70~, a raw-SQL insert with =routine = NULL= after the migration.
+:END:
+** [X] Creating or updating a chore with =routine= = ="morning"= or ="evening"= still succeeds; a non-nil routine value that is neither is rejected by the changeset.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:26] \\
+  ="morning"=/="evening"= creation exercised throughout ~test/bear_cub/chores_test.exs~ (default fixture routine is ="morning"=; ="evening"= used explicitly at line 80). Rejection of an unknown non-nil value: ~"create_chore/2 rejects an unknown routine"~ (attrs =routine: "afternoon"=) asserts =%{routine: ["is invalid"]} = errors_on(changeset)=. The =nil=-skip behavior called out in the story's Technical Notes is exercised (not assumed) via ~"update_chore/2 can clear routine to nil, turning a chore into an extra"~ and the AC1 tests, all against the real ~Chore.changeset/2~.
+:END:
+** [X] Existing completion history is preserved after the migration runs — every prior =completions= row still resolves to its =chores= row (the =completions= → =chores= foreign key survives the table rebuild).
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:26] \\
+  Dedicated migration test ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ ("completion history survives the chores.routine nullability rebuild (AC3)") runs the real migration files via ~Ecto.Migrator.run/4~ against a scratch SQLite file (throwaway repo in ~test/support/migration_test_repo.ex~), seeds a completion before the rebuild migration, then after it asserts: the completions row still resolves its =chore_id= (line 55-56); the FK is still enforced (a bogus =chore_id= insert fails with ="FOREIGN KEY constraint failed"=, lines 58-64); and a =nil=-routine insert now succeeds (lines 66-70). Also confirmed by hand via ~mix ecto.migrate~/~mix ecto.rollback~/~mix ecto.migrate~ round trip against the dev DB and ~mix ecto.migrations~ showing the migration =up=.
+:END:
+** [X] =list_chores(kid, "morning")= and =list_chores(kid, "evening")= never return a =nil=-routine chore.
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:26] \\
+  ~lib/bear_cub/chores.ex:63~'s ~list_chores/2~ was left unchanged — its ~when routine in ~w(morning evening)~~ guard and =c.routine == ^routine= query filter structurally exclude =nil=-routine rows from either call. Verified by ~test/bear_cub/chores_test.exs~ ~"list_chores/2 never returns an extra (nil-routine) chore"~: creates one ="morning"= chore and one =routine: nil= chore, asserts =list_chores(kid, "morning") == [morning]= and =list_chores(kid, "evening") == []=.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] ~mix format --check-formatted~ and ~mix test~ pass without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:29] \\
+  All 4 ACs above carry =[X]= with LOGBOOK evidence; none removed or deferred. Independently re-verified by a fresh ~story-verifier~ pass against the actual files (not the log alone).
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:29] \\
+  =mix test test/bear_cub/chores_test.exs test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs= → =46 passed=, exit 0.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:29] \\
+  Checked against root CLAUDE.md's Ecto/Elixir/migration conventions (one module per file, generator-style migration naming, idiomatic changeset composition, ~start_supervised!/1~ in tests, correct ~test/support~ placement). ~mix compile --warnings-as-errors~ → exit 0. The migration's ~@disable_ddl_transaction true~ + raw ~Ecto.Adapters.SQL.query!/3~ inside ~repo().checkout/1~ deviates from generator-default macro usage but is a documented, deliberate exception (in-file comment) for the SQLite ALTER-COLUMN/DDL-transaction hazard the story's Technical Notes call out — not a style violation.
+:END:
+** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
+:LOGBOOK:
+- Note taken on [2026-07-12 Sun 11:29] \\
+  =mix format --check-formatted= → exit 0, no output. =mix test= (full suite) → =189 passed=, exit 0. Also =mix precommit= (=compile --warnings-as-errors=, =deps.unlock --unused=, =format=, =test=) → exit 0.
+:END:
 
 * Technical Notes
 
@@ -51,3 +83,5 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - The =chores= table was created by =priv/repo/migrations/20260710082929_create_chores.exs= (all columns NOT NULL, incl. =routine=; index =[:kid_id, :routine, :position]=). The completions partial unique index lives in =20260710083403_create_completions.exs=.
 - =next_position/2= (private, =lib/bear_cub/chores.ex=) already returns =0= for a =nil= routine bucket — no change needed here; extras get their own =kid + nil= position group.
 - =list_chores/2= already guards =routine in ~w(morning evening)=, so a =nil= row cannot leak into a routine list; the AC verifies this holds after the change.
+- Deferred discovery: an occasional (not consistently reproducible) transient log line, =Exqlite.Connection ... disconnected: ** (DBConnection.ConnectionError) client ... exited=, appears during test-suite teardown. Traced to the scratch =BearCub.MigrationTestRepo= pool (=test/support/migration_test_repo.ex=), started per-test via =start_supervised!= with the default (non-Sandbox) pool, shutting down at test-process exit. Never failed a test or affected =mix precommit='s exit code across many repeated runs; worth a look only if fully log-clean =mix precommit= output becomes a goal.
+- Deferred discovery: the DDL-transaction/connection-pool hazard this migration works around — =Ecto.Migration.Runner= dispatches =execute=/=create table=/=drop table= through a separate Agent process, so with =@disable_ddl_transaction true= a pooled (non-Sandbox) connection can schedule statements on different physical SQLite connections, letting a later statement observe a stale pre-drop schema — is a general footgun for any future SQLite migration needing a =PRAGMA= toggle outside a transaction (not specific to this story). Confirmed via direct reproduction against both a throwaway multi-connection test repo and the real =mix ecto.migrate= path (=Ecto.Migrator.with_repo/2=, pool_size 2 default). The workaround (raw =Ecto.Adapters.SQL.query!/3= calls inside =repo().checkout/1=, bypassing the Runner macros) is documented in the migration file's module comment and has been promoted to =docs/learnings.org= (2026-07-12 entry) per human ruling — transferable craft knowledge, not design-silence material, so it did not wait for a second occurrence.

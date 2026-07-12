@@ -83,6 +83,15 @@ defmodule BearCub.ChoresTest do
       assert Chores.list_chores(kid, "morning") == [first, second]
     end
 
+    test "list_chores/2 never returns an extra (nil-routine) chore" do
+      kid = kid_fixture()
+      morning = chore_fixture(kid)
+      _extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      assert Chores.list_chores(kid, "morning") == [morning]
+      assert Chores.list_chores(kid, "evening") == []
+    end
+
     test "create_chore/2 creates a chore owned by the kid" do
       kid = kid_fixture()
       attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0}
@@ -106,6 +115,29 @@ defmodule BearCub.ChoresTest do
 
       assert {:error, changeset} = Chores.create_chore(kid, attrs)
       assert %{routine: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "create_chore/2 with a nil routine creates an extra" do
+      kid = kid_fixture()
+      attrs = %{name: "Wash Car", icon: "🚗", routine: nil, position: 0}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert chore.routine == nil
+    end
+
+    test "create_chore/2 with routine omitted creates an extra" do
+      kid = kid_fixture()
+      attrs = %{name: "Wash Car", icon: "🚗", position: 0}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert chore.routine == nil
+    end
+
+    test "update_chore/2 can clear routine to nil, turning a chore into an extra" do
+      chore = chore_fixture()
+
+      assert {:ok, chore} = Chores.update_chore(chore, %{routine: nil})
+      assert chore.routine == nil
     end
 
     test "update_chore/2 updates name and icon; position is not mass-assignable" do
