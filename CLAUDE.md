@@ -24,6 +24,8 @@ Repo-level, cumulative across initiatives (not scoped to any one chain):
 - `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
 - `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms.
 
+Any change touching kids' view styling, colors, or component visuals: read `docs/design-language.org` first; its invariants and rulings are binding.
+
 Closed / historical — record for each initiative's era, superseded wherever a later initiative's decisions say so:
 
 - `docs/2026-07-09-mvp/PRD.org` — MVP requirements (FR-x), success criteria, decision log §9
