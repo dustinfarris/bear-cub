@@ -241,16 +241,17 @@ defmodule BearCubWeb.KioskLive do
             </p>
           </div>
 
-          <%!-- Chores: equal full-width rows; at ≤5 the 1fr region divides
-               evenly, beyond 5 only this region scrolls (FR-6). Done = kid-color
-               fill + check, emoji still visible (FR-7); tap again to undo, no
-               confirmation (FR-8). phx-throttle swallows the excited rapid
-               double-tap (D15). Also covers the manually re-expanded band
-               (state 4, D34): same rows, all shown done, tap-to-undo. --%>
+          <%!-- Chores: fixed-height full-width rows, top-aligned (empty space
+               below the last card is fine); beyond capacity only this region
+               scrolls (FR-6). Done = kid-color fill + check, emoji still
+               visible (FR-7); tap again to undo, no confirmation (FR-8).
+               phx-throttle swallows the excited rapid double-tap (D15). Also
+               covers the manually re-expanded band (state 4, D34): same
+               rows, all shown done, tap-to-undo. --%>
           <ul
             :if={state == :rows}
             id={"chores-#{kid.id}"}
-            class="grid auto-rows-fr gap-px overflow-y-auto bg-base-300"
+            class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
           >
             <.chore_row
               :for={%{chore: chore, done?: done?} <- chores}
@@ -281,7 +282,7 @@ defmodule BearCubWeb.KioskLive do
             <ul
               :if={routine == :morning}
               id={"extras-#{kid.id}"}
-              class="grid auto-rows-fr gap-px overflow-y-auto bg-base-300"
+              class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
             >
               <.chore_row
                 :for={%{chore: chore, done?: done?} <- extras}
@@ -312,7 +313,7 @@ defmodule BearCubWeb.KioskLive do
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
       class={[
-        "flex min-h-[88px] cursor-pointer select-none items-center gap-5 px-6 transition-colors",
+        "flex h-24 cursor-pointer select-none items-center gap-5 px-6 transition-colors",
         !@done? && "bg-base-100"
       ]}
       style={@done? && "background-color: #{@kid.color}"}

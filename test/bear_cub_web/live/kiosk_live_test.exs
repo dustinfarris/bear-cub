@@ -87,6 +87,31 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#chore-#{chore.id}", "🪥")
     end
 
+    test "chore cards render at a fixed height instead of equally filling the column",
+         %{conn: conn, kid_a: kid_a} do
+      chore_fixture(kid_a, %{
+        name: "Brush Teeth",
+        icon: "🪥",
+        routine: Atom.to_string(auto_routine())
+      })
+
+      chore_fixture(kid_a, %{
+        name: "Comb Hair",
+        icon: "💇",
+        routine: Atom.to_string(auto_routine())
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      html = render(view)
+
+      refute html =~ "auto-rows-fr"
+      assert html =~ "auto-rows-[6rem]"
+
+      [chore_a, chore_b] = BearCub.Chores.list_chores(kid_a, auto_routine() |> Atom.to_string())
+      assert has_element?(view, "#chore-#{chore_a.id}.h-24")
+      assert has_element?(view, "#chore-#{chore_b.id}.h-24")
+    end
+
     test "renders an events strip region per kid", %{conn: conn, kid_a: kid_a} do
       {:ok, view, _html} = live(conn, ~p"/")
 
