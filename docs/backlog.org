@@ -5,6 +5,13 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO Need a short delay between completing the last routine task and collapsing the routine list
+:PROPERTIES:
+:ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
+:CREATED:  [2026-07-12 Sun 23:04]
+:END:
+
+So the child can get the quick "I completed that task" visual reward before seeing that they've completed the entire routine.
 * TODO extra-large completed icon for routines in the top bar where their names are
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:01]
@@ -13,6 +20,8 @@ Size tags: oneshot (compiled single-session prompt), hand (inert edit, no sessio
 - Big sun icon for completing morning routine
 - Big moon icon for completing evening routine
 - Maybe a green checkmark in the upper-right corner of both
+
+This would then make the routine's persistent header bar obsolete.  The kid can tap the big icon to restore the list instead.
 * From the extras initiative (docs/2026-07-11-extras/), story 01, 2026-07-12
 =mix test= occasionally logs a non-fatal =Exqlite.Connection ... disconnected: (DBConnection.ConnectionError)
 client ... exited= line during teardown (no test failures). Traced to the
