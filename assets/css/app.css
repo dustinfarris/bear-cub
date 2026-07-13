@@ -91,6 +91,32 @@
   --noise: 0;
 }
 
+/* Kids' view design tokens — routine and card visual language.
+   Semantics documented in docs/design-language.org; do not add ad-hoc
+   hex/color values to kiosk templates, extend this block instead. */
+:root {
+  /* Morning routine: warm yellow, dark text for contrast on a light fill. */
+  --routine-morning: #fbbf24;
+  --routine-morning-content: #292524;
+  /* oklab, not oklch: base-100 is achromatic with a literal (not `none`)
+     hue of 0, so mixing "in oklch" numerically drags the hue toward
+     red/pink instead of preserving it. oklab mixes toward gray in
+     Cartesian a/b space, so the hue holds and only lightness/chroma move. */
+  --routine-morning-tint: color-mix(in oklab, var(--routine-morning) 12%, var(--color-base-100));
+
+  /* Evening routine: deep purple, white text. */
+  --routine-evening: #7c3aed;
+  --routine-evening-content: #ffffff;
+  --routine-evening-tint: color-mix(in oklab, var(--routine-evening) 10%, var(--color-base-100));
+
+  /* Child ownership border on not-yet-done chore/extra cards. */
+  --child-border-width: 6px;
+
+  /* Extras are a fixed neutral surface — never tinted by routine or theme. */
+  --extra-card-background: #ffffff;
+  --extra-card-content: #1c1917;
+}
+
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);

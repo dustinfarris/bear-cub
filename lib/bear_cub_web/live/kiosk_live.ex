@@ -186,7 +186,7 @@ defmodule BearCubWeb.KioskLive do
               @columns
           }
           id={"kid-column-#{kid.id}"}
-          class="grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100"
+          class="grid grid-rows-[auto_auto_1fr_auto] overflow-hidden bg-base-100"
         >
           <%!-- Header band: the color block, not the name, is the primary
                identifier (FR-5a) — a pre-reader finds their column by color.
@@ -241,57 +241,105 @@ defmodule BearCubWeb.KioskLive do
             </p>
           </div>
 
-          <%!-- Chores: fixed-height full-width rows, top-aligned (empty space
-               below the last card is fine); beyond capacity only this region
-               scrolls (FR-6). Done = kid-color fill + check, emoji still
-               visible (FR-7); tap again to undo, no confirmation (FR-8).
-               phx-throttle swallows the excited rapid double-tap (D15). Also
-               covers the manually re-expanded band (state 4, D34): same
-               rows, all shown done, tap-to-undo. --%>
-          <ul
-            :if={state == :rows}
-            id={"chores-#{kid.id}"}
-            class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
+          <%!-- Routine card: a persistent, routine-colored header (yellow for
+               morning, purple for evening) sits above either the chore rows
+               (expanded) or the completion message (collapsed band).
+               Tapping the header toggles collapse; the tap is a no-op
+               server-side unless the routine is reveal-eligible (D33/D34).
+               No completion indicator on the header — collapse + the
+               completion message are the signal (docs/design-language.org). --%>
+          <div
+            :if={state != :night}
+            id={"routine-#{kid.id}"}
+            class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100"
           >
-            <.chore_row
-              :for={%{chore: chore, done?: done?} <- chores}
-              chore={chore}
-              done?={done?}
-              kid={kid}
-            />
-          </ul>
-
-          <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
-               active window, not pure completion. Morning additionally
-               reveals extras below the band; evening never does. Tapping
-               the band re-expands to the rows above. --%>
-          <div :if={state == :band} class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100">
             <button
+              :if={state == :rows}
+              type="button"
+              id={"routine-header-#{kid.id}"}
+              phx-click="toggle-band"
+              phx-value-kid-id={kid.id}
+              class="flex items-center justify-center px-4 py-3 transition active:scale-[0.99]"
+              style={routine_bar_style(routine)}
+            >
+              <span class="text-center text-xl font-bold tracking-tight">
+                {routine_title(routine)}
+              </span>
+            </button>
+
+            <%!-- Chores: fixed-height full-width rows, top-aligned (empty
+                 space below the last card is fine); beyond capacity only
+                 this region scrolls (FR-6). Not done = routine tint fill +
+                 child-color border (chore ownership); done = kid-color fill
+                 + check, emoji still visible (FR-7), border merged into the
+                 fill; tap again to undo, no confirmation (FR-8).
+                 phx-throttle swallows the excited rapid double-tap (D15).
+                 Also covers the manually re-expanded band (state 4, D34):
+                 same rows, all shown done, tap-to-undo. --%>
+            <ul
+              :if={state == :rows}
+              id={"chores-#{kid.id}"}
+              class="grid max-h-full auto-rows-[6rem] gap-px self-start overflow-y-auto bg-base-300"
+            >
+              <.chore_row
+                :for={%{chore: chore, done?: done?} <- chores}
+                chore={chore}
+                done?={done?}
+                kid={kid}
+                routine={routine}
+              />
+            </ul>
+
+            <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
+                 active window, not pure completion. A single bounded card —
+                 routine tint fill (same token as chore cards), routine-color
+                 header as its top edge, message inside — not a header
+                 floating over the page background. `self-start` keeps it
+                 hugging its own content height instead of stretching to
+                 fill the column (docs/design-language.org). The whole card
+                 is the tap target back to the rows above; shorter than a
+                 chore card and border-free by design (docs/design-language.org). --%>
+            <button
+              :if={state == :band}
               type="button"
               id={"band-#{kid.id}"}
               phx-click="toggle-band"
               phx-value-kid-id={kid.id}
-              class="flex items-center justify-center px-6 py-8 text-center transition active:scale-[0.99]"
-              style={"background-color: #{kid.color}"}
+              class="flex flex-col self-start overflow-hidden text-left transition active:scale-[0.99]"
+              style={"background-color: var(--routine-#{routine}-tint)"}
             >
-              <p class="text-2xl font-semibold text-white drop-shadow-sm">
+              <span
+                class="flex items-center justify-center px-4 py-3"
+                style={routine_bar_style(routine)}
+              >
+                <span class="text-center text-xl font-bold tracking-tight">
+                  {routine_title(routine)}
+                </span>
+              </span>
+              <span class="px-4 py-3 text-center text-base font-semibold">
                 {band_message(routine)}
-              </p>
+              </span>
             </button>
-
-            <ul
-              :if={routine == :morning}
-              id={"extras-#{kid.id}"}
-              class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
-            >
-              <.chore_row
-                :for={%{chore: chore, done?: done?} <- extras}
-                chore={chore}
-                done?={done?}
-                kid={kid}
-              />
-            </ul>
           </div>
+
+          <%!-- Extras: below the routine card, never tinted (invariant —
+               docs/design-language.org). Morning-only reveal, gated with
+               the band (D34 technical notes: extras are chores, so this is
+               the same tappable row, just styled as a fixed neutral card). --%>
+          <ul
+            :if={state == :band and routine == :morning}
+            id={"extras-#{kid.id}"}
+            class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
+          >
+            <.chore_row
+              :for={%{chore: chore, done?: done?} <- extras}
+              chore={chore}
+              done?={done?}
+              kid={kid}
+              routine={routine}
+              extra?={true}
+            />
+          </ul>
         </section>
       </div>
     </Layouts.app>
@@ -301,9 +349,12 @@ defmodule BearCubWeb.KioskLive do
   attr :chore, :map, required: true
   attr :done?, :boolean, required: true
   attr :kid, :map, required: true
+  attr :routine, :atom, required: true
+  attr :extra?, :boolean, default: false
 
   # Shared row markup for both routine chores and extras (D34 technical
-  # notes: extras are chores, so this is the same tappable row).
+  # notes: extras are chores, so this is the same tappable row) — extras
+  # render on the fixed neutral card surface instead of the routine tint.
   defp chore_row(assigns) do
     ~H"""
     <li
@@ -312,11 +363,8 @@ defmodule BearCubWeb.KioskLive do
       phx-click="toggle-chore"
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
-      class={[
-        "flex h-24 cursor-pointer select-none items-center gap-5 px-6 transition-colors",
-        !@done? && "bg-base-100"
-      ]}
-      style={@done? && "background-color: #{@kid.color}"}
+      class="flex h-24 cursor-pointer select-none items-center gap-5 border-l-[length:var(--child-border-width)] px-6 transition-colors"
+      style={chore_card_style(@done?, @extra?, @routine, @kid.color)}
     >
       <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
       <span class={["text-2xl font-semibold", @done? && "text-white drop-shadow-sm"]}>
@@ -326,6 +374,30 @@ defmodule BearCubWeb.KioskLive do
     </li>
     """
   end
+
+  # Not done: routine tint + child-color border (chore ownership). Done: full
+  # kid-color fill, border merged into the fill rather than layered on top —
+  # the fill is already the child's own color, so a matching border added no
+  # legibility (docs/design-language.org). The border width is always
+  # reserved (see the `li` class above) so completing a chore never shifts
+  # its content; done just makes the border transparent instead of removing
+  # it. Extras never take the routine tint — they're a fixed neutral
+  # surface (docs/design-language.org).
+  defp chore_card_style(true, _extra?, _routine, kid_color),
+    do: "background-color: #{kid_color}; border-left-color: transparent"
+
+  defp chore_card_style(false, true, _routine, kid_color),
+    do:
+      "background-color: var(--extra-card-background); border-left-color: #{kid_color}; color: var(--extra-card-content)"
+
+  defp chore_card_style(false, false, routine, kid_color),
+    do: "background-color: var(--routine-#{routine}-tint); border-left-color: #{kid_color}"
+
+  defp routine_bar_style(routine),
+    do: "background-color: var(--routine-#{routine}); color: var(--routine-#{routine}-content)"
+
+  defp routine_title(:morning), do: "Morning Routine"
+  defp routine_title(:evening), do: "Evening Routine"
 
   defp band_message(:morning), do: Messages.morning_complete()
   defp band_message(:evening), do: Messages.evening_complete()

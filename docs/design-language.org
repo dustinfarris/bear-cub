@@ -1,0 +1,17 @@
+#+title: Design Language — Kids' View
+#+startup: showall
+
+One-off visual redesign, backlog-tracked (no chain documents). Future kiosk styling work builds on this file rather than re-litigating it.
+
+* Semantics
+A child-color left border (=--child-border-width=) means chore ownership — whose card this is. A routine color (=--routine-morning=, =--routine-evening=) means temporal context — which part of the day this card belongs to. A routine tint (=--routine-morning-tint=, =--routine-evening-tint=) means pending within that routine — it disappears the moment a card is done.
+
+* Invariants
+Collapsed routine cards never carry a child-color border — collapse is a routine-level state, not any one child's. Extras render on a fixed neutral surface (=--extra-card-background=, =--extra-card-content=) independent of routine and theme, so they never inherit tint meaning.
+
+* Rulings
+The collapsed-routine message renders inside the collapsed card, below the header bar — do not re-litigate.
+
+Completion badge (sun/moon) considered and deferred [2026-07-12]; collapse + message are the completion signals. Do not add indicators without a ruling.
+
+Tokens live in assets/css/app.css, in the block above the LiveView class variants.

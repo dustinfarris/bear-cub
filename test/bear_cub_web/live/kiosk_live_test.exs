@@ -87,6 +87,22 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#chore-#{chore.id}", "🪥")
     end
 
+    test "renders a persistent routine header with a centered title and no completion badge yet",
+         %{conn: conn, kid_a: kid_a} do
+      chore_fixture(kid_a, %{
+        name: "Brush Teeth",
+        icon: "🪥",
+        routine: Atom.to_string(auto_routine())
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      title = if auto_routine() == :morning, do: "Morning Routine", else: "Evening Routine"
+
+      assert has_element?(view, "#routine-header-#{kid_a.id}", title)
+      refute has_element?(view, "#routine-header-#{kid_a.id} .hero-check")
+    end
+
     test "chore cards render at a fixed height instead of equally filling the column",
          %{conn: conn, kid_a: kid_a} do
       chore_fixture(kid_a, %{
@@ -630,6 +646,47 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#extras-#{kid.id} #chore-#{outstanding.id}[data-done]")
       assert has_element?(view, "#extras-#{kid.id} #chore-#{done_today.id}[data-done]")
       refute has_element?(view, "#chore-#{retired.id}")
+    end
+
+    test "no completion indicator renders on the routine header — collapse + message are the signal (deferred, docs/design-language.org)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#band-#{kid.id} .hero-sun-mini")
+      refute has_element?(view, "#band-#{kid.id} .hero-moon-mini")
+
+      view |> element("#band-#{kid.id}") |> render_click()
+      assert has_element?(view, "#routine-header-#{kid.id}")
+      refute has_element?(view, "#routine-header-#{kid.id} .hero-sun-mini")
+      refute has_element?(view, "#routine-header-#{kid.id} .hero-moon-mini")
+    end
+
+    test "an extra renders on the fixed neutral card surface, not the routine tint",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(
+               view,
+               "#extras-#{kid.id} #chore-#{extra.id}[style*='var(--extra-card-background)']"
+             )
+
+      refute has_element?(
+               view,
+               "#extras-#{kid.id} #chore-#{extra.id}[style*='var(--routine-morning-tint)']"
+             )
     end
 
     test "the morning reveal appears even with zero extras", %{conn: conn, kid: kid} do
