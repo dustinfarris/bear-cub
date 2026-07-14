@@ -5,6 +5,17 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO Gamification: Points system
+:PROPERTIES:
+:CREATED:  [2026-07-13 Mon 23:27]
+:END:
+Need a way to reward the kids for completing their tasks.  A couple thoughts:
+- Completing an entire routine (morning or evening) is worth maybe 5 points
+- Ad-hoc chores added by parents are worth 5 points by default but parent can adjust
+- Need a points total readout for each child on the main page
+- Parents need to be able to "fail" a chore upon inspection (i.e. the child tapped it done but did not actually do it)
+  - This /deducts/ the points that would have been otherwise added, and the chore completion is undone so that the child can actually do it and mark it off and earn the points back (netting zero as a consequence for the lie).
+
 * TODO Need a default emoji for extra chores -- parents may not have time or desire to pick one.
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]
