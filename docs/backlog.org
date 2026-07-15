@@ -5,12 +5,7 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO need a darker screen for night mode (after 23:00)
-:PROPERTIES:
-:CREATED:  [2026-07-13 Mon 23:28]
-:END:
-Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
-* TODO Gamification: Points system
+* TODO [#A] Gamification: Points system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:27]
 :END:
@@ -21,18 +16,26 @@ Need a way to reward the kids for completing their tasks.  A couple thoughts:
 - Parents need to be able to "fail" a chore upon inspection (i.e. the child tapped it done but did not actually do it)
   - This /deducts/ the points that would have been otherwise added, and the chore completion is undone so that the child can actually do it and mark it off and earn the points back (netting zero as a consequence for the lie).
 
-* TODO Need a default emoji for extra chores -- parents may not have time or desire to pick one.
+Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brainstorm:
+- Consider claiming the collapse-delay and big-icon items below as batch members — same completion-reward theme.
+- Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets =undone_at=, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
+* TODO [#B] need a darker screen for night mode (after 23:00) :oneshot:
 :PROPERTIES:
-:CREATED:  [2026-07-12 Sun 23:06]
+:CREATED:  [2026-07-13 Mon 23:28]
 :END:
-* TODO Need a short delay between completing the last routine task and collapsing the routine list
+Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
+
+Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies. Independent of gamification.
+* TODO [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
 :PROPERTIES:
 :ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
 :CREATED:  [2026-07-12 Sun 23:04]
 :END:
 
 So the child can get the quick "I completed that task" visual reward before seeing that they've completed the entire routine.
-* TODO extra-large completed icon for routines in the top bar where their names are
+
+Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted — hold until that brainstorm rules.
+* TODO [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:01]
 :END:
@@ -42,37 +45,35 @@ So the child can get the quick "I completed that task" visual reward before seei
 - Maybe a green checkmark in the upper-right corner of both
 
 This would then make the routine's persistent header bar obsolete.  The kid can tap the big icon to restore the list instead.
-* From the extras initiative (docs/2026-07-11-extras/), story 01, 2026-07-12
-=mix test= occasionally logs a non-fatal =Exqlite.Connection ... disconnected: (DBConnection.ConnectionError)
-client ... exited= line during teardown (no test failures). Traced to the
-scratch =BearCub.MigrationTestRepo= pool
-(=test/support/migration_test_repo.ex=), started per-test via
-=start_supervised!= with the default (non-Sandbox) pool, shutting down at
-test-process exit. Never affects =mix precommit='s exit code. Act only if
-fully log-clean =mix precommit= output becomes a goal.
 
-* From the extras initiative (docs/2026-07-11-extras/), story 01, 2026-07-12
-The DDL-transaction/connection-pool hazard the nullability migration works
-around (=Ecto.Migration.Runner= dispatching =execute=/=create table=/
-=drop table= through a separate Agent process, so a disabled-DDL-transaction
-migration on a pooled connection can observe a stale pre-drop schema) was
-promoted directly to docs/learnings.org (2026-07-12 entry) rather than
-waiting for a second occurrence. No further action pending — recorded here
-only for sweep completeness.
-
-* From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12
-=list_extras/2= (=lib/bear_cub/chores.ex=) references
-=BearCub.Chores.Completion= fully-qualified rather than the =alias
-BearCub.Chores.Completion= declared later in the file — correct given
-Elixir's lexical alias scoping, but a future pass could hoist the alias
-earlier for consistency.
-
-* From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12
+Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted. Retiring the persistent header bar is a design-language ruling, not just implementation — record it in docs/design-language.org when done.
+* TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-12 Sun 23:06]
+:END:
+Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
+* TODO [#C] Change =next_position/2= to take a bare =kid_id= :oneshot:
+From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
 =update_chore/2= (=lib/bear_cub/chores.ex=) builds a partial
 =%Kid{id: chore.kid_id}= struct purely to satisfy =next_position/2='s
 =%Kid{}= guard clause, avoiding an extra query. Works correctly and is
-covered by tests, but is a slightly unusual pattern — a future pass could
-change =next_position/2='s signature to take a bare =kid_id= instead.
+covered by tests, but is a slightly unusual pattern — change
+=next_position/2='s signature to take a bare =kid_id= instead and update
+callers and tests.
+
+* Test-teardown Exqlite disconnect log noise — act only if log-clean output becomes a goal
+Merged [2026-07-14 Tue] from extras stories 01 and 06 (both 2026-07-12) —
+same class of non-fatal sandbox-connection race, two known triggers:
+- The scratch =BearCub.MigrationTestRepo= pool
+  (=test/support/migration_test_repo.ex=), started per-test via
+  =start_supervised!= with the default (non-Sandbox) pool, shutting down at
+  test-process exit.
+- The admin→kiosk cross-process PubSub test in =today_live_test.exs= (two
+  independent =live/2= processes), where the second LiveView process
+  outlives the first.
+Occasionally logs a =Exqlite.Connection ... disconnected:
+(DBConnection.ConnectionError)= line during teardown; no test failures,
+never affects =mix precommit='s exit code.
 
 * From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
 =ChoreLive.Index='s three list sections (Morning/Evening/Extras)
@@ -82,19 +83,3 @@ guideline. Pre-existing pattern — Morning/Evening already did this before
 Story 03; Extras just mirrors it. Consistent with the rest of the
 admin/kiosk codebase at family-scale list sizes (single-digit item counts).
 Act only if that scale assumption changes.
-
-* From the extras initiative (docs/2026-07-11-extras/), story 04, 2026-07-12
-=BearCub.Routines.other/1='s doc comment (=lib/bear_cub/routines.ex=) still
-describes it as "the manual flip target (FR-4)" — stale now that the kiosk
-flip is removed. The function itself is correctly retained (still used by
-=Admin.TodayLive= to list both routine sections); only the comment is out of
-date. A docs-only fix for a future pass.
-
-* From the extras initiative (docs/2026-07-11-extras/), story 06, 2026-07-12
-The admin→kiosk cross-process PubSub test in =today_live_test.exs= (two
-independent =live/2= processes) reliably logs a benign
-=Exqlite.Connection ... disconnected: DBConnection.ConnectionError= line
-during teardown — same class of non-fatal sandbox-connection race as the
-story 01 item above, triggered here by a second LiveView process outliving
-the first. Never affects =mix precommit='s exit code. Act only if fully
-log-clean test output becomes a goal.
