@@ -9,6 +9,7 @@ defmodule BearCub.Chores do
   import Ecto.Query, warn: false
 
   alias BearCub.Repo
+  alias BearCub.Chores.Completion
   alias BearCub.Chores.Kid
 
   @topic "chores"
@@ -75,7 +76,7 @@ defmodule BearCub.Chores do
   """
   def list_extras(%Kid{} = kid, %Date{} = local_date) do
     retired_ids =
-      from c in BearCub.Chores.Completion,
+      from c in Completion,
         where: is_nil(c.undone_at) and c.local_date < ^local_date,
         select: c.chore_id
 
@@ -240,8 +241,6 @@ defmodule BearCub.Chores do
   def change_chore(%Chore{} = chore, attrs \\ %{}) do
     Chore.changeset(chore, attrs)
   end
-
-  alias BearCub.Chores.Completion
 
   @doc """
   Marks `chore` done for the local day of `local_now` (design §2: inserts

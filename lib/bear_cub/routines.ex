@@ -51,7 +51,7 @@ defmodule BearCub.Routines do
     Enum.min([midnight | edges_today], DateTime)
   end
 
-  @doc "The other routine — the manual flip target (FR-4)."
+  @doc "The other routine — used by the admin Today view to render both routine sections."
   def other(:morning), do: :evening
   def other(:evening), do: :morning
 
