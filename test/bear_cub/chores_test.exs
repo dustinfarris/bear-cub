@@ -722,6 +722,71 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "fail_chore/2 (Story 05, D40)" do
+    import BearCub.ChoresFixtures
+
+    test "stamps both undone_at and failed_at on the current live completion, reverting it" do
+      chore = chore_fixture()
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert {:ok, failed} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      assert failed.id == completion.id
+      assert failed.undone_at == ~U[2026-07-10 14:05:00Z]
+      assert failed.failed_at == ~U[2026-07-10 14:05:00Z]
+    end
+
+    test "is distinct from an ordinary undo: only fail stamps failed_at" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      assert undone.failed_at == nil
+    end
+
+    test "returns an error when there is no live completion to fail" do
+      chore = chore_fixture()
+
+      assert {:error, :not_completed} =
+               Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:00:00]))
+    end
+
+    test "the failed row is never deleted — it persists after the fail" do
+      chore = chore_fixture()
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Repo.get!(Completion, completion.id)
+    end
+
+    test "broadcasts :chores_changed" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      :ok = Chores.subscribe()
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert_receive :chores_changed
+    end
+
+    test "fail then redo nets to zero end-to-end through the write path (SC-3 worked example)" do
+      kid = kid_fixture()
+      # a baseline already-earned extra keeps the floored total away from
+      # zero, so the fail's -value dip is actually observable (20 -> 25 -> 15 -> 20)
+      base = chore_fixture(kid, %{name: "Base", routine: nil, points: 20})
+      chore = chore_fixture(kid, %{name: "Extra", routine: nil, points: 5})
+
+      {:ok, _} = Chores.complete_chore(base, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 25
+
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[08:05:00]))
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 15
+
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:10:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
+    end
+  end
+
   describe "PubSub" do
     import BearCub.ChoresFixtures
 

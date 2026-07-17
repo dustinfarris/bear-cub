@@ -279,6 +279,29 @@ defmodule BearCub.Chores do
   end
 
   @doc """
+  Fails `chore` for the local day of `local_now` (fail-on-inspection,
+  D40): stamps both `undone_at` (reverting the chore to incomplete, so
+  the child can redo) and `failed_at` (the persistent −points penalty,
+  never cleared) on the current live completion. Distinct from
+  `undo_chore/2`, which stamps only `undone_at`. `{:error, :not_completed}`
+  when there is no live completion to fail.
+  """
+  def fail_chore(%Chore{} = chore, %DateTime{} = local_now) do
+    case current_completion(chore, DateTime.to_date(local_now)) do
+      nil ->
+        {:error, :not_completed}
+
+      completion ->
+        at = to_utc(local_now)
+
+        completion
+        |> Ecto.Changeset.change(undone_at: at, failed_at: at)
+        |> Repo.update()
+        |> broadcast_change()
+    end
+  end
+
+  @doc """
   Completes `chore` if it isn't done for the local day of `local_now`,
   undoes it if it is — the admin's on-behalf tap (FR-24). Returns the
   same shapes as `complete_chore/3`/`undo_chore/2`; a racing duplicate

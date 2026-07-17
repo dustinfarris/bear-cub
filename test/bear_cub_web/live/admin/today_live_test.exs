@@ -145,6 +145,59 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     refute has_element?(view, "#reset-day")
   end
 
+  describe "fail-on-inspection (Story 05, D40)" do
+    test "a fail control is exposed only on a done chore, distinct from the toggle",
+         %{conn: conn} = ctx do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#fail-chore-#{ctx.a_active.id}")
+
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#fail-chore-#{ctx.a_active.id}")
+    end
+
+    test "tapping fail reverts the chore and stamps a persistent penalty",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#fail-chore-#{ctx.a_active.id}") |> render_click()
+
+      refute has_element?(view, "#today-chore-#{ctx.a_active.id}[data-done]")
+
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^ctx.a_active.id)
+      refute is_nil(completion.undone_at)
+      refute is_nil(completion.failed_at)
+    end
+
+    test "a fail live-updates the kiosk: the chore reverts and the points badge drops",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+
+      {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      before_points = Chores.points_total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
+      assert has_element?(kiosk, "#points-badge-#{ctx.kid_a.id}", "#{before_points}")
+      # kid_a's only active-routine chore is done, so the kiosk shows the
+      # collapsed reveal band rather than the individual chore row
+      assert has_element?(kiosk, "#band-#{ctx.kid_a.id}")
+
+      view |> element("#fail-chore-#{ctx.a_active.id}") |> render_click()
+
+      after_points = Chores.points_total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
+      assert after_points < before_points
+      assert has_element?(kiosk, "#points-badge-#{ctx.kid_a.id}", "#{after_points}")
+
+      # the routine is no longer complete: the band drops and the chore
+      # row reappears, reverted to incomplete
+      refute has_element?(kiosk, "#band-#{ctx.kid_a.id}")
+      refute has_element?(kiosk, "#chore-#{ctx.a_active.id}[data-done]")
+    end
+  end
+
   describe "extras" do
     import BearCub.ChoresFixtures
 

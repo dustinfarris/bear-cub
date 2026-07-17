@@ -35,6 +35,21 @@ defmodule BearCubWeb.Admin.TodayLive do
     end
   end
 
+  def handle_event("fail-chore", %{"chore-id" => id}, socket) do
+    now = LocalTime.now()
+
+    case Chores.get_chore(id) do
+      # deleted elsewhere after this render — drop the tap, refresh
+      nil ->
+        {:noreply, load(socket, now)}
+
+      chore ->
+        # no live completion to fail (e.g. undone elsewhere first) — no-op
+        Chores.fail_chore(chore, now)
+        {:noreply, load(socket, now)}
+    end
+  end
+
   def handle_event("toggle-section", %{"kid-id" => kid_id, "routine" => routine}, socket) do
     key = {String.to_integer(kid_id), String.to_existing_atom(routine)}
 
@@ -175,6 +190,16 @@ defmodule BearCubWeb.Admin.TodayLive do
       ]}>
         {@row.chore.name}
       </span>
+      <button
+        :if={@row.done?}
+        id={"fail-chore-#{@row.chore.id}"}
+        phx-click="fail-chore"
+        phx-value-chore-id={@row.chore.id}
+        title="Fail — reverts and deducts points"
+        class="rounded-full p-1 text-white/80 hover:text-white"
+      >
+        <.icon name="hero-flag" class="size-5 drop-shadow-sm" />
+      </button>
       <.icon :if={@row.done?} name="hero-check" class="size-6 text-white drop-shadow-sm" />
     </li>
     """
