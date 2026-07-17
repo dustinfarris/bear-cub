@@ -1,0 +1,58 @@
+#+title: Story 10 — Kiosk earned badge: green +N chip on completed extras
+#+date: 2026-07-17
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk routine region — state 2 (Screens)
+
+2. *Complete + window active* (collapsed): banner shows the completion icon, plus its bonus badge unless the bonus is forfeited (D52); the region shows the completion message (=morning_complete/0= / =evening_complete/0=), and *morning additionally reveals extras* (outstanding + done-today, each tap-to-complete / undo — D28, D33). The chore list is hidden. A failed extra here shows a *warning + −N* (its own value); a completed extra here shows a green *+N chip* (its own value) to the left of the checkmark — the positive mirror of the failed extra's −N (D54). (SC-6, SC-7)
+
+** Earned-value marking on the kiosk (Key Behaviors)
+
+The positive mirror of failed-chore marking, at the same per-chore honesty the penalty side observes (D45, D46):
+
+- *Completed extra:* a green *+N chip* (its own =chore.points= value) to the left of the checkmark on the extra card, in the morning reveal (state 2). This is the exact positive mirror of the failed extra's warning + −N.
+- *Completed routine chore:* *no per-chore number*. A routine chore earns nothing on its own — the routine pays a single +R no matter how many chores it holds — so a per-chore +5 would misstate the one +R the routine actually pays, the same honesty principle that keeps a failed routine chore's card numberless (D45, D46). The routine-level reward stays the banner completion-icon bonus badge (D51, D52), shown once per routine-day.
+
+The green +N chip is a new kids'-view indicator; per repo convention it is recorded as a design-language ruling (green chip = earned value on extras) in =docs/design-language.org= when the work lands, not at design time — a *pending design-language recording* (the D48 pattern). (SC-2, SC-6, D54)
+
+** Failed-chore marking on the kiosk (Key Behaviors) — mirror context, untouched by this story
+
+- *Failed extra:* a warning icon *+ −N* (its own =chore.points= value) on the extra card, in the morning reveal (state 2).
+- *Failed routine chore:* a warning icon on the card (signals "redo me"), *no per-chore number*.
+
+** Decision Log entry in scope
+
+- *D54 (2026-07-17) — Kiosk earned badge: a completed extra shows a green +N chip; completed routine chores show no per-chore number:* a completed (done-today) extra's card shows a green *+N chip* (its own =chore.points= value) to the left of the checkmark — the positive mirror of D46's failed-extra −N — while a completed routine chore shows *no per-chore number*, because a routine earns a single +R no matter how many chores it holds; a per-chore +5 would misstate the one +R the routine pays, the same per-chore-honesty principle as D45. The routine-level reward stays the Story 08 banner completion-icon bonus badge (D51, D52). The green chip is a new kids'-view indicator, recorded as a design-language ruling (green chip = earned value on extras) in =docs/design-language.org= by the story that lands it, per the D48 pattern — a *pending design-language recording*, not written at design time. Rejected — a badge on every completed chore card (routine chores included): would misrepresent routine earning the way a per-chore −N misrepresents the capped penalty (D46), breaking the honesty the penalty side already observes. Settles the SC-2 / SC-6 earned-marking mirror. → Screens (routine region), Key Behaviors (earned-value marking), Overview.
+
+* User Story
+
+As a kid, I want to see how many points an extra earned me right on its card when I finish it — a green +N next to the checkmark — so that finishing an extra feels rewarding, while my routine chores stay clean of per-chore numbers because the routine pays one bonus, not a number per chore.
+
+* Acceptance Criteria
+
+** [ ] A completed (done-today) extra in the morning reveal (state 2) shows a green *+N chip* — its own =chore.points= value — to the left of the checkmark. (SC-2, SC-6, D54)
+** [ ] An incomplete extra shows *no* +N chip; a failed extra shows Story 06's *warning + −N* instead of a +N chip (never both). (SC-6, D46, D54)
+** [ ] A completed routine chore shows *no per-chore chip* (no +N) — the routine-level reward remains the Story 08 completion-icon bonus badge, unchanged. (SC-2, D45, D54)
+** [ ] The green earned chip is recorded as a design-language ruling (green chip = earned value on extras) in =docs/design-language.org= as the work lands (per repo convention). (D48, D54)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 06 (the =chore_row/1= / extra-card markup, the =#chore-penalty-{id}= failed-extra pattern this mirrors, and the =failed?=/=extra?= flags on rows), Story 02 (=chore.points=), and Story 04 (the parent-set points value). It renders the *completed-extra* case of state 2 only.
+- Give the earned chip a stable DOM id per Story 06's pattern (e.g. =#chore-earned-{chore.id}=, mirroring =#chore-penalty-{chore.id}=) so tests assert via =element/2= / =has_element?=. The chip appears wherever a *done extra* card renders in the morning reveal (=done? and @extra?=); render it =:if={done? and @extra?}= — the exact positive complement of the failed-extra =:if={@failed? and @extra?}= guard.
+- Read =docs/design-language.org= first per CLAUDE.md — its invariants are binding for any kids'-view visual change. The chip is a new kids'-view indicator, so its ruling is recorded there as part of this story (the D48 pattern), when the work lands: a new =* Rulings= entry stating "a green +N chip on a completed extra's card shows its earned value; routine chores carry no per-chore number."
+- Story 06's failed-chore rendering (warning icons, =−N=, the routine-penalty strip) and Story 08's completion-icon bonus badge are *untouched* — this story adds only the positive-earned chip on completed extras. Do not add a chip to routine chores (D54 / D45 honesty).
+- On-device: the 5-chore no-scroll budget *with the chip present* is verified at the manual batch-close gate, not by a per-story AC.

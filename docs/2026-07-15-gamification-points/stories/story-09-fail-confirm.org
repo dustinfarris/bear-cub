@@ -1,0 +1,85 @@
+#+title: Story 09 — Admin fail: confirmation guard + standing failed flag
+#+date: 2026-07-17
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Admin — fail-on-inspection (Screens)
+
+The parent reviews a kid's day (phone-first, over Tailscale) and fails a chore the child faked. A new =fail_chore/2= context action stamps =undone_at= + =failed_at= on the current live completion; the existing ="chores"= PubSub broadcast drives the kiosk live update (chore reverts to incomplete, routine bonus drops if it had been complete, failed-chore UI appears, points badge and completion badge update). This is a distinct action from the existing on-behalf undo. (SC-3, D40)
+
+Two guards protect the admin surface against a mis-tap, because a fail is /effectively irreversible/ — both =undone_at= and =failed_at= are stamped, there is no unfail action, and the only netting paths are the kid's in-window redo or the D49 parent on-behalf override (D53):
+
+- *Confirmation before it runs* — tapping fail does not immediately invoke =fail_chore/2=; it first requires explicit confirmation. Declining leaves the completion untouched. The confirmation guards the permanent, punitive judgment against an accidental tap. =fail_chore/2= itself is unchanged — only the interaction gains a confirm step.
+- *Solid, non-interactive flag after a fail* — once a chore is failed, its admin row shows the fail flag rendered *solid and non-interactive* for the rest of the day: standing evidence that the fail happened, visually distinct from the *actionable* fail flag offered on a still-done chore. This restores information the shipped one-tap surface lost, where the control simply vanished the moment the chore reverted to incomplete. (SC-3, SC-4, D53)
+
+** Context (=BearCub.Chores=) — unchanged in this story
+
+- =fail_chore/2= =(chore, local_now)= — stamp =undone_at= + =failed_at= on the current live completion; broadcast ="chores"=. Returns an error if there is no live completion to fail. The write path shipped in Story 05 is *not* touched — this story adds only the confirmation interaction and the standing flag on the admin surface.
+
+** Decision Log entry in scope
+
+- *D53 (2026-07-17) — Admin fail is confirmation-guarded; a failed chore's admin row keeps a solid, non-interactive fail flag for the day:* tapping fail in admin no longer runs =fail_chore/2= immediately — it requires explicit confirmation first, and after a fail the chore's row shows its fail flag rendered *solid and non-interactive* for the rest of the day, distinct from the *actionable* fail flag offered on a still-done chore. Rationale: a fail is effectively irreversible (both =undone_at= and =failed_at= are stamped, there is no unfail action; the only netting paths are the kid's in-window redo or the D49 parent on-behalf override) and punitive, so the confirmation guards a permanent judgment against a mis-tap, and the solid flag gives the admin standing evidence of the fail — where the shipped Story 05 control simply vanished the moment the chore reverted to incomplete. Rejected — immediate one-tap fail (the shipped Story 05 behavior): too easy to trigger a permanent penalty by an accidental tap. Rejected — a reversible fail/unfail toggle (considered and dropped by the human): it would erase penalty records and contradict SC-4's audit-trail permanence, where a fail row must persist forever. Settles SC-3 admin interaction safety; reinforces SC-4. → Screens (admin fail-on-inspection), Overview.
+
+* User Story
+
+As a parent, I need failing a chore to ask me to confirm before it commits — and to leave a standing mark on the failed chore for the rest of the day — so that I never impose a permanent, irreversible penalty by an accidental tap, and so I can see at a glance which chores I already failed today.
+
+* Acceptance Criteria
+
+** [X] Tapping the admin fail control does *not* immediately fail the chore: a confirmation is presented first (=fail_chore/2= is not invoked until the parent confirms). (SC-3, D53)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:09] \\
+  The =#fail-chore-{id}= button carries a ~data-confirm~ attribute (~today_live.ex:211~), the same unmodified Phoenix ~data-confirm~ gate already trusted for chore-delete (~chore_live/form.ex:116~) and calendar-delete (~calendar_live/form.ex:111~) — ~handle_event("fail-chore", ...)~ is unreachable until the client's own ~confirm()~ resolves true. Test: "the fail control carries a data-confirm attribute guarding the tap" (~today_live_test.exs:226~), passing.
+:END:
+** [X] Confirming the prompt executes the existing =fail_chore/2= write path unchanged (both =undone_at= and =failed_at= stamped, ="chores"= broadcast fired, kiosk live-updates as in Story 05). (SC-3, D53)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:10] \\
+  ~BearCub.Chores.fail_chore/2~ (~chores.ex:289-302~) and ~handle_event("fail-chore", ...)~ (~today_live.ex:38-51~) are byte-identical to Story 05 — ~git diff -- lib/bear_cub/chores.ex~ is empty. ~LiveViewTest.render_click/1~ dispatches straight to the server handler (bypassing the client ~data-confirm~ gate by design), which is the confirmed path per the Technical Notes. Tests, unchanged from Story 05 and still passing: "tapping fail reverts the chore and stamps a persistent penalty" (~today_live_test.exs:181~, asserts both ~undone_at~ and ~failed_at~) and "a fail live-updates the kiosk: the chore reverts and the points badge drops" (~today_live_test.exs:195~, asserts the ="chores"= broadcast reaches a live kiosk view).
+:END:
+** [X] Declining the prompt leaves the completion untouched: no =failed_at= is stamped, the chore stays done, and no broadcast fires. (SC-3, D53)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:10] \\
+  Verified structurally, per the Technical Notes' own prescribed strategy, not behaviorally: declining a native browser confirm() is a client-only path that ~Phoenix.LiveViewTest.render_click/1~ cannot simulate (it dispatches straight to the server handler, never running client JS), and this repo has no browser-driven test tool (no Wallaby/Playwright in ~mix.exs~). The guarantee instead rests on Phoenix LiveView's own ~data-confirm~ JS binding: it never sends the ~phx-click~ event to the server unless ~confirm()~ resolves true, so a decline can never reach ~handle_event("fail-chore", ...)~ — the same trusted, unmodified mechanism already relied on for chore-delete and calendar-delete elsewhere in this codebase, with no custom decline-handling code of our own that could regress. Evidence: the ~data-confirm~ attribute test cited under AC1.
+:END:
+** [X] A failed chore's admin row shows the fail flag rendered *solid and non-interactive* for the rest of the day (standing evidence), while the *actionable* fail flag appears only on a still-done chore. (SC-3, SC-4, D53)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:10] \\
+  Implemented with a refinement the human made mid-implementation, overriding this story's own Technical Notes: ~build_row/3~'s ~failed?~ (~today_live.ex:109-115~) is day-scoped only (~MapSet.member?(failed_ids, chore.id)~), independent of ~done?~ — once a chore is failed, the solid flag stands for the rest of the day even after a redo, and the actionable control never returns to it that day (~done? and not failed?~ gates the button, ~today_live.ex:207~; the solid ~span~ has no ~phx-click~/~phx-value~, confirmed non-interactive, ~today_live.ex:217-227~). This differs from the Technical Notes' original "failed-and-not-redone" framing (mirroring the kiosk's Story 06/D45 derivation), which would have dropped the flag on redo. Tests: "a still-done chore shows only the actionable fail control, never the solid flag" (~today_live_test.exs:234~), "a failed chore shows the solid, non-interactive flag instead of the actionable control" (~today_live_test.exs:243~, explicitly refutes ~#failed-flag-{id}[phx-click]~), "redoing a failed chore keeps the solid flag standing; the actionable control does not return" (~today_live_test.exs:255~) — all passing. Deferred discovery: the Technical Notes' "failed-and-not-redone" text and D53's rationale are now stale against this day-scoped behavior and need reconciling via =/workflow-kit:update-design= (new D-entry + Advisory); the checkbox's own literal wording is still satisfied ("actionable... only on a still-done chore" holds, just no longer the converse) but reads imprecisely against the refined rule.
+:END:
+
+* Definition of Done
+
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:11] \\
+  All 4 Acceptance Criteria above are =[X]= with LOGBOOK evidence. AC3 is verified structurally rather than behaviorally (no browser-driven test tool in this repo), per the story's own Technical Notes strategy. AC4 documents a deliberate mid-implementation refinement (day-scoped =failed?=, solid flag persists after redo) that diverges from the Technical Notes, flagged as a deferred discovery for =/workflow-kit:update-design= to reconcile.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:11] \\
+  ~mix test test/bear_cub_web/live/admin/today_live_test.exs~ → 19 passed, 0 failures (4 new in the "fail confirmation guard + standing flag (Story 09, D53)" describe block, Story 05's fail tests extended not replaced per the Technical Notes). Full suite ~mix test~ → 280 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:11] \\
+  ~today_live.ex~ uses ~<.icon>~ for both new icons (~hero-flag~, ~hero-flag-solid~), wraps the conditional flag color in ~if(@row.done?, do: ..., else: ...)~ inside the HEEx class list (~today_live.ex:220-224~), gives each new element a unique DOM id (~fail-chore-{id}~, ~failed-flag-{id}~), and introduces no raw ~<script>~ tags or LiveComponents. Test file uses ~element/2~/~has_element?/2~ exclusively, no raw HTML assertions.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:12] \\
+  ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format, test) exits 0: =Result: 280 passed=, no compiler warnings, formatter made no further changes to the touched files.
+:END:
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 05 (=fail_chore/2= and the =#fail-chore-{id}= admin control it shipped). This story changes only the admin interaction and the failed-row rendering — the context write path, the PubSub broadcast, and the kiosk are untouched.
+- Phoenix ~data-confirm~ (=phx-click= with a =data-confirm= attribute) is the expected shape for the confirmation guard — no bespoke modal LiveComponent. Confirm/decline is a client-side gate on the existing =phx-click="fail-chore"= handler; declining never reaches the server, so no completion is stamped.
+- Story 05's fail tests are updated to drive *through* the confirmation: LiveView tests trigger the =fail-chore= event as the confirmed path (=render_click= on =#fail-chore-{id}= exercises the post-confirm handler), and add coverage that the control carries the =data-confirm= attribute. Do not delete Story 05's write-path assertions — extend them.
+- The standing failed flag: render a *solid, non-interactive* fail marker (a stable DOM id, e.g. =#failed-flag-{chore.id}=, distinct from the =#fail-chore-{id}= actionable button) on a chore whose current-day state is failed-and-not-redone. "For the rest of the day" is the day-scoped =failed_at= fact — reuse the derivation already present (=failed_chore_ids/1= from Story 06), no new timestamp machinery. A row that is *done* (redoable) still shows the actionable fail button; a row that is *failed* shows the solid flag.
+- Kiosk is untouched — the kiosk/admin fence is unaffected; this story lives entirely in =Admin.TodayLive=.
