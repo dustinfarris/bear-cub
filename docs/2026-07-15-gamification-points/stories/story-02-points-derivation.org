@@ -60,20 +60,64 @@ As a kid, I need my points total to add up correctly from what I have really com
 
 * Acceptance Criteria
 
-** [ ] =BearCub.Routines.bonus/0= reads =R= (default 5) from =runtime.exs= via =Application.fetch_env!/2=, mirroring =windows/0=; it is not a DB row and not =chores.points=. (SC-2, D40)
-** [ ] An extra's contribution is =+chore.points= for a live (earned) row, =0= for an ordinary undo (=undone_at= set, =failed_at= null), and =−chore.points= for a failed row (both set). (SC-2, SC-3, D40)
-** [ ] A routine-day contributes =+R= when every routine chore has a live completion that day and =−R= when one or more routine chores has a failed completion that day; two or more fails in the same routine-day still contribute a single =−R= (capped), and =+R= is fixed regardless of chore count — a 4-chore and a 2-chore routine each earn exactly =R=. (SC-2, SC-3, D40)
-** [ ] Failing a routine chore after the routine was complete nets =−R= (bonus lost + penalty), and redoing all failed routine chores restores =+R= while the persisted =−R= remains, netting zero for that routine-day. (SC-3, D40)
-** [ ] The floored per-kid total is =max(0, Σ routine-day contributions + Σ extra contributions)=; the worked cases hold — 20 → complete a 5-pt extra → 25 → fail it → 15 → redo → 20; and the floor case 3 → complete a 5-pt chore → 8 → fail → shows 0 → redo → 3. (SC-1, SC-4, D41)
-** [ ] The =max(0, …)= floor is applied to the aggregate total only; the underlying signed contributions are never clamped, so the raw signed sum (including a persisted −value below zero) remains recoverable from the same derivation inputs. (SC-4, D41)
-** [ ] Every contribution and total function takes a local-date / local-datetime argument; expected test values are computed with those same pure functions, with no =utc_now= inside the derivation and no clock mocking in tests. (D40, D41)
+** [X] =BearCub.Routines.bonus/0= reads =R= (default 5) from =runtime.exs= via =Application.fetch_env!/2=, mirroring =windows/0=; it is not a DB row and not =chores.points=. (SC-2, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:22] \\
+  ~lib/bear_cub/routines.ex:58-61~ adds ~bonus/0~ as ~Application.fetch_env!(:bear_cub, :routine_bonus)~, matching ~windows/0~'s shape exactly. ~config/runtime.exs~ adds ~config :bear_cub, :routine_bonus, String.to_integer(System.get_env("BEAR_CUB_ROUTINE_BONUS", "5"))~ — env-overridable, default 5, no DB/table involvement. Test: ~test/bear_cub/routines_test.exs~ ~describe "bonus/0"~ asserts ~Routines.bonus() == 5~. Verified by the ~story-verifier~ subagent; ~mix test test/bear_cub/routines_test.exs~: 14 passed.
+:END:
+** [X] An extra's contribution is =+chore.points= for a live (earned) row, =0= for an ordinary undo (=undone_at= set, =failed_at= null), and =−chore.points= for a failed row (both set). (SC-2, SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:22] \\
+  ~lib/bear_cub/chores.ex~ ~extra_contribution/2~ (a ~cond~ checking ~failed_at~ first, then ~undone_at~, else ~chore.points~) matches D40's "checks ~failed_at~ first" rule exactly. Tests in ~test/bear_cub/chores_test.exs~ ~describe "extra_contribution/2 (Story 02, D40)"~: live row → ~7~, ordinary undo → ~0~, failed row → ~-7~. Verified by the ~story-verifier~ subagent against the actual implementation; ~mix test test/bear_cub/chores_test.exs~: 81 passed.
+:END:
+** [X] A routine-day contributes =+R= when every routine chore has a live completion that day and =−R= when one or more routine chores has a failed completion that day; two or more fails in the same routine-day still contribute a single =−R= (capped), and =+R= is fixed regardless of chore count — a 4-chore and a 2-chore routine each earn exactly =R=. (SC-2, SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:22] \\
+  ~lib/bear_cub/chores.ex~ ~routine_day_contribution/3~: ~complete?~ is ~Enum.all?/2~ over the routine's chore ids requiring a live completion each; ~failed?~ is ~Enum.any?/2~ over that day's completions with ~failed_at~ truthy — a boolean, never a per-row sum, matching D40's cap rule. Tests in ~test/bear_cub/chores_test.exs~ ~describe "routine_day_contribution/3 (Story 02, D40)"~: 2-chore complete → ~Routines.bonus()~; 4-chore complete → the same ~R~ (proving no chore-count scaling); incomplete/no fails → ~0~; one fail → ~-R~; two fails in the same routine-day → still ~-R~ (capped, SC-3). Verified by the ~story-verifier~ subagent; all passed.
+:END:
+** [X] Failing a routine chore after the routine was complete nets =−R= (bonus lost + penalty), and redoing all failed routine chores restores =+R= while the persisted =−R= remains, netting zero for that routine-day. (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:23] \\
+  Test ~"failing then redoing the failed chore restores +R while -R persists, netting zero (SC-3)"~ (~test/bear_cub/chores_test.exs~, ~describe "routine_day_contribution/3 (Story 02, D40)"~) completes both routine chores (asserts ~+R~), fails one (asserts ~-R~), then inserts a fresh live completion for the redo (asserts ~0~ net). The stale failed row and the new live row both feed ~complete?~/~failed?~ simultaneously since ~routine_day_contribution/3~ queries all rows for the date, not just current ones — producing ~+R + (-R) = 0~. Verified by the ~story-verifier~ subagent; passed.
+:END:
+** [X] The floored per-kid total is =max(0, Σ routine-day contributions + Σ extra contributions)=; the worked cases hold — 20 → complete a 5-pt extra → 25 → fail it → 15 → redo → 20; and the floor case 3 → complete a 5-pt chore → 8 → fail → shows 0 → redo → 3. (SC-1, SC-4, D41)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:23] \\
+  ~lib/bear_cub/chores.ex~ ~points_total/2~ sums ~extra_contribution/2~ over all extras (~local_date <=~ the given date, i.e. cumulative all-time) plus ~routine_day_contribution/3~ over distinct ~(routine, local_date)~ pairs, then ~max(0, extra_sum + routine_sum + other_signed_inputs)~. Tests in ~test/bear_cub/chores_test.exs~ ~describe "points_total/2 (Story 02, D41)"~ assert the exact worked-case numbers at each step: ~"worked example: extra earn -> fail -> redo nets back to start (20 -> 25 -> 15 -> 20)"~ and ~"floor case: the aggregate never shows negative though the true sum dips below zero (3 -> 8 -> 0 -> 3)"~. Verified by the ~story-verifier~ subagent; passed. A first pass omitted the D42 ~other_signed_inputs~ term from the summation shape (contra the story's own Technical Notes, "keep it in the summation shape, do not fold it away") — fixed by adding an explicit ~other_signed_inputs = 0~ local, documented in the ~@doc~ as the D42 seam; re-verified.
+:END:
+** [X] The =max(0, …)= floor is applied to the aggregate total only; the underlying signed contributions are never clamped, so the raw signed sum (including a persisted −value below zero) remains recoverable from the same derivation inputs. (SC-4, D41)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:23] \\
+  ~extra_contribution/2~ always returns the true signed value regardless of the aggregate's floor; ~max(0, …)~ is applied exactly once, at the end of ~points_total/2~. Test ~"the floor applies to the aggregate only — the raw signed row stays recoverable (SC-4)"~ shows one failed row's raw ~-5~ survives while ~points_total~ shows ~0~. A follow-up test, ~"the raw signed aggregate below zero is recoverable by composing the same pure functions (SC-4)"~, strengthens this to a genuine multi-row case: two failed extras (points 2 and 5) composed via ~Chores.extra_contribution/2~ give a raw sum of ~-7~, while ~Chores.points_total/2~ floors the same data to ~0~ — demonstrating the raw signed aggregate is recoverable purely by composing the exposed pure functions. Re-verified by the ~story-verifier~ subagent after the second test was added; ~mix test test/bear_cub/chores_test.exs test/bear_cub/routines_test.exs~: 81 passed.
+:END:
+** [X] Every contribution and total function takes a local-date / local-datetime argument; expected test values are computed with those same pure functions, with no =utc_now= inside the derivation and no clock mocking in tests. (D40, D41)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:23] \\
+  ~grep~ for ~utc_now~/~Date.utc_today~/~Mimic~/~Mox~/~freeze~ across ~lib/bear_cub/chores.ex~, ~lib/bear_cub/routines.ex~, and both test files returns zero matches — no buried clock reads, no clock mocking anywhere in this story's code. ~routine_day_contribution/3~ and ~points_total/2~ both take a ~local_date~ argument. ~extra_contribution/2~ does not take a date argument by design — it is row-local, deterministic purely from the persisted ~undone_at~/~failed_at~ flags (matching the Data Model's Extra-contribution table, which has no date column), documented as such in its ~@doc~ ("Row-local — no clock, no date needed"); the underlying invariant this AC protects (no buried clock read) is honored without a formal parameter. Test values use ~Routines.bonus()~ rather than a hardcoded ~5~ throughout. Verified by the ~story-verifier~ subagent.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:25] \\
+  All 7 Acceptance Criteria above are marked ~[X]~ with LOGBOOK evidence, independently verified by the ~story-verifier~ subagent against the actual implementation (~lib/bear_cub/chores.ex~, ~lib/bear_cub/routines.ex~, ~config/runtime.exs~). One drift found and fixed mid-review: AC5's first pass omitted the D42 ~other_signed_inputs~ summation term the Technical Notes required be kept visible — added and re-verified. No AC removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:25] \\
+  ~mix test test/bear_cub/chores_test.exs test/bear_cub/routines_test.exs~: 81 passed. Full suite ~mix test~ (via ~mix precommit~): 240 passed, 0 failures. All tests written test-first (RED confirmed — ~UndefinedFunctionError~ for each new function — before implementation landed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:25] \\
+  ~bonus/0~ mirrors ~windows/0~'s ~Application.fetch_env!/2~ shape exactly, per the design's explicit instruction. ~config/runtime.exs~ uses ~String.to_integer~ on an operator-set env var (not request-scoped user input), consistent with the pre-existing ~routine_windows~ pattern — no ~String.to_atom~ misuse anywhere. No ~is_~-prefixed predicate names (local vars ~complete?~/~failed?~ only, not exported functions). ~grep~ for ~utc_now~/~Date.utc_today~/~Mimic~/~Mox~/~freeze~ across the touched lib and test files returns zero matches — no buried clock reads, no clock mocking; every date-taking function receives its ~local_date~/~local_now~ argument explicitly. Verified by the ~story-verifier~ subagent.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 18:25] \\
+  This repo's weight class is personal-mvp, so the verify command is ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format, test). Ran twice, exit code 0 both times: no compiler warnings, no unused deps, ~mix format --check-formatted~ clean, ~mix test~: 240 passed, 0 failures. Verified by the ~story-verifier~ subagent.
+:END:
 
 * Technical Notes
 
@@ -85,3 +129,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - The routine cap is *structural*: model =failed?= as a boolean per =(kid, routine, local_date)=, never a per-row sum, so two fails cannot read as −2R. The =other_signed_inputs= term is present but empty (the D42 redemption seam) — keep it in the summation shape, do not fold it away.
 - This story lands the derivation and its unit tests only. The banner badge that *displays* =max(0, total)= is Story 03; the fail write path that *creates* failed rows is Story 05. Test the fail→redo net-zero and floor cases here at the pure-function layer by constructing completion rows directly (fail = a row with both =undone_at= and =failed_at= stamped, plus a fresh live row for the redo).
 - All functions thread a local datetime/date argument (configured timezone) per the design invariant; compute expected values in tests with the same pure functions — no =DateTime.utc_now/0= in domain code, no clock mocking.
+- Deferred discovery: =points_total/2= issues one query for distinct =(routine, local_date)= pairs, then one =routine_day_contribution/3= call (two more queries) per pair — an N+1 shape. Correctness is unaffected and all tests pass, but since the total is cumulative all-time and recomputed on every =:chores_changed= re-fetch (Story 03 wires the kiosk badge to it), this could become a real cost as history grows. Candidate for =docs/backlog.org= if it shows up as a perf concern once the badge is live.
