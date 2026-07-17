@@ -25,16 +25,44 @@ As a parent, I need to set how many points an extra chore is worth when I add or
 
 * Acceptance Criteria
 
-** [ ] The admin chore form has a =points= input, defaulting to 5, that a parent can adjust; submitting it persists the value on the chore. (SC-2, D39)
-** [ ] Editing an existing chore's =points= and saving updates the stored value. (SC-2, D39)
-** [ ] The =points= input is present for extras (=routine = nil=) and its value is what drives an extra's contribution; a routine chore may carry a value but it does not affect scoring. (SC-2, D39)
+** [X] The admin chore form has a =points= input, defaulting to 5, that a parent can adjust; submitting it persists the value on the chore. (SC-2, D39)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:09] \\
+  Added ~<.input field={@form[:points]} type="number" label="Points" />~ to ~lib/bear_cub_web/live/admin/chore_live/form.ex~. Default-5 rendering verified by ~"the points input defaults to 5 and is present on the new-chore form"~ (asserts ~render() =~ ~s(value="5")~ against ~#chore_points~). Persistence on submit verified by ~"creates an extra with a parent-adjusted points value"~ (asserts ~created.points == 8~). Both in ~test/bear_cub_web/live/admin/chore_live_test.exs~; ~mix test~ on that file → 21 passed.
+:END:
+** [X] Editing an existing chore's =points= and saving updates the stored value. (SC-2, D39)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:09] \\
+  Verified by ~"editing a chore's points updates the stored value"~ in ~test/bear_cub_web/live/admin/chore_live_test.exs~: creates a chore with ~points: 5~, submits the edit form with ~points: "12"~, asserts ~updated.points == 12~ via ~Chores.get_chore!/1~ re-fetch.
+:END:
+** [X] The =points= input is present for extras (=routine = nil=) and its value is what drives an extra's contribution; a routine chore may carry a value but it does not affect scoring. (SC-2, D39)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:09] \\
+  Input is unconditionally rendered (no ~:if~ guard) so it appears for both extras and routine chores per the Technical Notes. Extras-contribution-uses-points half verified by ~"creates an extra with a parent-adjusted points value"~ (~routine: nil~, ~created.points == 8~) and by the pre-existing ~Chores.extra_contribution/2~ (~lib/bear_cub/chores.ex~), which reads ~chore.points~ directly. Routine-chores-ignore-it half is Story 02's derivation (constant ~R~, never a sum of ~points~) — unchanged by this story, not re-tested here.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:10] \\
+  All three Acceptance Criteria checkboxes above are ~[X]~, each with a LOGBOOK entry naming concrete test evidence.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:10] \\
+  Three new tests in ~test/bear_cub_web/live/admin/chore_live_test.exs~ (~"the points input defaults to 5 and is present on the new-chore form"~, ~"creates an extra with a parent-adjusted points value"~, ~"editing a chore's points updates the stored value"~). ~mix test test/bear_cub_web/live/admin/chore_live_test.exs~ → 21 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:10] \\
+  ~lib/bear_cub_web/live/admin/chore_live/form.ex:96~ uses the imported ~<.input>~ component driven by ~@form[:points]~, consistent with the adjacent ~name~/~icon~ inputs and the repo's form conventions. ~mix format --check-formatted~ clean on both touched files.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 21:10] \\
+  Weight class is ~personal-mvp~, so the verify command is ~mix precommit~ per CLAUDE.md. Ran twice for reproducibility: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~ all passed both runs — 248 passed, 0 failures, exit code 0.
+:END:
 
 * Technical Notes
 
