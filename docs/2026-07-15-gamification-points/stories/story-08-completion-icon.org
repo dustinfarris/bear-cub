@@ -48,19 +48,59 @@ As a kid, I need my finished routine to show a big sun or moon with a green chec
 
 * Acceptance Criteria
 
-** [ ] When the active routine is complete (collapsed state), the kid's banner shows a large sun (morning) / moon (evening) icon beside the name with a green check upper-right; when the routine is incomplete, no completion icon shows (only name + points badge). (SC-7, D44)
-** [ ] The persistent routine header bar (=routine-header-#{kid.id}= button and its twin inside the collapse band) is removed; the banner completion icon is the collapse/expand affordance. (SC-7, D44, D48)
-** [ ] Tapping the completion icon expands the completed chore list (rows shown done, tap-to-undo); tapping it again collapses back to the completion message (and morning extras); undoing a chore from the expanded view returns the column to normal incomplete rows. (SC-7, D47)
-** [ ] The completion icon carries a bonus badge that renders only in the collapsed complete state: when =failed? = false= it shows =+R= (intact), and when =failed? = true= (a routine completed via in-window redo) it shows the bonus forfeited / zeroed (net 0). (SC-6, SC-7, D45, D47)
-** [ ] The header-bar retirement is recorded as a design-language ruling in =docs/design-language.org= as the work lands (per repo convention). (D48)
-** [ ] The sun/moon completion icon superseding the [2026-07-12] completion-badge deferral is recorded in =docs/design-language.org= as the work lands, replacing/annotating that deferral entry. (D48)
+** [X] When the active routine is complete (collapsed state), the kid's banner shows a large sun (morning) / moon (evening) icon beside the name with a green check upper-right; when the routine is incomplete, no completion icon shows (only name + points badge). (SC-7, D44)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 06:15] \\
+  ~lib/bear_cub_web/live/kiosk_live.ex:305-328~ renders ~<button id={"completion-icon-#{kid.id}"} :if={reveal?}>~ with ~completion_icon_name/1~ (~hero-sun-solid~/~hero-moon-solid~), carrying one green ~#completion-badge-#{kid.id}~ pill (~bg-success~) positioned upper-right of the icon (see the AC4 entry below). *Post-closeout correction:* the literal ~hero-check~ glyph inside that badge was removed at the human's request — the green pill itself, showing the bonus, is now the "complete" signal; there is no separate checkmark glyph. This diverges from this AC's literal "green check upper-right" wording and from ~DESIGN.org~'s Screens/Key-Behaviors prose, which still describe a checkmark — flagged for reconciliation via ~/workflow-kit:update-design~. Verified by ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ (62 passed) — tests "no completion icon shows while the routine is incomplete...", "shows a large sun icon with a green bonus badge...", "shows a large moon icon with a green bonus badge...".
+:END:
+** [X] The persistent routine header bar (=routine-header-#{kid.id}= button and its twin inside the collapse band) is removed; the banner completion icon is the collapse/expand affordance. (SC-7, D44, D48)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:38] \\
+  Both the ~routine-header-#{kid.id}~ button and the band's header-bar twin span are deleted, along with their now-unused ~routine_bar_style/1~/~routine_title/1~ helpers (confirmed gone via ~mix compile --warnings-as-errors~ — clean). ~#band-#{kid.id}~ is now a plain ~<div>~ (~kiosk_live.ex:441-450~), no ~phx-click~ — the completion icon is the sole tap target. Verified by test "the persistent routine header bar and its collapse-band twin are gone entirely (AC2, D48)".
+:END:
+** [X] Tapping the completion icon expands the completed chore list (rows shown done, tap-to-undo); tapping it again collapses back to the completion message (and morning extras); undoing a chore from the expanded view returns the column to normal incomplete rows. (SC-7, D47)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:38] \\
+  The ~toggle-band~ event (D34's ~@expanded~ MapSet) now fires from ~#completion-icon-#{kid.id}~ instead of the retired header. Verified by test "tapping the completion icon expands to chore rows (tap-to-undo) and hides extras; undo returns to normal rows; re-complete auto-collapses (Story 08, D44, D47)" in ~test/bear_cub_web/live/kiosk_live_test.exs~, which exercises expand, collapse, re-expand, undo-from-expanded back to normal rows, and re-complete → collapse-delay → band. Passes under ~mix test~.
+:END:
+** [X] The completion icon carries a bonus badge that renders only in the collapsed complete state: when =failed? = false= it shows =+R= (intact), and when =failed? = true= (a routine completed via in-window redo) it shows the bonus forfeited / zeroed (net 0). (SC-6, SC-7, D45, D47)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 06:22] \\
+  Routine-day ~failed?~ is computed locally in ~build_column/9~ from ~chores~/~failed_ids~ (day-scoped, mirroring the existing ~complete?~ local) and exposed on the column as ~failed?~. *Post-closeout correction (two rounds):* the badge's checkmark glyph was dropped (see the AC1 entry above), and then — at the human's explicit request, confirmed via clarifying question distinguishing this from the "failed-and-not-redone" case — the *forfeited badge itself was changed from "shown zeroed" to "not rendered at all"*: ~#completion-badge-#{kid.id}~ now carries ~:if={not failed?}~ (~kiosk_live.ex:318-329~), so a redo-after-fail (=complete? = true=, =failed? = true=) shows the sun/moon icon (still tap-toggleable) with *no* bonus badge, rather than a struck-through =+R=. This diverges from this AC's literal "shows the bonus forfeited / zeroed" wording and from ~DESIGN.org~'s D45/D47 text, which still describe a zeroed-not-hidden badge — flagged for reconciliation via ~/workflow-kit:update-design~ alongside the AC1 checkmark divergence. Verified by three tests: intact-badge (shows =+R=), redo-after-fail (icon present, badge absent), and the cross-day negative case (a fail on a prior day does not forfeit today's badge) — all pass under ~mix test~.
+:END:
+** [X] The header-bar retirement is recorded as a design-language ruling in =docs/design-language.org= as the work lands (per repo convention). (D48)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:38] \\
+  ~docs/design-language.org~ ~* Rulings~ carries a new =[2026-07-16]= entry: the persistent routine header bar (and its collapse-band twin) is retired, the banner completion icon is now the collapse/expand affordance, and a future reintroduction of a routine-region header requires a new ruling.
+:END:
+** [X] The sun/moon completion icon superseding the [2026-07-12] completion-badge deferral is recorded in =docs/design-language.org= as the work lands, replacing/annotating that deferral entry. (D48)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:39] \\
+  The original =[2026-07-12]= deferral bullet in ~docs/design-language.org~ ~* Rulings~ was edited in place (not appended-to) to add "Superseded =[2026-07-16]=: a large sun (morning) / moon (evening) completion icon with a green check now renders in the child's banner whenever their routine is complete, carrying the routine bonus badge (intact or forfeited)." Confirmed by the story-verifier subagent that this is an edit of the original entry, satisfying "replacing/annotating that deferral entry" rather than a second contradicting bullet.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:40] \\
+  All 6 items in ~* Acceptance Criteria~ above are marked =[X]= with LOGBOOK evidence; none are deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:40] \\
+  ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → 62 passed, 0 failures. New ~describe "completion icon (Story 08, D44, D47, D48)"~ block covers icon-absent-when-incomplete, header/twin removal, sun (morning) and moon (evening) icons, intact badge, forfeited-via-redo badge, and the cross-day negative case; the existing band-toggle and points-badge tests were updated to tap the icon instead of the retired ~#band-#{kid.id}~ button.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:40] \\
+  All icon usage goes through ~<.icon name="hero-..."/>~ (no raw Heroicons module, no vendored SVG); no raw ~<script>~ tags introduced; conditional class on the badge uses a single boolean-gated expression (~class={failed? && "line-through opacity-70"}~), not a multi-value list needing ~[...]~ syntax. ~mix compile --warnings-as-errors~ is clean, confirming the removed ~routine_bar_style/1~/~routine_title/1~ helpers left no dangling references.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 00:41] \\
+  Repo weight class is personal-mvp, so ~mix precommit~ (~compile --warnings-as-errors, deps.unlock --unused, format, test~) is the declared gate. Ran clean: exit 0, no compiler warnings, no unused deps, no formatting diff, ~Result: 276 passed~ across the full suite.
+:END:
 
 * Technical Notes
 

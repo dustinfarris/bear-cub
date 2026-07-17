@@ -10,8 +10,10 @@ A child-color left border (=--child-border-width=) means chore ownership — who
 Collapsed routine cards never carry a child-color border — collapse is a routine-level state, not any one child's. Extras render on a fixed neutral surface (=--extra-card-background=, =--extra-card-content=) independent of routine and theme, so they never inherit tint meaning.
 
 * Rulings
-The collapsed-routine message renders inside the collapsed card, below the header bar — do not re-litigate.
+The collapsed-routine message renders inside the collapsed card — do not re-litigate.
 
-Completion badge (sun/moon) considered and deferred [2026-07-12]; collapse + message are the completion signals. Do not add indicators without a ruling.
+The persistent routine header bar (the routine-colored title bar above the chore rows, and its twin atop the collapsed band) is retired [2026-07-16]; the banner completion icon beside the child's name is now the routine card's collapse/expand affordance. Do not reintroduce a routine-region header without a ruling.
+
+Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + message were the only completion signals. Superseded [2026-07-16]: a large sun (morning) / moon (evening) completion icon with a green check now renders in the child's banner whenever their routine is complete, carrying the routine bonus badge (intact or forfeited). Do not add further indicators without a ruling.
 
 Tokens live in assets/css/app.css, in the block above the LiveView class variants.
