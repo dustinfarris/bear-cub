@@ -93,6 +93,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
         <.form for={@form} id="chore-form" phx-change="validate" phx-submit="save" class="space-y-2">
           <.input field={@form[:name]} type="text" label="Name" />
           <.input field={@form[:icon]} type="text" label="Icon (emoji)" placeholder="🪥" />
+          <.input field={@form[:points]} type="number" label="Points" />
           <.input
             :if={@live_action == :edit}
             field={@form[:routine]}

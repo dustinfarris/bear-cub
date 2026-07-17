@@ -283,6 +283,41 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
                [existing_extra.id, updated.id]
     end
 
+    test "the points input defaults to 5 and is present on the new-chore form",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      assert view |> element("#chore_points") |> render() =~ ~s(value="5")
+    end
+
+    test "creates an extra with a parent-adjusted points value", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      view
+      |> form("#chore-form", chore: %{name: "Wash Car", icon: "🚗", points: "8"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      [created] = Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date())
+      assert created.points == 8
+    end
+
+    test "editing a chore's points updates the stored value", %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil, points: 5})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{points: "12"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      updated = Chores.get_chore!(chore.id)
+      assert updated.points == 12
+    end
+
     test "reclassifying an extra to evening via Edit re-appends to the evening bucket",
          %{conn: conn, kid_a: kid_a} do
       existing_evening =
