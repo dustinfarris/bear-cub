@@ -72,6 +72,7 @@ defmodule BearCubWeb.Admin.TodayLive do
 
     # done today? — derived, never stored (design §2)
     completions = Chores.current_completions(today)
+    failed_ids = Chores.failed_chore_ids(today)
 
     cards =
       for kid <- Chores.list_kids() do
@@ -79,7 +80,7 @@ defmodule BearCubWeb.Admin.TodayLive do
           for routine <- [active, Routines.other(active)] do
             chores =
               for chore <- Chores.list_chores(kid, Atom.to_string(routine)) do
-                %{chore: chore, done?: Map.has_key?(completions, chore.id)}
+                build_row(chore, completions, failed_ids)
               end
 
             %{
@@ -92,13 +93,25 @@ defmodule BearCubWeb.Admin.TodayLive do
 
         extras =
           for extra <- Chores.list_extras(kid, today) do
-            %{chore: extra, done?: Map.has_key?(completions, extra.id)}
+            build_row(extra, completions, failed_ids)
           end
 
         %{kid: kid, sections: sections, extras: extras}
       end
 
     assign(socket, cards: cards, active: active)
+  end
+
+  # Unlike the kiosk's failed-and-not-redone derivation (Story 06/D45),
+  # admin's `failed?` is day-scoped only (D53): once failed, the solid
+  # flag stands for the rest of the day even after a redo — the actionable
+  # control never returns to a chore already failed today.
+  defp build_row(chore, completions, failed_ids) do
+    %{
+      chore: chore,
+      done?: Map.has_key?(completions, chore.id),
+      failed?: MapSet.member?(failed_ids, chore.id)
+    }
   end
 
   @impl true
@@ -191,15 +204,27 @@ defmodule BearCubWeb.Admin.TodayLive do
         {@row.chore.name}
       </span>
       <button
-        :if={@row.done?}
+        :if={@row.done? and not @row.failed?}
         id={"fail-chore-#{@row.chore.id}"}
         phx-click="fail-chore"
         phx-value-chore-id={@row.chore.id}
+        data-confirm={"Fail “#{@row.chore.name}”? This can't be undone."}
         title="Fail — reverts and deducts points"
         class="rounded-full p-1 text-white/80 hover:text-white"
       >
         <.icon name="hero-flag" class="size-5 drop-shadow-sm" />
       </button>
+      <span
+        :if={@row.failed?}
+        id={"failed-flag-#{@row.chore.id}"}
+        title="Failed today"
+        class={[
+          "rounded-full p-1",
+          if(@row.done?, do: "text-white drop-shadow-sm", else: "text-error")
+        ]}
+      >
+        <.icon name="hero-flag-solid" class="size-5" />
+      </span>
       <.icon :if={@row.done?} name="hero-check" class="size-6 text-white drop-shadow-sm" />
     </li>
     """

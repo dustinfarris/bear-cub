@@ -222,6 +222,50 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     end
   end
 
+  describe "fail confirmation guard + standing flag (Story 09, D53)" do
+    test "the fail control carries a data-confirm attribute guarding the tap",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#fail-chore-#{ctx.a_active.id}[data-confirm]")
+    end
+
+    test "a still-done chore shows only the actionable fail control, never the solid flag",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#fail-chore-#{ctx.a_active.id}")
+      refute has_element?(view, "#failed-flag-#{ctx.a_active.id}")
+    end
+
+    test "a failed chore shows the solid, non-interactive flag instead of the actionable control",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#fail-chore-#{ctx.a_active.id}") |> render_click()
+
+      refute has_element?(view, "#fail-chore-#{ctx.a_active.id}")
+      assert has_element?(view, "#failed-flag-#{ctx.a_active.id}")
+      refute has_element?(view, "#failed-flag-#{ctx.a_active.id}[phx-click]")
+    end
+
+    test "redoing a failed chore keeps the solid flag standing; the actionable control does not return",
+         %{conn: conn} = ctx do
+      {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#fail-chore-#{ctx.a_active.id}") |> render_click()
+      view |> element("#today-chore-#{ctx.a_active.id}") |> render_click()
+
+      assert has_element?(view, "#today-chore-#{ctx.a_active.id}[data-done]")
+      assert has_element?(view, "#failed-flag-#{ctx.a_active.id}")
+      refute has_element?(view, "#fail-chore-#{ctx.a_active.id}")
+    end
+  end
+
   describe "extras" do
     import BearCub.ChoresFixtures
 
