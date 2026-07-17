@@ -1,0 +1,206 @@
+#+title: DESIGN — Bear Cub: Gamification (Points)
+#+date: 2026-07-16
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Each kid gets an always-visible, per-child points score on the kiosk that grows as they complete routines and extras and never resets (SC-1). Points are earned at /two granularities/ (SC-2): a whole routine (=:morning= / =:evening=) is worth a fixed bonus =R= no matter how many chores it holds, while each extra is worth its own parent-adjustable value. Parents gain a /fail-on-inspection/ action (SC-3): failing a chore the kid faked reverts it to incomplete so it can be redone /and/ deducts its points as a penalty, so a caught lie that is then redone nets zero. Multiple fails inside one routine on one day cost a single routine penalty, not one per chore.
+
+The whole feature rides on the shipped machinery rather than adding a parallel system — the same move the Extras initiative made (D27). A fail is a completion event, so it lives on the completion row: the single storage change is =completions.failed_at= (a nullable fail marker beside =undone_at=) plus =chores.points= for extra values (D39). The score is /purely derived/ from =completions= (honoring D10), never stored, no reset job, no ledger table. The signed contributions (+value earned, 0 undone, −value failed) sum, and the aggregate is floored at zero for display while the signed rows persist forever as the audit trail (SC-4, D41). The total is shaped so a future redemption spend slots into the same summation without reshaping earnings (SC-4 seam / Out of Scope; D42) — but redemption is not built here.
+
+On the kiosk, routine completion is celebrated (SC-7): each chore's completion is briefly visible before the routine list collapses, and a completed routine surfaces a large sun/moon completion icon /in the banner beside the child's name/ (D44), carrying a points badge and a green check, that tap-toggles the completed chore list open and closed (D47). The persistent routine header bar is retired; its identity-and-toggle role moves to that icon (D44, D48). Failed chores are visibly marked with their point impact (SC-6): a failed extra shows a warning and its own −N; a failed routine chore shows only a "redo me" warning, with the single −R routine impact surfaced once at the routine level (D45, D46).
+
+Two oneshots from the same completion-reward theme are claimed as batch members of this initiative (PRD SC-7): the *collapse-delay* (the brief per-chore-completion pause before the list collapses) and the *big-icon* completion affordance. This initiative also makes two /design-language rulings/ — retiring the persistent routine header bar, and superseding the [2026-07-12] deferral of a sun/moon completion badge in =docs/design-language.org= (D48). Those rulings are recorded in =design-language.org= when the work lands (per repo convention), not now.
+
+** Context this design builds on (restated, self-contained)
+
+This initiative extends the shipped kiosk without changing these facts:
+
+- *Kiosk* (=/=, =BearCubWeb.KioskLive=): a viewport-locked two-column grid, one =<section>= per kid, rendered server-side (no LiveComponents). Each column is a =grid-rows-[auto_auto_1fr_auto]= stack: kid-color banner =<header>= (=kid.name=) / events strip / routine card region (=1fr=) / extras. Per-column =state= is one of =:night= / =:rows= / =:band=, computed in =build_column/5=: =reveal? = (not night?) and complete?=; collapse is gated on the active window, not pure completion (D33). Manual re-expand is an ephemeral =@expanded= =MapSet= of kid ids, self-clearing each render (D34).
+- *Day state is derived, never stored* (D10): a chore is done-today iff a =completions= row exists with =local_date = today AND undone_at IS NULL=. Tap inserts a dated fact; undo stamps =undone_at= (row retained); midnight needs no job. =Chores.current_completions/1= is the kiosk's one done-today query, a =%{chore_id => %Completion{}}= map.
+- *Routines are app constants* =:morning= / =:evening= (=BearCub.Routines=), never DB rows (D8). Windows live in =runtime.exs= (=:routine_windows=, env-overridable); =Routines.current/2= returns ={:active, slug}= or ={:upcoming, slug}=.
+- *Extras* (D27): an extra is a =chores= row with =routine = nil=, reusing the =completions= table wholesale. =list_extras/2= returns non-retired extras; extras surface only as a morning reward after the morning routine completes in-window (D28, D33).
+- *Live updates*: =Phoenix.PubSub= topic ="chores"=; every =Chores= write broadcasts a payload-free =:chores_changed=; subscribers re-fetch (never patch from payload). A derived points total recomputes for free on that existing re-fetch — no new broadcast plumbing.
+- *Admin* (phone-first, over Tailscale): =Admin.TodayLive= is the per-kid correction surface (on-behalf mark/unmark). The kiosk has zero navigation to admin.
+
+* Data Model
+
+Two columns, no new table. =completions= gains a fail marker; =chores= gains an extra-points value. The =kids= table is unchanged — no points total is stored (the score is derived).
+
+** =completions.failed_at= — nullable =utc_datetime=
+
+The fail marker, distinct from =undone_at=. A fail stamps *both* columns on the current live completion for =(chore, local_date)=:
+
+- =undone_at= — reverts the chore to incomplete, reusing every existing done-derivation (=undone_at IS NULL=, unchanged) and freeing the partial unique index so the child can redo.
+- =failed_at= — the persistent penalty record.
+
+Points-derivation checks =failed_at= *first*:
+
+#+begin_src
+failed_at set  ->  −value        (penalty; persists forever as audit trail)
+undone_at set  ->  0             (ordinary undo)
+otherwise      ->  +value        (live/earned)
+#+end_src
+
+An ordinary admin undo stamps only =undone_at= (contribution 0). Only a fail stamps =failed_at= (contribution −value). The fail/undo distinction is load-bearing for the score (D40). Rows are never deleted; the partial unique index =(chore_id, local_date) WHERE undone_at IS NULL= already permits a fresh live row on redo — exactly the fail→redo cycle. (D39)
+
+** =chores.points= — integer, default 5, NOT NULL
+
+Authoritative for *extras* (=routine = nil=), parent-adjustable in the admin chore form. Routine chores carry the column too (it is present on every row for a uniform schema and changeset) but *ignore it* in derivation — a routine's value is the constant =R=, never the sum of its chores' =points= (D39, D40). Choosing a non-null column on all rows over NULL-for-routine-chores avoids nullable handling in every points read for no modeling gain; the discriminator that matters is =routine=, already present.
+
+** Routine bonus constant =R=
+
+=R= (default *5*) is an app constant in =runtime.exs=, env-overridable — the same treatment routine windows get (D8), read via =Application.fetch_env!/2= behind a =BearCub.Routines.bonus/0= accessor mirroring =windows/0=. Not a DB row, not =chores.points=. (D39, D40)
+
+** Why this reuses D10 / D27 rather than a =points_ledger=
+
+A fail *is* a completion event, so it belongs on the completion row (the D27 nullable-discriminator pattern applied a second time; see =docs/learnings.org=, [2026-07-12]). A standalone ledger would duplicate the dating, undo, on-behalf =source=, history, and PubSub that =completions= already provides, and would fork the audit trail from the completion history it is inseparable from — a parent inspecting "what happened to this chore today" would have to join two logs. Every scoring event is a completion event (earn = a live completion; fail = an undo+marker on a completion; future redemption spends are the only non-completion inputs, and those are deferred). The ledger buys nothing the discriminator column does not. Rejected. (D39)
+
+* Screens / Interfaces
+
+** Kiosk banner (=KioskLive=, per kid =<header>=)
+
+The kid-color banner is the standing home of child identity and now carries the points readout and the completion icon:
+
+- *Points badge* — a persistent per-kid badge in the banner, tied to child identity (child-color semantics), *always visible* regardless of routine state. Displays =max(0, total)= (never negative, SC-4). It belongs to the child, not the routine, so it is independent of the routine card's collapse/expand and of the header-bar retirement. (SC-1, D43)
+- *Completion icon* — when the active routine is complete (collapsed state), a large sun (morning) / moon (evening) icon appears in the banner beside the name, with a green check upper-right, carrying a *points badge* (see Key Behaviors → completion celebration for the badge's intact/forfeited states). Tapping the icon expands the completed chore list; tapping it again collapses it (D44, D47). When the routine is incomplete, no completion icon shows — only name + points badge.
+
+** Kiosk routine region (the =1fr= card), by state
+
+The persistent routine header bar (the =routine-header-#{kid.id}= button and its twin inside the collapse band) is *retired*; the banner completion icon is now the collapse/expand affordance (D44, D48). The region renders exactly one of:
+
+1. *Normal* (=:rows=, active routine incomplete): chore rows as today. If ≥1 routine chore is failed that day, that chore shows a *"redo me" warning* (no per-chore number), and a single *routine-penalty strip* shows *−R* once at the top of the region (D45, D46). No banner completion icon in this state.
+2. *Complete + window active* (collapsed): banner shows the completion icon + badge; the region shows the completion message (=morning_complete/0= / =evening_complete/0=), and *morning additionally reveals extras* (outstanding + done-today, each tap-to-complete / undo — D28, D33). The chore list is hidden. A failed extra here shows a *warning + −N* (its own value). (SC-6, SC-7)
+3. *Expanded-complete* (banner icon tapped): the completed chore rows return (all done, tap-to-undo); the message and extras are hidden. Re-tapping the icon returns to state 2. Undoing any chore → routine no longer complete → back to state 1. (D47)
+4. *Night* (=Routines.current/2= is ={:upcoming, _}=): Good Night mode, unchanged (D32).
+
+** Admin — fail-on-inspection
+
+The parent reviews a kid's day (phone-first, over Tailscale) and fails a chore the child faked. A new =fail_chore/2= context action stamps =undone_at= + =failed_at= on the current live completion; the existing ="chores"= PubSub broadcast drives the kiosk live update (chore reverts to incomplete, routine bonus drops if it had been complete, failed-chore UI appears, points badge and completion badge update). This is a distinct action from the existing on-behalf undo. (SC-3, D40)
+
+** Admin — chore form
+
+The chore form gains a =points= input (default 5), parent-adjustable, authoritative for extras. Routine chores may carry a value but it does not affect scoring. (SC-2, D39)
+
+* Key Behaviors
+
+** Points model — two granularities, purely derived
+
+Points are earned at two granularities, a deliberate distinction: a whole routine is worth a fixed bonus no matter how many chores it holds, while each extra is worth its own value. The total is cumulative all-time, derived from =completions= (nothing stored, no reset job), and floored at zero on the aggregate only.
+
+#+begin_src
+total(kid) = max(0, Σ routine-day contributions + Σ extra contributions + Σ other_signed_inputs)
+#+end_src
+
+where =other_signed_inputs= is *empty today* — the seam for future redemption spends (D42), not hard-wired away.
+
+*Extra contribution* (per completion row):
+
+#+begin_src
+Row state       undone_at   failed_at   Contribution
+Live (earned)   NULL        NULL        +chore.points
+Ordinary undo   set         NULL        0
+Failed          set         set         −chore.points
+#+end_src
+
+*Routine contribution* (per kid × routine × local day — /not/ per row, because the penalty is capped):
+
+#+begin_src
+complete? = every routine chore has a live completion that day        -> +R
+failed?   = one or more routine chores has a failed completion that day -> −R   (capped: 2+ fails still −R)
+routine-day contribution = (complete? ? +R : 0) + (failed? ? −R : 0)
+#+end_src
+
+The cap falls out of =failed?= being a *boolean per routine-day*, not a per-row sum. A 4-chore routine and a 2-chore routine both earn exactly =R= — routine points never scale with chore count (SC-2). All contribution functions take a local-date / local-datetime argument; no buried =utc_now=, no clock mocking. (D40, D41)
+
+** Floor-at-zero applies to the aggregate only
+
+The =max(0, …)= floor applies to the *aggregate total*. Individual signed rows are *never* clamped — a failed row's −value physically persists as the permanent penalty record and audit trail (SC-4). The kiosk never shows a negative number; the aggregate returns to its true value once positive. Accepted, deliberate trade-off: flooring loses information (two kids both showing 0 may have different true standings) — a future redemption feature that needs a true balance sums the raw signed contributions directly; the floored total is the display/reward figure, not the only figure derivable. (D41)
+
+** Fail-on-inspection and redo net to zero
+
+- *Fail* (=fail_chore/2=, parent-initiated in admin): on the current live completion for =(chore, local_date)=, stamp =undone_at= + =failed_at=. The chore reverts to incomplete (redoable), the −value penalty is recorded, and PubSub updates the kiosk. Takes a local-datetime argument.
+- *Redo* (child taps the chore again on the kiosk): a new live completion row is inserted (the partial unique index permits it; the failed row stays, undone). The restored +value and the persisted −value net to zero — because the child lied, the best outcome is back to start.
+- *Routine cap in action:* completing the whole morning routine → +R. Fail one chore → routine no longer complete (bonus gone) *and* −R → net −R from the bonus. Fail a *second* chore in the same routine → still one −R (capped). Redo all failed chores → routine complete again (+R), penalty persists (−R) → net zero. (SC-3, D40)
+
+*Worked examples (SC-3):* child at 20 completes a 5-point extra → 25; parent fails it → +5 becomes −5 → 15; child redoes → new +5, failed −5 persists → 20 (back to start). Floor case: child at 3 completes a 5-point chore (→8), failed (true −2, shows *0*), redoes (→3).
+
+** In-window redo recovers; a closed window is a permanent loss
+
+The routine-day contribution is scoped to =(kid, routine, local_date)= in the derivation; the *recovery boundary* is the routine /window/, enforced by kiosk reachability rather than by the derivation (amended SC-5, [2026-07-16]). The derivation stays day-scoped and unchanged — no timestamp checks — because the kiosk only ever renders the *active* routine's chore rows, so there is no kid write path to a chore whose window has closed:
+
+- *Redo while the routine window is active:* the failed chore's row still renders (its routine is the active one, reverted to incomplete), so the child can tap it again. The redo's new live row is dated today, so today's =complete?= becomes true again (+R) while today's =failed?= stays true (−R) → net zero. Recovered.
+- *Not redone before the window ends:* once =Routines.current/2= moves past the window, the routine region stops rendering that routine's rows entirely — the failed chore is no longer reachable on the kiosk, so no new live row can be created for it. Its routine-day keeps =complete? = false= (that chore never got a fresh live row) and =failed? = true=, so it contributes a bare −R that is now *final*. This is the *permanent loss with no recovery path* (SC-5), and it needs no timestamp gate in the derivation because the kid write path simply ceases to exist. Human-ruled: a parent *on-behalf completion* through admin after the window closes is a deliberate parent override that MAY net the penalty — an accepted, intentional escape hatch, not a leak to close (D49).
+- *A failed extra stays recoverable* (SC-5): a fail sets =undone_at=, so the extra has no current completion → it is *outstanding* again (D28) and reappears at the next morning reveal (until-done). Redoing it on any later day inserts a fresh live +value that offsets the persisted −value. Unlike a routine-day, an extra is not window-bound, so recovery is not time-boxed. Its −value persists in the audit trail regardless. (SC-5, D40, D41, D49)
+
+** Completion celebration and the badge's forfeited state
+
+Routine completion is celebrated on the kiosk (SC-7):
+
+- *Collapse-delay:* a short delay between the last routine chore completing and the routine list collapsing, so the child sees the per-chore completion reward before the whole-routine collapse/bonus moment. (Batch member; SC-7 "each chore's completion is briefly visible before the routine list collapses.")
+- *Banner completion icon + tap-toggle:* on collapse, the banner shows the large sun/moon icon with a green check; *tapping it expands* the completed chore list and *tapping again collapses* it (D47 — the superseded pre-PRD position offered only tap-to-restore; the toggle is SC-7 contract). Undoing a chore from the expanded view returns to normal incomplete rows.
+- *Points badge — intact vs. forfeited.* The completion icon carries a badge showing the routine bonus "if not forfeited." *Forfeited* is defined precisely against the routine-day: =forfeited? = failed?= (the routine-day carries ≥1 failed completion). The badge renders only in the collapsed complete state (=complete? = true=), and shows:
+
+#+begin_src
+failed? = false  ->  bonus INTACT     -> badge shows +R           (full, celebratory)
+failed? = true   ->  bonus FORFEITED  -> badge shows +R zeroed    (net 0: finished, but the caught lie cost the bonus)
+#+end_src
+
+  This is the honest signal for the redo case: a routine completed via an in-window redo (=complete? = true=, =failed? = true=) contributes +R −R = 0, and the badge reads forfeited rather than a live +R. When a routine chore is failed and *not yet redone*, the routine is incomplete → no completion icon shows → the −R surfaces instead as the routine-penalty strip in the expanded rows (below). Across both states, the −R routine impact is shown *once at the routine level* (SC-6). (D45, D47)
+
+** Failed-chore marking on the kiosk
+
+A failed chore is visibly failed, with its point impact shown (SC-6):
+
+- *Failed extra:* a warning icon *+ −N* (its own =chore.points= value) on the extra card, in the morning reveal (state 2).
+- *Failed routine chore:* a warning icon on the card (signals "redo me"), *no per-chore number*. The numeric −R impact is shown *once at the routine level*: as a routine-penalty strip in the expanded region while any routine chore is failed-and-not-redone (state 1), or carried by the forfeited completion badge once the routine is redone-and-complete (state 2). This is honest about the cap — two failed routine chores never read as −10 when the real hit is a single −R. (SC-6, D45, D46)
+
+** Where the routine −R lives (relocation from the pre-PRD position)
+
+The superseded pre-PRD position hung the routine-level −R on the big sun/moon area at the *old routine-header location*. With the completion icon relocated to the banner (D44) and the header bar retired, that anchor no longer exists — and a failed, not-yet-redone routine is *incomplete*, so no completion icon is even showing. The −R therefore surfaces where the failed routine actually is: the *routine-penalty strip* at the top of the expanded routine region (state 1), and, after an in-window redo re-completes the routine, the *forfeited completion badge* (state 2). Either way it appears once per routine-day, satisfying SC-6. (D45)
+
+** Context (=BearCub.Chores=)
+
+- Add =fail_chore/2= =(chore, local_now)= — stamp =undone_at= + =failed_at= on the current live completion; broadcast ="chores"=. Returns an error if there is no live completion to fail.
+- Add points derivation — pure functions over =completions= and =chores.points= / =R= that compute the extra and routine-day contributions above and the floored per-kid total, each taking a local-date argument. The kiosk reads the total in =load/2= and recomputes for free on the existing =:chores_changed= re-fetch.
+- =complete_chore= / =undo_chore= / =toggle_completion= / =current_completions= and the ="chores"= broadcast are unchanged; a fail is the only new write path.
+
+* Out of Scope for This Design
+
+Per PRD "Out of Scope", restated as design boundaries:
+
+- *Rewards / redemption* — no store, spending flow, or streaks. The total is shaped as =max(0, completions_earnings + other_signed_inputs)= with =other_signed_inputs= empty today, so a future signed spend event slots in without reshaping earnings; the seam must not be precluded, and this design does not preclude it (D42). This deferral is swept into =docs/backlog.org= at initiative close (the Deferred→backlog flow), not edited into =backlog.org= now.
+- *Per-day / per-week reset, leaderboards, ranking between kids* — the total is cumulative all-time per child (D41).
+- *Default emoji for extras* — a separate untriaged backlog item, not claimed here.
+
+* Decision Log
+
+# Judgments about the system being built, Dn-numbered, append-only — see the workflow-kit org-conventions skill. Design-time entries are minted freely during promotion; post-canon entries pair with a body edit and an Advisory.
+#
+# Numbering: this repo runs one monotonic Decision Log sequence across initiatives (D1–D26 in docs/2026-07-09-mvp/, D27–D38 in docs/2026-07-11-extras/). This initiative continues from D39. See CLAUDE.md "Repo conventions".
+
+- *D39 (2026-07-16) — Storage: extend =completions= with =failed_at=, add =chores.points=; no =points_ledger= table:* a fail is a completion event, so the fail marker lives on the completion row (=failed_at=, nullable =utc_datetime=, beside =undone_at=), and extra values live in =chores.points= (integer, default 5, NOT NULL on all rows; routine chores ignore it in favor of the constant =R=). This is the D27 nullable-discriminator pattern applied a second time (see =docs/learnings.org= [2026-07-12]). Rejected — a standalone =points_ledger= table: duplicates the dating/undo/=source=/history/PubSub =completions= already provides and forks the audit trail from the completion history it is inseparable from; every scoring event is a completion event, so the ledger buys nothing the column does not. Rejected — NULL =points= for routine chores: adds nullable handling to every points read for no modeling gain (the =routine= discriminator already distinguishes them). Settles SC-2 storage, SC-4 audit trail. → Data Model, Key Behaviors (points model).
+- *D40 (2026-07-16) — Fail = undo + persistent penalty; routine penalty capped at one −R per routine-day; extras cost their own value:* a fail stamps both =undone_at= (reverts the chore, contribution 0-path freed) and =failed_at= (contribution −value); an ordinary undo stamps only =undone_at= (contribution 0) — the fail/undo distinction is load-bearing for the score. Derivation checks =failed_at= first. The routine penalty is a boolean =failed?= per =(kid, routine, local_date)= yielding a single −R regardless of how many chores were failed, coexisting with +R after a redo to net zero; extras are per-row and cost their own =chore.points=. Rejected — per-chore routine penalties (−R each): would read as −10 for two fails when the real, intended hit is a single −R. Settles SC-3. → Data Model, Key Behaviors (fail-on-inspection, points model), Screens (admin fail).
+- *D41 (2026-07-16) — Cumulative all-time derived total, floored at zero on the aggregate only:* the total is =max(0, Σ contributions)=, purely derived from =completions= (nothing stored, no reset job, honoring D10), and never resets. The floor applies to the aggregate only; individual signed rows are never clamped, so a failed row's −value persists forever as the audit trail (SC-4) and the aggregate returns to its true value once positive. Accepted trade-off: flooring loses information (two 0s may differ in true standing) — a future balance-needing feature sums the raw signed rows; the floored total is the display figure, not the only derivable one. Rejected — a stored running total or per-day/week reset: violates the derived-state doctrine (D10) and the cumulative-all-time contract (SC-1, PRD Out of Scope). Settles SC-1, SC-4. → Key Behaviors (points model, floor-at-zero).
+- *D42 (2026-07-16) — Redemption seam: total shaped as =max(0, earnings + other_signed_inputs)=, spends deferred:* the summation carries an =other_signed_inputs= term that is empty today, so a future redemption spend (a negative, non-completion signed input) slots in without reshaping earnings — the total is deliberately /not/ hard-wired as a pure function of =completions=. Redemption itself (store, spending flow, streaks) is out of scope, ruled by the human. Rejected — hard-wiring the total to =completions= only: would force a reshape of the earnings derivation when redemption arrives, precluding the seam the PRD requires be kept open. Settles the SC-4 / Out-of-Scope seam. → Key Behaviors (points model), Out of Scope.
+- *D43 (2026-07-16) — Persistent per-kid points badge in the banner:* the always-visible points readout lives in the kid-color banner tied to child identity, showing =max(0, total)=, independent of the routine card's collapse/expand and of the header-bar retirement because it belongs to the child, not the routine. Rejected — a completion-only or routine-scoped indicator: SC-1 requires the total be always visible, so it cannot live on the routine card that collapses. Settles SC-1 placement. → Screens (banner), Key Behaviors.
+- *D44 (2026-07-16) — The completion icon lives in the banner beside the child's name; the header bar is retired with its toggle role moving to the icon:* the large sun/moon completion icon renders in the kid banner (with the points badge and a green check), and the persistent routine header bar is retired — its identity and its expand/collapse role move to the icon. Rejected — the superseded pre-PRD position, the icon replacing the header bar /in situ/ at the old header location: PRD SC-7 puts the icon in the banner with the child's name, and the banner is also where the always-visible points badge lives, so co-locating child identity, score, and completion celebration in one child-owned region is cleaner than a routine-region icon. The header bar is still retired either way; only the icon's home differs. Settles SC-7 placement (divergence 1). → Screens (banner, routine region), Overview.
+- *D45 (2026-07-16) — Routine-level −R surfaces in the expanded region (penalty strip) and, after redo, in the forfeited badge:* with the completion icon relocated to the banner (D44) and a failed-not-redone routine being /incomplete/ (no icon shown), the SC-6 "once at the routine level" −R is re-derived to where the failed routine actually is — a routine-penalty strip at the top of the expanded routine region while any routine chore is failed-and-not-redone, and the forfeited completion badge once an in-window redo re-completes the routine. Either way it appears once per routine-day. Rejected — the superseded pre-PRD position, hanging −R on the big sun/moon area at the old header location: that anchor no longer exists after D44, and a failed routine shows no completion icon at all, so the impact would have nowhere to render in the state where it matters most. Settles SC-6 routine-level placement (divergence 2). → Key Behaviors (where the routine −R lives, failed-chore marking), Screens (routine region).
+- *D46 (2026-07-16) — Failed-chore marking: per-extra warning + −N; per-routine-chore warning only, no per-chore number:* a failed extra shows a warning icon and its own −N (=chore.points=); a failed routine chore shows only a "redo me" warning with no per-chore number, because the routine impact is a single capped −R shown once at the routine level (D45), not a per-chore sum. Rejected — a per-chore −N on failed routine chores: would misrepresent the capped penalty (two fails reading as −10 when the hit is one −R). Settles SC-6 per-chore marking. → Key Behaviors (failed-chore marking), Screens (routine region).
+- *D47 (2026-07-16) — Completion badge "forfeited" semantics and the tap-toggle:* the completion icon's points badge shows the bonus "if not forfeited," with =forfeited? = failed?= (the routine-day carries ≥1 failed completion); the badge renders only in the collapsed complete state and reads +R when intact and +R-zeroed (net 0) when forfeited — honest that a redo-after-fail completion earns nothing net. The icon *tap-toggles* the completed chore list open and closed. Rejected — the superseded pre-PRD tap-to-restore-only affordance: SC-7 specifies a toggle (expand /and/ collapse), so a one-way restore is insufficient. Rejected — defining "forfeited" as "any fail ever": forfeiture is per routine-day (=failed?=), matching the capped, day-scoped penalty (D40) — a fail on a /different/ day does not forfeit today's bonus. Settles SC-7 badge + toggle (divergence 3, SC-7 content beyond the spec). → Key Behaviors (completion celebration), Screens (banner, routine region).
+- *D48 (2026-07-16) — Design-language rulings: retire the routine header bar; supersede the [2026-07-12] completion-badge deferral:* this initiative rules that (a) retiring the persistent routine header bar is a design-language ruling, not merely implementation, and (b) its sun/moon completion icon *supersedes* the [2026-07-12] deferral in =docs/design-language.org= ("Completion badge (sun/moon) considered and deferred; collapse + message are the completion signals. Do not add indicators without a ruling.") — this initiative /is/ that ruling. Both are recorded in =design-language.org= when the work lands (per repo convention: that file is edited as the work lands, not at design time), so they are noted here as *pending design-language recordings*. Rejected — treating the header-bar removal as a silent implementation detail: the design-language file governs kids'-view visuals and must carry the ruling so future styling work does not re-litigate or reintroduce the bar/deferral. → Overview, Screens (routine region), Key Behaviors (completion celebration).
+- *D49 (2026-07-16) — SC-5 recovery boundary is the routine window, enforced by kiosk reachability, not the local day:* per the [2026-07-16] PRD amendment, a failed routine chore is recoverable only while its routine window is active. Once =Routines.current/2= moves past the window, the routine region stops rendering that routine's rows, so no kid write path exists to redo the chore and its −R is *final*. The points derivation stays day-scoped (=(kid, routine, local_date)=) and unchanged — the boundary is enforced by *reachability*, needing no timestamp check. Human-ruled: a parent on-behalf completion through admin after the window closes is a deliberate override that MAY net the penalty — accepted as an intentional escape hatch, not a leak. Rejected — the pre-amendment day-scoped rule (recovery until the local day ends; a cross-midnight redo dates /today/ and cannot restore /yesterday's/ bonus): superseded by amended SC-5, which design review showed was already unreachable in practice (the kiosk renders only the active routine). Rejected — timestamp-gating the derivation to enforce the window: machinery built for a parent-only path that is instead ruled a legitimate override; the kid path is already closed by reachability alone. Authority: amended SC-5. Settles the SC-5 recovery boundary. → Key Behaviors (in-window redo recovers), Data Model. This is a design-time amendment response — no Advisory (design is not yet canon).
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
+
+# (none — design-time promotion has no prior readers to protect)
