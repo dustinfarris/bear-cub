@@ -91,26 +91,6 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#chore-#{chore.id}", "🪥")
     end
 
-    test "renders a persistent routine header with a centered title and no completion badge yet",
-         %{conn: conn, kid_a: kid_a} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-      morning_active()
-
-      chore_fixture(kid_a, %{
-        name: "Brush Teeth",
-        icon: "🪥",
-        routine: Atom.to_string(auto_routine())
-      })
-
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      title = if auto_routine() == :morning, do: "Morning Routine", else: "Evening Routine"
-
-      assert has_element?(view, "#routine-header-#{kid_a.id}", title)
-      refute has_element?(view, "#routine-header-#{kid_a.id} .hero-check")
-    end
-
     test "chore cards render at a fixed height instead of equally filling the column",
          %{conn: conn, kid_a: kid_a} do
       original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
@@ -673,25 +653,6 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{retired.id}")
     end
 
-    test "no completion indicator renders on the routine header — collapse + message are the signal (deferred, docs/design-language.org)",
-         %{conn: conn, kid: kid} do
-      morning_active()
-      now = LocalTime.now()
-
-      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
-
-      {:ok, view, _html} = live(conn, ~p"/")
-      assert has_element?(view, "#band-#{kid.id}")
-      refute has_element?(view, "#band-#{kid.id} .hero-sun-mini")
-      refute has_element?(view, "#band-#{kid.id} .hero-moon-mini")
-
-      view |> element("#band-#{kid.id}") |> render_click()
-      assert has_element?(view, "#routine-header-#{kid.id}")
-      refute has_element?(view, "#routine-header-#{kid.id} .hero-sun-mini")
-      refute has_element?(view, "#routine-header-#{kid.id} .hero-moon-mini")
-    end
-
     test "an extra renders on the fixed neutral card surface, not the routine tint",
          %{conn: conn, kid: kid} do
       morning_active()
@@ -810,7 +771,7 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{extra.id}[data-done]")
     end
 
-    test "tapping the band re-expands to chore rows (tap-to-undo) and hides extras; undo returns to normal rows; re-complete auto-collapses",
+    test "tapping the completion icon expands to chore rows (tap-to-undo) and hides extras; undo returns to normal rows; re-complete auto-collapses (Story 08, D44, D47)",
          %{conn: conn, kid: kid} do
       morning_active()
       now = LocalTime.now()
@@ -821,17 +782,27 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
       assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#completion-icon-#{kid.id}")
 
-      view |> element("#band-#{kid.id}") |> render_click()
+      view |> element("#completion-icon-#{kid.id}") |> render_click()
 
       refute has_element?(view, "#band-#{kid.id}")
       refute has_element?(view, "#extras-#{kid.id}")
       assert has_element?(view, "#chores-#{kid.id} #chore-#{chore.id}[data-done]")
+      # the icon persists across the toggle — it's the affordance back too
+      assert has_element?(view, "#completion-icon-#{kid.id}")
 
+      view |> element("#completion-icon-#{kid.id}") |> render_click()
+
+      assert has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#chores-#{kid.id}")
+
+      view |> element("#completion-icon-#{kid.id}") |> render_click()
       view |> element("#chore-#{chore.id}") |> render_click()
 
       refute has_element?(view, "#chore-#{chore.id}[data-done]")
       refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#completion-icon-#{kid.id}")
       assert has_element?(view, "#chores-#{kid.id}")
 
       view |> element("#chore-#{chore.id}") |> render_click()
@@ -841,6 +812,126 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#band-#{kid.id}")
       send(view.pid, {:collapse_ready, kid.id})
       assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+    end
+  end
+
+  describe "completion icon (Story 08, D44, D47, D48)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    test "no completion icon shows while the routine is incomplete — only name and points badge (AC1)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#completion-icon-#{kid.id}")
+      refute has_element?(view, "#completion-badge-#{kid.id}")
+      assert has_element?(view, "#kid-column-#{kid.id} h1", "Kid A")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+    end
+
+    test "the persistent routine header bar and its collapse-band twin are gone entirely (AC2, D48)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#routine-header-#{kid.id}")
+
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#routine-header-#{kid.id}")
+      assert has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#band-#{kid.id}", "Morning Routine")
+      assert has_element?(view, "#band-#{kid.id}", BearCub.Messages.morning_complete())
+    end
+
+    test "shows a large sun icon with a green bonus badge for a complete morning routine",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
+      refute has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
+      refute has_element?(view, "#completion-badge-#{kid.id} .hero-check")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+    end
+
+    test "shows a large moon icon with a green bonus badge for a complete evening routine",
+         %{conn: conn, kid: kid} do
+      evening_active()
+      now = LocalTime.now()
+      chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
+      refute has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
+      refute has_element?(view, "#completion-badge-#{kid.id} .hero-check")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+    end
+
+    test "the bonus badge shows the intact routine bonus when nothing failed (AC4, D47)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+    end
+
+    test "no bonus badge shows when the routine was completed via an in-window redo after a fail, though the icon still toggles (AC4, D45, D47)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, now)
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+      refute has_element?(view, "#completion-badge-#{kid.id}")
+    end
+
+    test "a fail on a different day does not forfeit today's bonus — the badge stays intact (D47 rejected alternative)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+      yesterday = DateTime.add(now, -1, :day)
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(chore, yesterday, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, yesterday)
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
     end
   end
 
@@ -1149,7 +1240,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#band-#{kid.id}")
       assert has_element?(view, "#points-badge-#{kid.id}")
 
-      view |> element("#band-#{kid.id}") |> render_click()
+      view |> element("#completion-icon-#{kid.id}") |> render_click()
       assert has_element?(view, "#chores-#{kid.id}")
       assert has_element?(view, "#points-badge-#{kid.id}")
 

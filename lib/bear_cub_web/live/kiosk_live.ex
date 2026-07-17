@@ -168,6 +168,12 @@ defmodule BearCubWeb.KioskLive do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
 
+    # Routine-day `failed?` (D45, D47): any of today's routine chores carries
+    # a failed completion, independent of done-today — a redo can leave
+    # `complete? = true` and `failed? = true` at once. The completion icon's
+    # badge reads that combination as "forfeited" (forfeited? = failed?).
+    failed? = Enum.any?(chores, &MapSet.member?(failed_ids, &1.id))
+
     # Collapse-delay (Story 07, SC-7): a routine that just now became fully
     # complete enters `pending_collapse` and stays in :rows through this
     # render — the last chore's own completion stays briefly visible before
@@ -207,6 +213,7 @@ defmodule BearCubWeb.KioskLive do
       state: state,
       routine: auto,
       reveal?: reveal?,
+      failed?: failed?,
       chores: chore_rows,
       extras: extras,
       # The routine-penalty strip is a single capped indicator, modeled on
@@ -267,6 +274,8 @@ defmodule BearCubWeb.KioskLive do
               kid: kid,
               state: state,
               routine: routine,
+              reveal?: reveal?,
+              failed?: failed?,
               chores: chores,
               extras: extras,
               routine_penalty?: routine_penalty?,
@@ -283,11 +292,42 @@ defmodule BearCubWeb.KioskLive do
                Never dimmed: identity stays legible across the kitchen.
                The points badge belongs to the child, not the routine (D43):
                it renders unconditionally here, independent of the routine
-               card's collapse/expand and of any routine state below. --%>
+               card's collapse/expand and of any routine state below. The
+               completion icon (D44) is the retired routine header bar's
+               replacement: it is now the routine card's collapse/expand
+               affordance, so it renders whenever the routine is complete
+               and reveal-eligible (`reveal?`), in both the collapsed band
+               and the manually re-expanded rows (D47). --%>
           <header
             class="relative flex items-center justify-center py-5"
             style={"background-color: #{kid.color}"}
           >
+            <button
+              :if={reveal?}
+              type="button"
+              id={"completion-icon-#{kid.id}"}
+              phx-click="toggle-band"
+              phx-value-kid-id={kid.id}
+              class="absolute left-5 flex items-center justify-center transition active:scale-[0.99]"
+            >
+              <span class="relative flex items-center justify-center">
+                <.icon
+                  name={completion_icon_name(routine)}
+                  class="size-11 text-white drop-shadow-sm"
+                />
+                <%!-- Bonus badge (D44, D47): shown only "if not forfeited" —
+                     forfeited? = failed?, the routine-day boolean. A
+                     forfeited bonus shows no badge at all rather than a
+                     zeroed one; the icon itself still toggles. --%>
+                <span
+                  :if={not failed?}
+                  id={"completion-badge-#{kid.id}"}
+                  class="absolute -right-2 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
+                >
+                  +{Routines.bonus()}
+                </span>
+              </span>
+            </button>
             <h1 class="text-4xl font-bold tracking-tight text-white drop-shadow-sm">
               {kid.name}
             </h1>
@@ -341,32 +381,13 @@ defmodule BearCubWeb.KioskLive do
             </p>
           </div>
 
-          <%!-- Routine card: a persistent, routine-colored header (yellow for
-               morning, purple for evening) sits above either the chore rows
-               (expanded) or the completion message (collapsed band).
-               Tapping the header toggles collapse; the tap is a no-op
-               server-side unless the routine is reveal-eligible (D33/D34).
-               No completion indicator on the header — collapse + the
-               completion message are the signal (docs/design-language.org). --%>
-          <div
-            :if={state != :night}
-            id={"routine-#{kid.id}"}
-            class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100"
-          >
-            <button
-              :if={state == :rows}
-              type="button"
-              id={"routine-header-#{kid.id}"}
-              phx-click="toggle-band"
-              phx-value-kid-id={kid.id}
-              class="flex items-center justify-center px-4 py-3 transition active:scale-[0.99]"
-              style={routine_bar_style(routine)}
-            >
-              <span class="text-center text-xl font-bold tracking-tight">
-                {routine_title(routine)}
-              </span>
-            </button>
-
+          <%!-- Routine card: either the chore rows (normal or manually
+               re-expanded) or the completion message (collapsed band). The
+               persistent routine header bar is retired (D44, D48) — the
+               banner completion icon above is now the sole collapse/expand
+               affordance; a tap is a no-op server-side unless the routine
+               is reveal-eligible (D33/D34). --%>
+          <div :if={state != :night} id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
             <%!-- Chores: fixed-height full-width rows, top-aligned (empty
                  space below the last card is fine); beyond capacity only
                  this region scrolls (FR-6). Not done = routine tint fill +
@@ -376,7 +397,7 @@ defmodule BearCubWeb.KioskLive do
                  phx-throttle swallows the excited rapid double-tap (D15).
                  Also covers the manually re-expanded band (state 4, D34):
                  same rows, all shown done, tap-to-undo. --%>
-            <div :if={state == :rows} class="grid grid-rows-[auto_1fr] overflow-hidden">
+            <div :if={state == :rows} class="grid h-full grid-rows-[auto_1fr] overflow-hidden">
               <%!-- Routine-penalty strip: a single capped −R shown once while
                    any routine chore is failed-and-not-redone (D45, D46) —
                    never a per-chore sum (two fails still show one −R, not
@@ -408,34 +429,22 @@ defmodule BearCubWeb.KioskLive do
 
             <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
                  active window, not pure completion. A single bounded card —
-                 routine tint fill (same token as chore cards), routine-color
-                 header as its top edge, message inside — not a header
-                 floating over the page background. `self-start` keeps it
-                 hugging its own content height instead of stretching to
-                 fill the column (docs/design-language.org). The whole card
-                 is the tap target back to the rows above; shorter than a
-                 chore card and border-free by design (docs/design-language.org). --%>
-            <button
+                 routine tint fill (same token as chore cards), message
+                 inside; no header bar edge (retired, D44, D48). `self-start`
+                 keeps it hugging its own content height instead of
+                 stretching to fill the column (docs/design-language.org).
+                 The banner completion icon above is the tap target back to
+                 the rows, not the card itself (D44). --%>
+            <div
               :if={state == :band}
-              type="button"
               id={"band-#{kid.id}"}
-              phx-click="toggle-band"
-              phx-value-kid-id={kid.id}
-              class="flex flex-col self-start overflow-hidden text-left transition active:scale-[0.99]"
+              class="flex flex-col self-start overflow-hidden"
               style={"background-color: var(--routine-#{routine}-tint)"}
             >
-              <span
-                class="flex items-center justify-center px-4 py-3"
-                style={routine_bar_style(routine)}
-              >
-                <span class="text-center text-xl font-bold tracking-tight">
-                  {routine_title(routine)}
-                </span>
-              </span>
               <span class="px-4 py-3 text-center text-base font-semibold">
                 {band_message(routine)}
               </span>
-            </button>
+            </div>
           </div>
 
           <%!-- Extras: below the routine card, never tinted (invariant —
@@ -528,11 +537,8 @@ defmodule BearCubWeb.KioskLive do
   defp chore_card_style(false, false, routine, kid_color),
     do: "background-color: var(--routine-#{routine}-tint); border-left-color: #{kid_color}"
 
-  defp routine_bar_style(routine),
-    do: "background-color: var(--routine-#{routine}); color: var(--routine-#{routine}-content)"
-
-  defp routine_title(:morning), do: "Morning Routine"
-  defp routine_title(:evening), do: "Evening Routine"
+  defp completion_icon_name(:morning), do: "hero-sun-solid"
+  defp completion_icon_name(:evening), do: "hero-moon-solid"
 
   defp band_message(:morning), do: Messages.morning_complete()
   defp band_message(:evening), do: Messages.evening_complete()
