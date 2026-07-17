@@ -45,19 +45,59 @@ As a kid, I need a failed chore to show me clearly that I have to redo it — an
 
 * Acceptance Criteria
 
-** [ ] In the normal routine state (=:rows=, active routine incomplete), a failed routine chore shows a "redo me" warning icon on its card with *no per-chore number*. (SC-6, D46)
-** [ ] While ≥1 routine chore is failed-and-not-redone in the active routine, a single routine-penalty strip shows =−R= once at the top of the routine region; two failed routine chores still show a single =−R=, never =−2R=. (SC-6, D45, D46)
-** [ ] A failed extra in the morning reveal (state 2) shows a warning icon *and its own =−N=* (=chore.points=). (SC-6, D46)
-** [ ] While the routine window is active, a failed routine chore's row still renders and can be tapped to redo (it reverts to incomplete); after the redo the routine is complete again and the penalty strip is gone. (SC-5, D49)
-** [ ] Once =Routines.current/2= has moved past the routine's window, the routine region no longer renders that routine's rows, so the failed chore is unreachable on the kiosk and no new live completion can be created for it — the permanent-loss path. (SC-5, D49)
-** [ ] A failed extra returns to *outstanding* (its fail set =undone_at=, leaving no current completion) and reappears at the next morning reveal, recoverable on a later day. (SC-5, D40, D49)
+** [X] In the normal routine state (=:rows=, active routine incomplete), a failed routine chore shows a "redo me" warning icon on its card with *no per-chore number*. (SC-6, D46)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:18] \\
+  Verified: ~chore_row/1~ in ~kiosk_live.ex~ renders ~hero-exclamation-triangle~ only ~:if={@failed? and not @extra?}~, with no numeric span for routine chores. Test "a failed-and-not-redone routine chore shows a warning icon with no per-chore number (AC1, D46)" in ~test/bear_cub_web/live/kiosk_live_test.exs~ asserts the icon is present and refutes both ~#chore-penalty-#{chore.id}~ and the chore's own points value appearing on the card. Passing.
+:END:
+** [X] While ≥1 routine chore is failed-and-not-redone in the active routine, a single routine-penalty strip shows =−R= once at the top of the routine region; two failed routine chores still show a single =−R=, never =−2R=. (SC-6, D45, D46)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:19] \\
+  Verified: ~routine_penalty?~ in ~kiosk_live.ex~ is computed as the boolean ~state == :rows and Enum.any?(chore_rows, & &1.failed?)~ (never a per-chore sum), rendered once as ~#routine-penalty-#{kid.id}~ showing ~−#{Routines.bonus()}~. Test "a single routine-penalty strip shows −R once, capped even with two failed chores (AC2, D45, D46)" fails both routine chores and asserts the strip text contains ~−R~ but not ~−2R~. Companion test "no routine-penalty strip when nothing is failed" confirms absence otherwise. Both passing.
+:END:
+** [X] A failed extra in the morning reveal (state 2) shows a warning icon *and its own =−N=* (=chore.points=). (SC-6, D46)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:19] \\
+  Verified: ~chore_row/1~ renders ~#chore-penalty-#{@chore.id}~ (icon + ~−{@chore.points}~) only ~:if={@failed? and @extra?}~. Test "a failed extra in the morning reveal shows a warning icon and its own −N (AC3, D46)" fails an extra with ~points: 12~ and asserts both the warning icon and ~#chore-penalty-#{extra.id}~ containing =−12=. Companion test confirms a never-failed extra shows neither. Both passing.
+:END:
+** [X] While the routine window is active, a failed routine chore's row still renders and can be tapped to redo (it reverts to incomplete); after the redo the routine is complete again and the penalty strip is gone. (SC-5, D49)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:19] \\
+  Verified: ~build_rows/3~ recomputes ~done?~/~failed?~ on every ~load/2~, so a redo (fresh completion row) flips ~done?~ true, dropping both the row's warning and the aggregate ~routine_penalty?~. Test "while the window is active, a failed chore's row still renders and can be redone, clearing its warning and the penalty strip (AC4, D49)" asserts strip + warning present pre-redo, ~render_click~s the chore row, then asserts ~[data-done]~, no warning icon, and no penalty strip. Passing.
+:END:
+** [X] Once =Routines.current/2= has moved past the routine's window, the routine region no longer renders that routine's rows, so the failed chore is unreachable on the kiosk and no new live completion can be created for it — the permanent-loss path. (SC-5, D49)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:19] \\
+  Verified: ~build_column/7~ only fetches ~chores = if night?, do: [], else: Chores.list_chores(...)~ for the active routine — no timestamp gate was added to the derivation (~failed_chore_ids/1~ is purely additive; ~routine_day_contribution/3~/~points_total/2~ untouched). Test "once Routines.current/2 moves past the window mid-session, a failed chore's row becomes unreachable — permanent loss (AC5, D49)" asserts the chore row + warning + strip visible while the window is active, then drives the window closed via ~put_windows~ + ~send(view.pid, :boundary)~ and asserts (via ~refute has_element?~) the row and strip are both gone, per the Technical Notes' prescribed shape. Passing.
+:END:
+** [X] A failed extra returns to *outstanding* (its fail set =undone_at=, leaving no current completion) and reappears at the next morning reveal, recoverable on a later day. (SC-5, D40, D49)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:19] \\
+  Verified: ~fail_chore/2~ stamps ~undone_at~ alongside ~failed_at~, so the extra has no current completion and remains in ~list_extras/2~'s outstanding set (retirement only excludes a chore with a /live/ completion dated before ~local_date~, which doesn't apply to a failed row). Test "a failed extra returns to outstanding, stays visible in the reveal, and can be redone on a later day (AC6, D40, D49)" asserts the extra is present but not ~[data-done]~ in the reveal after the fail, then completes it a day later and asserts ~{:ok, redone}~ with ~redone.undone_at == nil~. Passing.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:24] \\
+  All 6 ACs marked =[X]= above with per-item LOGBOOK evidence; independently re-verified by ~workflow-kit:story-verifier~, which re-ran each named test and cross-checked the implementation line-by-line against the AC text.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:24] \\
+  ~mix test test/bear_cub/chores_test.exs~ → 77 passed (includes the 4 new ~failed_chore_ids/1~ tests); ~mix test test/bear_cub_web/live/kiosk_live_test.exs:818~ → 8 passed, 47 excluded (the full "failed-chore marking (Story 06, D45, D46, D49)" block, covering AC1–AC6). All Story 06 tests pin routine windows explicitly and pass regardless of time of day.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:24] \\
+  Reviewed against CLAUDE.md's Elixir/Phoenix/LiveView guidelines: no struct map-access syntax, HEEx conditionals via =:if={...}=, the ~icon/1~ component used (never a raw Heroicons module), predicate naming (=routine_penalty?=, =failed?=) compliant, stable DOM ids added per the Technical Notes. ~mix format --check-formatted~ on the four changed files: exit 0, no diffs.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 23:25] \\
+  ~mix precommit~ (this repo's declared gate: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) — compile/unlock/format steps clean; ~test~ → 254/269 passed, 15 failures. All 15 are pre-existing, time-of-day-dependent flakiness in tests that predate this story and don't pin routine windows (the suite runs during the 23:00–05:00 Good Night gap) — confirmed identical in name and count via a ~git stash~ baseline run against the pre-Story-06 commit at the same wall-clock time. Zero Story 06 tests are among the failures.
+:END:
 
 * Technical Notes
 
@@ -68,3 +108,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - SC-5 reachability is a *rendering* property, not a derivation change: the kiosk already fetches only the active routine's rows (D33 gating from the Extras initiative). Test the closed-window case by driving the LiveView with a local datetime past the window and asserting the failed chore row is absent (=refute has_element?=) — there is no kid write path to assert against because the row is not there.
 - Do not add any timestamp gate to the derivation; the day-scoped derivation from Story 02 is unchanged. The parent on-behalf-completion override after window close (D49) is an accepted escape hatch — not something this story closes or tests as a leak.
 - Reuse the existing chore-row / extra-row markup; add warning affordances with stable DOM ids so tests assert via =element/2= / =has_element?=.
+- Deferred discovery: a pre-existing set of ~KioskLiveTest~/~Admin.TodayLiveTest~/~Admin.ChoreLiveTest~ tests (predating this story) call the real clock via ~auto_routine()~ or equivalent without pinning routine windows, so they fail whenever the suite runs inside the 23:00–05:00 Good Night gap (confirmed via a ~git stash~ baseline at the same wall-clock time — same 15 test names fail identically with or without this story's changes). Not this story's tests, not this story's regression; worth a repo-level fix (adopt the =morning_active=/=put_windows= pinning helpers already used by this story and by the "collapse band" describe block) swept to =docs/backlog.org=.
