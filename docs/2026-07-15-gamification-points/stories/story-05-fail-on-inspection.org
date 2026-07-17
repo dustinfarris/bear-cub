@@ -43,19 +43,59 @@ As a parent, I need to fail a chore my child tapped done but did not really do, 
 
 * Acceptance Criteria
 
-** [ ] =BearCub.Chores.fail_chore/2= =(chore, local_now)= stamps *both* =undone_at= and =failed_at= on the current live completion for =(chore, local_date)=, reverting the chore to incomplete while retaining the row. (SC-3, D40)
-** [ ] =fail_chore/2= is distinct from an ordinary on-behalf undo (which stamps only =undone_at=): only a fail stamps =failed_at=, and the failed row persists permanently (never deleted). (SC-3, SC-4, D40)
-** [ ] =fail_chore/2= returns an error when there is no live completion to fail. (SC-3, D40)
-** [ ] =fail_chore/2= broadcasts on the existing ="chores"= topic, and the kiosk live-updates: the chore reverts to incomplete and the points badge drops by the failed value (bonus drop included when the routine had been complete). (SC-3, D40)
-** [ ] The admin per-kid review surface exposes a fail action, separate from the existing on-behalf undo, that invokes =fail_chore/2= with a local-datetime argument. (SC-3, D40)
-** [ ] After a fail, the child redoing the chore on the kiosk inserts a fresh live completion (the partial unique index permits it); the restored +value and persisted −value net to zero, matching the worked example (20 → 25 → 15 → 20). (SC-3, D40)
+** [X] =BearCub.Chores.fail_chore/2= =(chore, local_now)= stamps *both* =undone_at= and =failed_at= on the current live completion for =(chore, local_date)=, reverting the chore to incomplete while retaining the row. (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  Implemented at ~lib/bear_cub/chores.ex~ (~fail_chore/2~, near ~undo_chore/2~): stamps both columns via a single ~Ecto.Changeset.change/2~ call (programmatic, matches Technical Notes). Verified by ~"stamps both undone_at and failed_at on the current live completion, reverting it"~ in ~test/bear_cub/chores_test.exs~ — asserts the same completion ~id~ comes back with both ~undone_at~ and ~failed_at~ set to the fail instant.
+:END:
+** [X] =fail_chore/2= is distinct from an ordinary on-behalf undo (which stamps only =undone_at=): only a fail stamps =failed_at=, and the failed row persists permanently (never deleted). (SC-3, SC-4, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  ~undo_chore/2~ (unchanged) still stamps only ~undone_at~. Verified by ~"is distinct from an ordinary undo: only fail stamps failed_at"~ (asserts ~undone.failed_at == nil~ after a plain undo) and ~"the failed row is never deleted — it persists after the fail"~ (~Repo.get!/2~ succeeds post-fail), both in ~test/bear_cub/chores_test.exs~.
+:END:
+** [X] =fail_chore/2= returns an error when there is no live completion to fail. (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  Returns ~{:error, :not_completed}~, mirroring ~undo_chore/2~'s convention. Verified by ~"returns an error when there is no live completion to fail"~ in ~test/bear_cub/chores_test.exs~.
+:END:
+** [X] =fail_chore/2= broadcasts on the existing ="chores"= topic, and the kiosk live-updates: the chore reverts to incomplete and the points badge drops by the failed value (bonus drop included when the routine had been complete). (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  Reuses ~broadcast_change/1~ unchanged — no new PubSub wiring. Verified end-to-end by ~"a fail live-updates the kiosk: the chore reverts and the points badge drops"~ in ~test/bear_cub_web/live/admin/today_live_test.exs~: an admin fail-click on ~kid_a~'s sole active-routine chore drops the independently-mounted kiosk's ~#points-badge-{kid.id}~ value, collapses the ~#band-{kid.id}~ reveal band, and the chore row reappears without ~data-done~ — confirming both the routine-bonus drop and the chore-state revert reach the kiosk live.
+:END:
+** [X] The admin per-kid review surface exposes a fail action, separate from the existing on-behalf undo, that invokes =fail_chore/2= with a local-datetime argument. (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  Added a distinct ~phx-click="fail-chore"~ handler in ~lib/bear_cub_web/live/admin/today_live.ex~, separate from ~"toggle-chore"~, with a stable ~#fail-chore-{id}~ button rendered only when the row is done, threading ~LocalTime.now()~ (no buried clock). Confirmed the nested button can't double-fire the row's own toggle click (LiveView resolves a click to the nearest ancestor-or-self with ~phx-click~). Verified by ~"a fail control is exposed only on a done chore, distinct from the toggle"~ and ~"tapping fail reverts the chore and stamps a persistent penalty"~ in ~test/bear_cub_web/live/admin/today_live_test.exs~.
+:END:
+** [X] After a fail, the child redoing the chore on the kiosk inserts a fresh live completion (the partial unique index permits it); the restored +value and persisted −value net to zero, matching the worked example (20 → 25 → 15 → 20). (SC-3, D40)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:45] \\
+  Verified through the write path (per Technical Notes: fail then a kiosk-source complete, not the pure function) by ~"fail then redo nets to zero end-to-end through the write path (SC-3 worked example)"~ in ~test/bear_cub/chores_test.exs~: a 20-point baseline extra plus a 5-point extra goes 25 → (fail) 15 → (redo via ~Chores.complete_chore/3~) 20 — the persisted −5 and restored +5 net to zero against the baseline, matching the worked example.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:47] \\
+  All 6 Acceptance Criteria checkboxes above are ~[X]~, each with a LOGBOOK entry citing concrete test evidence. No deferrals were needed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:47] \\
+  Six new tests in ~test/bear_cub/chores_test.exs~ (~describe "fail_chore/2 (Story 05, D40)"~) and three new tests in ~test/bear_cub_web/live/admin/today_live_test.exs~ (~describe "fail-on-inspection (Story 05, D40)"~). ~mix test test/bear_cub/chores_test.exs test/bear_cub_web/live/admin/today_live_test.exs~ → 88 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:47] \\
+  ~fail_chore/2~ uses ~Ecto.Changeset.change/2~ programmatically per Ecto guidelines; no buried clock (~local_now~ threaded as an argument, no ~utc_now~/~Date.utc_today~ in touched files); ~<.icon>~ used for the fail button, never raw Heroicons; stable DOM id ~#fail-chore-{id}~ distinct from ~#today-chore-{id}~; kiosk/admin fence unaffected (fail action lives only in admin). ~mix format --check-formatted~ clean on all four touched files.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 22:47] \\
+  Weight class is ~personal-mvp~, so the verify command is ~mix precommit~ per CLAUDE.md. ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~ all passed — 257 passed, 0 failures, exit code 0.
+:END:
 
 * Technical Notes
 
