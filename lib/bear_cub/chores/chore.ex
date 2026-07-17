@@ -9,6 +9,7 @@ defmodule BearCub.Chores.Chore do
     field :name, :string
     field :icon, :string
     field :position, :integer
+    field :points, :integer, default: 5
 
     belongs_to :kid, BearCub.Chores.Kid
 
@@ -18,7 +19,7 @@ defmodule BearCub.Chores.Chore do
   @doc false
   def changeset(chore, attrs) do
     chore
-    |> cast(attrs, [:routine, :name, :icon])
+    |> cast(attrs, [:routine, :name, :icon, :points])
     |> validate_required([:name, :icon])
     |> validate_inclusion(:routine, @routines)
     |> assoc_constraint(:kid)

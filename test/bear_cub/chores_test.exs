@@ -125,6 +125,22 @@ defmodule BearCub.ChoresTest do
       assert chore.routine == nil
     end
 
+    test "create_chore/2 without points defaults to 5 (D39)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert chore.points == 5
+    end
+
+    test "create_chore/2 casts an explicit points value (D39)" do
+      kid = kid_fixture()
+      attrs = %{name: "Wash Car", icon: "🚗", routine: nil, points: 10}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert chore.points == 10
+    end
+
     test "create_chore/2 with routine omitted creates an extra" do
       kid = kid_fixture()
       attrs = %{name: "Wash Car", icon: "🚗", position: 0}

@@ -8,6 +8,7 @@ defmodule BearCub.Chores.Completion do
     field :local_date, :date
     field :completed_at, :utc_datetime
     field :undone_at, :utc_datetime
+    field :failed_at, :utc_datetime
     field :source, :string
 
     belongs_to :chore, BearCub.Chores.Chore

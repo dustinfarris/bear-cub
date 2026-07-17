@@ -59,4 +59,27 @@ defmodule BearCub.Chores.CompletionTest do
 
     assert Repo.get(Completion, completion.id) == nil
   end
+
+  test "failed_at is not cast from external params (D39, D40)" do
+    chore = chore_fixture()
+
+    {:ok, completion} = insert_completion(chore, %{failed_at: ~U[2026-07-10 14:31:00Z]})
+
+    assert completion.failed_at == nil
+  end
+
+  test "failed_at can be stamped programmatically and the redo path stays open" do
+    chore = chore_fixture()
+    {:ok, first} = insert_completion(chore)
+
+    {:ok, _failed} =
+      first
+      |> Ecto.Changeset.change(
+        undone_at: ~U[2026-07-10 14:31:00Z],
+        failed_at: ~U[2026-07-10 14:31:00Z]
+      )
+      |> Repo.update()
+
+    assert {:ok, _} = insert_completion(chore)
+  end
 end
