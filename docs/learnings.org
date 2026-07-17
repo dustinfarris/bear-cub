@@ -101,13 +101,31 @@ bundled tables from its priv dir in the store without complaint — no
 StateDirectory.) tzdata also drags in hackney + friends as transitive
 deps; they're never started and Req remains the app's HTTP client.
 
-* [2026-07-10 Fri] Test suite has a theoretical window-edge flake
-LiveView tests deliberately compute the expected routine from the real
-clock with the same pure functions the view uses (no clock mocking).
-A suite run that straddles 05:00 / 17:00 / 23:00 local to the second
-could flake a single test (helper evaluates before the edge, mount
-after). Accepted trade-off; if it ever actually fires, rerun — don't
-reach for clock mocking.
+* [2026-07-17 Fri] Tests must pin the local datetime, never inherit the real clock
+(Revises the 2026-07-10 entry this replaces, which undersold the actual
+risk as a single-second edge race.) LiveView tests deliberately compute
+expected routine state from the real clock with the app's own pure
+functions — no clock mocking — but "no mocking" is not the same as "no
+pinning." 15 tests across =KioskLiveTest=, =Admin.TodayLiveTest=, and
+=Admin.ChoreLiveTest= called =auto_routine()=/=active_routine()= without
+pinning =:routine_windows=, so they inherited whichever routine (or the
+23:00–05:00 Good Night gap) the real wall clock happened to land in —
+not a theoretical instant-edge race, but a deterministic failure for the
+*entire* six-hour gap, ridden across two initiative stories'
+close-outs (docs/2026-07-15-gamification-points/stories/story-06-kiosk-failed-marking.org,
+story-07-collapse-delay.org, both confirmed via a =git stash= baseline
+at the same wall-clock time) before being repaired in commit =4fc7247=.
+Fix: pin =:routine_windows= via the =morning_active=/=evening_active=/
+=put_windows= helper idiom already used by several =kiosk_live_test.exs=
+describe blocks — save the original value, register =on_exit= to
+restore it, then force whichever window(s) the test needs active for
+its whole duration. This still calls the real clock
+(=LocalTime.now()=, never mocked); it only widens or narrows which
+window that real clock falls into. A genuine instant-of-the-edge race
+(helper evaluates a hair before 05:00/17:00/23:00, mount lands a hair
+after) remains theoretically possible even with pinning applied
+everywhere — if that ever actually fires, rerun; still don't reach for
+clock mocking.
 
 * [2026-07-10 Fri] Ops: reach the server over Tailscale, not the LAN IP
 From the dev machine the box's LAN IP times out on ssh; the Tailscale

@@ -97,6 +97,8 @@ As a kid, I need a failed chore to show me clearly that I have to redo it — an
 :LOGBOOK:
 - Note taken on [2026-07-16 Thu 23:25] \\
   ~mix precommit~ (this repo's declared gate: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) — compile/unlock/format steps clean; ~test~ → 254/269 passed, 15 failures. All 15 are pre-existing, time-of-day-dependent flakiness in tests that predate this story and don't pin routine windows (the suite runs during the 23:00–05:00 Good Night gap) — confirmed identical in name and count via a ~git stash~ baseline run against the pre-Story-06 commit at the same wall-clock time. Zero Story 06 tests are among the failures.
+- Note taken on [2026-07-17 Fri 00:18] \\
+  Repaired by a repo-repair task (not a story): commit ~4fc7247~ ("test: pin routine windows instead of inheriting the real clock") adopts the ~morning_active~/~put_windows~ pinning helpers in all 15 tests named above, across ~KioskLiveTest~, ~Admin.TodayLiveTest~, and ~Admin.ChoreLiveTest~. Pinning also unmasked one previously-hidden, non-clock-related failure (an ~Admin.TodayLiveTest~ assertion colliding with Story 07's collapse-delay), fixed in the same commit. ~mix precommit~ now passes clean — 271/271 — run at 00:17 America/Los_Angeles, inside the 23:00–05:00 Good Night gap that used to cause these failures, confirming the fix holds at any wall-clock time.
 :END:
 
 * Technical Notes
