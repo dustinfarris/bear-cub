@@ -31,17 +31,49 @@ As a kid, I need my points total always showing in my banner next to my name, so
 
 * Acceptance Criteria
 
-** [ ] Each kid's banner (=<header>=) shows a persistent points badge displaying =max(0, total)= for that kid, using the child-color semantics of the banner. (SC-1, D43)
-** [ ] The points badge is present in every routine state — normal rows, collapsed/complete, expanded, and night — i.e. it is independent of the routine card's collapse/expand. (SC-1, D43)
-** [ ] The badge never displays a negative number; a kid whose signed total is below zero shows 0. (SC-4, D43)
-** [ ] When a =Chores= write broadcasts =:chores_changed=, the badge re-renders with the recomputed total on the existing re-fetch, with no new broadcast added. (SC-1, D43)
+** [X] Each kid's banner (=<header>=) shows a persistent points badge displaying =max(0, total)= for that kid, using the child-color semantics of the banner. (SC-1, D43)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:55] \\
+  ~build_column/6~ in ~kiosk_live.ex:143~ assigns ~points: Chores.points_total(kid, today)~ per kid column; the badge renders as ~<span id={"points-badge-#{kid.id}"}>~ inside the child-color ~<header>~ (~kiosk_live.ex:206-212~, header style at line 201 sets ~background-color: #{kid.color}~). ~Chores.points_total/2~ (~chores.ex:381-410~, unchanged by this story) returns ~max(0, ...)~. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:834-849~ (badge at 0 before any completions; badge shows 12 after completing a 12-point extra), both passing per ~mix test test/bear_cub_web/live/kiosk_live_test.exs~.
+:END:
+** [X] The points badge is present in every routine state — normal rows, collapsed/complete, expanded, and night — i.e. it is independent of the routine card's collapse/expand. (SC-1, D43)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:55] \\
+  The ~<header>~ containing the badge sits unconditionally at the top of the ~<section>~, outside both the ~:if={state != :night}~ block (rows/band) and the ~:if={state == :night}~ Good Night block. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:874-907~, which asserts the badge is present across rows, collapsed band, re-expanded rows (after tapping the band), and Good Night mode (after forcing a ~:boundary~ message) — passing.
+:END:
+** [X] The badge never displays a negative number; a kid whose signed total is below zero shows 0. (SC-4, D43)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:55] \\
+  ~Chores.points_total/2~ floors via ~max(0, extra_sum + routine_sum + other_signed_inputs)~ (~chores.ex:410~) before the badge ever renders it. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:851-860~: completes a 12-point extra then fails it (driving the signed total to -12) and asserts the rendered badge shows =0= — passing.
+:END:
+** [X] When a =Chores= write broadcasts =:chores_changed=, the badge re-renders with the recomputed total on the existing re-fetch, with no new broadcast added. (SC-1, D43)
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:55] \\
+  ~handle_info(:chores_changed, socket)~ (~kiosk_live.ex:64-67~, unchanged) still calls ~load/2~, which recomputes ~points~ per kid via ~build_column/6~ on every re-fetch. ~grep -n "broadcast" lib/bear_cub/chores.ex~ shows a single broadcast site (~broadcast_change/1~), untouched by this story's diff. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:862-872~, which completes a chore via a direct ~Chores.complete_chore/3~ call (simulating another surface) without touching the view, and asserts the badge updates from 0 to 12 — passing.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:58] \\
+  All 4 Acceptance Criteria are marked =[X]= above with LOGBOOK entries citing verified evidence (file:line references and passing tests). None required removal or deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:58] \\
+  5 new tests under ~describe "points badge (Story 03, D43)"~ in ~kiosk_live_test.exs:817-909~, one per AC dimension. ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → =47 passed=, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:58] \\
+  Spot-checked against CLAUDE.md's Phoenix/LiveView conventions: ~<.icon>~ component used for the star glyph (not raw Heroicons), ~{points}~ interpolated via tag-body ~{...}~ syntax, no raw ~<script>~, no struct map-access syntax, stable per-kid DOM id (~points-badge-#{kid.id}~) matching the Technical Notes, tests assert via ~has_element?/3~ never raw HTML. ~mix format --check-formatted~ passes with no output.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-16 Thu 20:58] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) passes clean: zero compiler warnings, zero unused deps, no formatting drift, =245 passed= across the full suite.
+:END:
 
 * Technical Notes
 
