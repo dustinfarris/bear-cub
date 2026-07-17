@@ -85,11 +85,15 @@ defmodule BearCubWeb.KioskLive do
 
     # done today? — derived, never stored (design §2)
     completions = Chores.current_completions(today)
+    # failed today? — kiosk failed-chore marking (D45, D46), independent of
+    # done-today: combined with `completions` below to tell "failed and not
+    # yet redone" from "failed, then redone"
+    failed_ids = Chores.failed_chore_ids(today)
     expanded = socket.assigns.expanded
 
     columns =
       for kid <- Chores.list_kids() do
-        build_column(kid, auto, night?, completions, today, expanded)
+        build_column(kid, auto, night?, completions, failed_ids, today, expanded)
       end
 
     # Reveal gating flips clear the ephemeral re-expand entry (D34): a kid
@@ -109,7 +113,7 @@ defmodule BearCubWeb.KioskLive do
     )
   end
 
-  defp build_column(kid, auto, night?, completions, today, expanded) do
+  defp build_column(kid, auto, night?, completions, failed_ids, today, expanded) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
     reveal? = not night? and complete?
@@ -122,11 +126,11 @@ defmodule BearCubWeb.KioskLive do
         true -> :rows
       end
 
+    chore_rows = build_rows(chores, completions, failed_ids)
+
     extras =
       if state == :band and auto == :morning do
-        for extra <- Chores.list_extras(kid, today) do
-          %{chore: extra, done?: Map.has_key?(completions, extra.id)}
-        end
+        build_rows(Chores.list_extras(kid, today), completions, failed_ids)
       else
         []
       end
@@ -136,12 +140,26 @@ defmodule BearCubWeb.KioskLive do
       state: state,
       routine: auto,
       reveal?: reveal?,
-      chores:
-        for(chore <- chores, do: %{chore: chore, done?: Map.has_key?(completions, chore.id)}),
+      chores: chore_rows,
       extras: extras,
+      # The routine-penalty strip is a single capped indicator, modeled on
+      # the boolean "any routine chore failed-and-not-redone" rather than a
+      # per-chore loop (D45, D46) — only relevant in the expanded rows state.
+      routine_penalty?: state == :rows and Enum.any?(chore_rows, & &1.failed?),
       events: Calendars.today_events(kid.id, today),
       points: Chores.points_total(kid, today)
     }
+  end
+
+  # A chore/extra reads "failed and not yet redone" (warning shown) only
+  # while it has no live completion — once redone, `done?` flips true and
+  # the warning naturally disappears, even though `failed_ids` still
+  # remembers the fail for the day (D45, D46, D49).
+  defp build_rows(chores, completions, failed_ids) do
+    for chore <- chores do
+      done? = Map.has_key?(completions, chore.id)
+      %{chore: chore, done?: done?, failed?: not done? and MapSet.member?(failed_ids, chore.id)}
+    end
   end
 
   defp schedule_boundary(socket, now) do
@@ -182,6 +200,7 @@ defmodule BearCubWeb.KioskLive do
               routine: routine,
               chores: chores,
               extras: extras,
+              routine_penalty?: routine_penalty?,
               events: events,
               points: points
             } <-
@@ -288,19 +307,35 @@ defmodule BearCubWeb.KioskLive do
                  phx-throttle swallows the excited rapid double-tap (D15).
                  Also covers the manually re-expanded band (state 4, D34):
                  same rows, all shown done, tap-to-undo. --%>
-            <ul
-              :if={state == :rows}
-              id={"chores-#{kid.id}"}
-              class="grid max-h-full auto-rows-[6rem] gap-px self-start overflow-y-auto bg-base-300"
-            >
-              <.chore_row
-                :for={%{chore: chore, done?: done?} <- chores}
-                chore={chore}
-                done?={done?}
-                kid={kid}
-                routine={routine}
-              />
-            </ul>
+            <div :if={state == :rows} class="grid grid-rows-[auto_1fr] overflow-hidden">
+              <%!-- Routine-penalty strip: a single capped −R shown once while
+                   any routine chore is failed-and-not-redone (D45, D46) —
+                   never a per-chore sum (two fails still show one −R, not
+                   −2R). Explicit row-start so the chore list below always
+                   lands in the 1fr track, strip present or not. --%>
+              <div
+                :if={routine_penalty?}
+                id={"routine-penalty-#{kid.id}"}
+                class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 text-base font-bold text-warning-content"
+              >
+                <.icon name="hero-exclamation-triangle" class="size-5" />
+                <span>−{Routines.bonus()}</span>
+              </div>
+
+              <ul
+                id={"chores-#{kid.id}"}
+                class="row-start-2 grid max-h-full auto-rows-[6rem] gap-px self-start overflow-y-auto bg-base-300"
+              >
+                <.chore_row
+                  :for={%{chore: chore, done?: done?, failed?: failed?} <- chores}
+                  chore={chore}
+                  done?={done?}
+                  failed?={failed?}
+                  kid={kid}
+                  routine={routine}
+                />
+              </ul>
+            </div>
 
             <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
                  active window, not pure completion. A single bounded card —
@@ -344,9 +379,10 @@ defmodule BearCubWeb.KioskLive do
             class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
           >
             <.chore_row
-              :for={%{chore: chore, done?: done?} <- extras}
+              :for={%{chore: chore, done?: done?, failed?: failed?} <- extras}
               chore={chore}
               done?={done?}
+              failed?={failed?}
               kid={kid}
               routine={routine}
               extra?={true}
@@ -360,6 +396,7 @@ defmodule BearCubWeb.KioskLive do
 
   attr :chore, :map, required: true
   attr :done?, :boolean, required: true
+  attr :failed?, :boolean, default: false
   attr :kid, :map, required: true
   attr :routine, :atom, required: true
   attr :extra?, :boolean, default: false
@@ -367,11 +404,15 @@ defmodule BearCubWeb.KioskLive do
   # Shared row markup for both routine chores and extras (D34 technical
   # notes: extras are chores, so this is the same tappable row) — extras
   # render on the fixed neutral card surface instead of the routine tint.
+  # A failed-and-not-redone card (D45, D46) shows a warning icon; a failed
+  # extra also carries its own −N, but a failed routine chore never does —
+  # its impact is the single capped routine-penalty strip shown once above.
   defp chore_row(assigns) do
     ~H"""
     <li
       id={"chore-#{@chore.id}"}
       data-done={@done?}
+      data-failed={@failed?}
       phx-click="toggle-chore"
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
@@ -383,6 +424,19 @@ defmodule BearCubWeb.KioskLive do
         {@chore.name}
       </span>
       <.icon :if={@done?} name="hero-check" class="ml-auto size-10 text-white drop-shadow-sm" />
+      <.icon
+        :if={@failed? and not @extra?}
+        name="hero-exclamation-triangle"
+        class="ml-auto size-10 text-warning"
+      />
+      <span
+        :if={@failed? and @extra?}
+        id={"chore-penalty-#{@chore.id}"}
+        class="ml-auto flex items-center gap-2 text-warning"
+      >
+        <.icon name="hero-exclamation-triangle" class="size-8" />
+        <span class="text-2xl font-bold">−{@chore.points}</span>
+      </span>
     </li>
     """
   end

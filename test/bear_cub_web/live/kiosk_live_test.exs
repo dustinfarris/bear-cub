@@ -815,6 +815,174 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "failed-chore marking (Story 06, D45, D46, D49)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    test "a failed-and-not-redone routine chore shows a warning icon with no per-chore number (AC1, D46)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore =
+        chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning", points: 9})
+
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chores-#{kid.id} #chore-#{chore.id} .hero-exclamation-triangle")
+      refute has_element?(view, "#chore-#{chore.id} #chore-penalty-#{chore.id}")
+      refute has_element?(view, "#chore-#{chore.id}", "9")
+    end
+
+    test "a single routine-penalty strip shows −R once, capped even with two failed chores (AC2, D45, D46)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      a = chore_fixture(kid, %{name: "A", icon: "🅰️", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", icon: "🅱️", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(a, now)
+      {:ok, _} = Chores.complete_chore(b, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(b, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      strip = view |> element("#routine-penalty-#{kid.id}") |> render()
+      assert strip =~ "−#{Routines.bonus()}"
+      refute strip =~ "−#{2 * Routines.bonus()}"
+    end
+
+    test "no routine-penalty strip when nothing is failed", %{conn: conn, kid: kid} do
+      morning_active()
+      chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#routine-penalty-#{kid.id}")
+    end
+
+    test "a failed extra in the morning reveal shows a warning icon and its own −N (AC3, D46)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+      {:ok, _} = Chores.complete_chore(extra, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(extra, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{extra.id} .hero-exclamation-triangle")
+      assert has_element?(view, "#chore-penalty-#{extra.id}", "−12")
+    end
+
+    test "an outstanding (never-failed) extra shows no warning or penalty", %{
+      conn: conn,
+      kid: kid
+    } do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#extras-#{kid.id} #chore-#{extra.id} .hero-exclamation-triangle")
+      refute has_element?(view, "#chore-penalty-#{extra.id}")
+    end
+
+    test "while the window is active, a failed chore's row still renders and can be redone, clearing its warning and the penalty strip (AC4, D49)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      # a never-completed companion keeps the routine incomplete (:rows) after
+      # the redo below, so we can observe the redone chore's row directly
+      # instead of the routine auto-collapsing to the band
+      _companion = chore_fixture(kid, %{name: "Comb Hair", icon: "💇", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#routine-penalty-#{kid.id}")
+      refute has_element?(view, "#chore-#{chore.id}[data-done]")
+      assert has_element?(view, "#chore-#{chore.id} .hero-exclamation-triangle")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+      refute has_element?(view, "#chore-#{chore.id} .hero-exclamation-triangle")
+      refute has_element?(view, "#routine-penalty-#{kid.id}")
+    end
+
+    test "once Routines.current/2 moves past the window mid-session, a failed chore's row becomes unreachable — permanent loss (AC5, D49)",
+         %{conn: conn, kid: kid} do
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      # morning active at mount (start <= now), evening not yet (ends at `time`)
+      put_windows({time, Time.add(time, 30, :second)}, {~T[00:00:00], time})
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#chore-#{chore.id}")
+      assert has_element?(view, "#chore-#{chore.id} .hero-exclamation-triangle")
+      assert has_element?(view, "#routine-penalty-#{kid.id}")
+
+      # morning closes (zero-width); evening's window has already elapsed too
+      put_windows({time, time}, {~T[00:00:00], time})
+      send(view.pid, :boundary)
+
+      assert has_element?(view, "#goodnight-#{kid.id}")
+      refute has_element?(view, "#chore-#{chore.id}")
+      refute has_element?(view, "#routine-penalty-#{kid.id}")
+    end
+
+    test "a failed extra returns to outstanding, stays visible in the reveal, and can be redone on a later day (AC6, D40, D49)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 8})
+      {:ok, _} = Chores.complete_chore(extra, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(extra, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{extra.id}")
+
+      later = DateTime.add(now, 1, :day)
+      assert {:ok, redone} = Chores.complete_chore(extra, later, "kiosk")
+      assert redone.undone_at == nil
+    end
+  end
+
   describe "points badge (Story 03, D43)" do
     alias BearCub.Chores
     alias BearCub.Chores.Completion

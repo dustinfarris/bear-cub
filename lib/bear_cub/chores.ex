@@ -329,6 +329,22 @@ defmodule BearCub.Chores do
     |> Map.new(&{&1.chore_id, &1})
   end
 
+  @doc """
+  The ids of chores with a failed completion on `local_date` (kiosk
+  failed-chore marking, D45, D46) — present whether or not the chore has
+  since been redone. Callers combine this with `current_completions/1`'s
+  done-today set to tell "failed and not yet redone" (warning shown) from
+  "failed, then redone" (shows done, no warning).
+  """
+  def failed_chore_ids(%Date{} = local_date) do
+    Repo.all(
+      from c in Completion,
+        where: c.local_date == ^local_date and not is_nil(c.failed_at),
+        select: c.chore_id
+    )
+    |> MapSet.new()
+  end
+
   defp current_completion(%Chore{} = chore, %Date{} = local_date) do
     Repo.one(
       from c in Completion,

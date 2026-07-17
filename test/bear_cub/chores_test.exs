@@ -787,6 +787,43 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "failed_chore_ids/1 (Story 06, D45, D46)" do
+    import BearCub.ChoresFixtures
+
+    test "returns the ids of chores with a failed completion on the given date" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Chores.failed_chore_ids(~D[2026-07-10]) == MapSet.new([chore.id])
+    end
+
+    test "excludes chores with only an ordinary (non-failed) completion" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Chores.failed_chore_ids(~D[2026-07-10]) == MapSet.new()
+    end
+
+    test "still includes a chore id after it has been redone — row-local, not gated on done-state" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:10:00]), "kiosk")
+
+      assert Chores.failed_chore_ids(~D[2026-07-10]) == MapSet.new([chore.id])
+    end
+
+    test "is scoped to the given local date" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Chores.failed_chore_ids(~D[2026-07-11]) == MapSet.new()
+    end
+  end
+
   describe "PubSub" do
     import BearCub.ChoresFixtures
 
