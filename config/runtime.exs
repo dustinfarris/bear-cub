@@ -54,6 +54,13 @@ config :bear_cub, :routine_windows,
   morning: parse_window!.("BEAR_CUB_MORNING_WINDOW", {~T[05:00:00], ~T[17:00:00]}),
   evening: parse_window!.("BEAR_CUB_EVENING_WINDOW", {~T[17:00:00], ~T[23:00:00]})
 
+# Routine bonus R (D39, D40): the fixed points awarded for completing a
+# whole routine, regardless of chore count. App constant, env-overridable,
+# same treatment as the routine windows above (D8).
+config :bear_cub,
+       :routine_bonus,
+       String.to_integer(System.get_env("BEAR_CUB_ROUTINE_BONUS", "5"))
+
 # Calendar refresh pipeline (design §6): fetch interval within the ~15-minute
 # freshness target (FR-18), and the staleness threshold (FR-20, ~2h proposed).
 config :bear_cub,

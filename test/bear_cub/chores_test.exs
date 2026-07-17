@@ -2,7 +2,9 @@ defmodule BearCub.ChoresTest do
   use BearCub.DataCase
 
   alias BearCub.Chores
+  alias BearCub.Chores.Completion
   alias BearCub.Chores.Kid
+  alias BearCub.Routines
 
   describe "kids" do
     import BearCub.ChoresFixtures
@@ -477,6 +479,210 @@ defmodule BearCub.ChoresTest do
 
       # midnight: nothing runs, the query just returns empty for the new date
       assert Chores.current_completions(~D[2026-07-11]) == %{}
+    end
+  end
+
+  describe "extra_contribution/2 (Story 02, D40)" do
+    import BearCub.ChoresFixtures
+
+    defp fail_completion(%Completion{} = completion, at) do
+      completion
+      |> Ecto.Changeset.change(undone_at: at, failed_at: at)
+      |> Repo.update!()
+    end
+
+    test "a live completion earns its chore's own points value" do
+      chore = chore_fixture(kid_fixture(), %{routine: nil, points: 7})
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Chores.extra_contribution(completion, chore) == 7
+    end
+
+    test "an ordinary undo contributes zero" do
+      chore = chore_fixture(kid_fixture(), %{routine: nil, points: 7})
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[08:05:00]))
+
+      assert Chores.extra_contribution(undone, chore) == 0
+    end
+
+    test "a failed completion costs its chore's own points value (checks failed_at first)" do
+      chore = chore_fixture(kid_fixture(), %{routine: nil, points: 7})
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      failed = fail_completion(completion, ~U[2026-07-10 15:00:00Z])
+
+      assert Chores.extra_contribution(failed, chore) == -7
+    end
+  end
+
+  describe "routine_day_contribution/3 (Story 02, D40)" do
+    import BearCub.ChoresFixtures
+
+    test "a fully-complete 2-chore routine earns exactly R, chore count doesn't scale it (SC-2)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+    end
+
+    test "a fully-complete 4-chore routine still earns exactly R (SC-2)" do
+      kid = kid_fixture()
+      chores = for n <- 1..4, do: chore_fixture(kid, %{name: "Chore #{n}", routine: "morning"})
+
+      for chore <- chores do
+        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      end
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+    end
+
+    test "an incomplete routine (not every chore live) contributes zero with no fails" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      _b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+    end
+
+    test "one failed routine chore that day contributes a single -R" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      fail_completion(ca, ~U[2026-07-10 15:00:00Z])
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+    end
+
+    test "two failed routine chores in the same routine-day still cost a single -R (capped, SC-3)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      fail_completion(ca, ~U[2026-07-10 15:00:00Z])
+      fail_completion(cb, ~U[2026-07-10 15:01:00Z])
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+    end
+
+    test "failing then redoing the failed chore restores +R while -R persists, netting zero (SC-3)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+
+      fail_completion(ca, ~U[2026-07-10 15:00:00Z])
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+
+      {:ok, _redo} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+    end
+  end
+
+  describe "points_total/2 (Story 02, D41)" do
+    import BearCub.ChoresFixtures
+
+    test "worked example: extra earn -> fail -> redo nets back to start (20 -> 25 -> 15 -> 20)" do
+      kid = kid_fixture()
+
+      baseline_chores =
+        for n <- 1..4, do: chore_fixture(kid, %{name: "Baseline #{n}", routine: nil, points: 5})
+
+      baseline_days = [~D[2026-07-01], ~D[2026-07-02], ~D[2026-07-03], ~D[2026-07-04]]
+
+      for {chore, day} <- Enum.zip(baseline_chores, baseline_days) do
+        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[08:00:00]), "kiosk")
+      end
+
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
+
+      extra = chore_fixture(kid, %{name: "Extra", routine: nil, points: 5})
+      {:ok, completion} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 25
+
+      fail_completion(completion, ~U[2026-07-10 15:00:00Z])
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 15
+
+      {:ok, _redo} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
+    end
+
+    test "floor case: the aggregate never shows negative though the true sum dips below zero (3 -> 8 -> 0 -> 3)" do
+      kid = kid_fixture()
+      baseline = chore_fixture(kid, %{name: "Baseline", routine: nil, points: 3})
+      {:ok, _} = Chores.complete_chore(baseline, la(~D[2026-07-01], ~T[08:00:00]), "kiosk")
+
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 3
+
+      chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 8
+
+      fail_completion(completion, ~U[2026-07-10 15:00:00Z])
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
+
+      {:ok, _redo} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 3
+    end
+
+    test "the floor applies to the aggregate only — the raw signed row stays recoverable (SC-4)" do
+      kid = kid_fixture()
+      chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      failed = fail_completion(completion, ~U[2026-07-10 15:00:00Z])
+
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
+      assert Chores.extra_contribution(failed, chore) == -5
+    end
+
+    test "the raw signed aggregate below zero is recoverable by composing the same pure functions (SC-4)" do
+      kid = kid_fixture()
+      small = chore_fixture(kid, %{name: "Small", routine: nil, points: 2})
+      big = chore_fixture(kid, %{name: "Big", routine: nil, points: 5})
+
+      {:ok, small_completion} =
+        Chores.complete_chore(small, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      {:ok, big_completion} =
+        Chores.complete_chore(big, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
+
+      failed_small = fail_completion(small_completion, ~U[2026-07-10 15:00:00Z])
+      failed_big = fail_completion(big_completion, ~U[2026-07-10 15:01:00Z])
+
+      raw_sum =
+        Chores.extra_contribution(failed_small, small) +
+          Chores.extra_contribution(failed_big, big)
+
+      assert raw_sum == -7
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
+    end
+
+    test "a completed routine-day counts toward the total alongside extras" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      assert Chores.points_total(kid, ~D[2026-07-10]) == Routines.bonus()
+    end
+
+    test "recomputes purely from completions — nothing stored, a kid with none scores zero" do
+      kid = kid_fixture()
+      _chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
+
+      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
     end
   end
 

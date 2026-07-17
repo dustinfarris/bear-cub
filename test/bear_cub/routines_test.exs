@@ -99,4 +99,10 @@ defmodule BearCub.RoutinesTest do
       assert Routines.other(:evening) == :morning
     end
   end
+
+  describe "bonus/0" do
+    test "reads the configured routine bonus R (D1 default in test env, D39, D40)" do
+      assert Routines.bonus() == 5
+    end
+  end
 end

@@ -55,6 +55,11 @@ defmodule BearCub.Routines do
   def other(:morning), do: :evening
   def other(:evening), do: :morning
 
+  @doc "The fixed per-routine-day point bonus `R` (D39, D40), from app config."
+  def bonus do
+    Application.fetch_env!(:bear_cub, :routine_bonus)
+  end
+
   defp next_opening(time, windows) do
     {slug, _window} =
       Enum.min_by(windows, fn {_slug, {starts, _ends}} ->

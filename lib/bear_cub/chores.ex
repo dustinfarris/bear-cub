@@ -11,6 +11,7 @@ defmodule BearCub.Chores do
   alias BearCub.Repo
   alias BearCub.Chores.Completion
   alias BearCub.Chores.Kid
+  alias BearCub.Routines
 
   @topic "chores"
 
@@ -314,5 +315,98 @@ defmodule BearCub.Chores do
 
   defp to_utc(%DateTime{} = local) do
     local |> DateTime.shift_zone!("Etc/UTC") |> DateTime.truncate(:second)
+  end
+
+  @doc """
+  A single completion row's points contribution (D39, D40, design §6):
+  checks `failed_at` first (the persistent penalty), then `undone_at`
+  (an ordinary undo contributes nothing), otherwise the row is
+  live/earned. Row-local — no clock, no date needed.
+  """
+  def extra_contribution(%Completion{} = completion, %Chore{} = chore) do
+    cond do
+      completion.failed_at -> -chore.points
+      completion.undone_at -> 0
+      true -> chore.points
+    end
+  end
+
+  @doc """
+  The capped per-`(kid, routine, local_date)` contribution (D40, D41):
+  `+R` when every one of the kid's `routine` chores has a live
+  completion on `local_date`, `-R` when one or more has a failed
+  completion that day. `failed?` is a boolean per routine-day, never a
+  per-row sum, so two or more fails still cost a single `-R` and routine
+  points never scale with chore count (SC-2).
+  """
+  def routine_day_contribution(%Kid{} = kid, routine, %Date{} = local_date)
+      when routine in ~w(morning evening) do
+    chore_ids =
+      Repo.all(
+        from c in Chore,
+          where: c.kid_id == ^kid.id and c.routine == ^routine,
+          select: c.id
+      )
+
+    completions =
+      Repo.all(
+        from c in Completion,
+          where: c.chore_id in ^chore_ids and c.local_date == ^local_date
+      )
+
+    complete? =
+      chore_ids != [] and
+        Enum.all?(chore_ids, fn chore_id ->
+          Enum.any?(completions, &(&1.chore_id == chore_id and is_nil(&1.undone_at)))
+        end)
+
+    failed? = Enum.any?(completions, & &1.failed_at)
+
+    r = Routines.bonus()
+    if(complete?, do: r, else: 0) + if failed?, do: -r, else: 0
+  end
+
+  @doc """
+  The floored, cumulative all-time points total for `kid` as of
+  `local_date` (D41): `max(0, Σ routine-day contributions + Σ extra
+  contributions + Σ other_signed_inputs)`, purely derived from
+  `completions` — nothing stored, no reset job. Individual signed
+  contributions are never clamped; see `extra_contribution/2` and
+  `routine_day_contribution/3` to recover the raw signed sum (SC-4).
+
+  `other_signed_inputs` is the D42 redemption seam: empty today (no
+  redemption spends exist yet), kept in the summation shape so a future
+  signed spend slots in without reshaping earnings.
+  """
+  def points_total(%Kid{} = kid, %Date{} = local_date) do
+    extra_sum =
+      Repo.all(
+        from c in Completion,
+          join: ch in Chore,
+          on: ch.id == c.chore_id,
+          where: ch.kid_id == ^kid.id and is_nil(ch.routine) and c.local_date <= ^local_date,
+          select: {c, ch}
+      )
+      |> Enum.reduce(0, fn {completion, chore}, acc ->
+        acc + extra_contribution(completion, chore)
+      end)
+
+    routine_sum =
+      Repo.all(
+        from c in Completion,
+          join: ch in Chore,
+          on: ch.id == c.chore_id,
+          where: ch.kid_id == ^kid.id and not is_nil(ch.routine) and c.local_date <= ^local_date,
+          distinct: true,
+          select: {ch.routine, c.local_date}
+      )
+      |> Enum.reduce(0, fn {routine, date}, acc ->
+        acc + routine_day_contribution(kid, routine, date)
+      end)
+
+    # D42 seam: no redemption spends exist yet, so this is always 0 today.
+    other_signed_inputs = 0
+
+    max(0, extra_sum + routine_sum + other_signed_inputs)
   end
 end
