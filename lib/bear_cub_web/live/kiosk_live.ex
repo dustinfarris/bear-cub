@@ -7,6 +7,12 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Messages
   alias BearCub.Routines
 
+  # Collapse-delay (Story 07, SC-7): the pause between the last routine
+  # chore completing and the routine list collapsing, so that chore's own
+  # completion stays briefly visible before the whole-routine collapse. The
+  # concrete duration is implementation freedom, tuned at the on-device gate.
+  @collapse_delay_ms 400
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -20,6 +26,7 @@ defmodule BearCubWeb.KioskLive do
     {:ok,
      socket
      |> assign(:expanded, MapSet.new())
+     |> assign(:pending_collapse, MapSet.new())
      |> load(now)
      |> schedule_boundary(now)}
   end
@@ -78,6 +85,15 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> load(now) |> schedule_boundary(now)}
   end
 
+  # Collapse-delay (Story 07): fires once per kid whose routine just became
+  # complete. Clearing the kid out of `pending_collapse` here — never
+  # inside `load/2`'s own diffing — is what actually lets the routine
+  # collapse once the delay has elapsed.
+  def handle_info({:collapse_ready, kid_id}, socket) do
+    pending_collapse = MapSet.delete(socket.assigns.pending_collapse, kid_id)
+    {:noreply, socket |> assign(:pending_collapse, pending_collapse) |> load(LocalTime.now())}
+  end
+
   defp load(socket, local_now) do
     {routine_state, auto} = Routines.current(local_now)
     night? = routine_state == :upcoming
@@ -85,16 +101,40 @@ defmodule BearCubWeb.KioskLive do
 
     # done today? — derived, never stored (design §2)
     completions = Chores.current_completions(today)
+    # A first-ever load (mount) has nothing to diff against — treat it as
+    # "nothing just changed" so an already-complete routine renders its
+    # true current state instead of a spurious collapse-delay (Story 07).
+    old_completions = socket.assigns[:completions] || completions
     # failed today? — kiosk failed-chore marking (D45, D46), independent of
     # done-today: combined with `completions` below to tell "failed and not
     # yet redone" from "failed, then redone"
     failed_ids = Chores.failed_chore_ids(today)
     expanded = socket.assigns.expanded
+    pending_collapse = socket.assigns.pending_collapse
 
-    columns =
-      for kid <- Chores.list_kids() do
-        build_column(kid, auto, night?, completions, failed_ids, today, expanded)
+    {columns, pending_collapse} =
+      Enum.map_reduce(Chores.list_kids(), pending_collapse, fn kid, pending_collapse ->
+        build_column(
+          kid,
+          auto,
+          night?,
+          completions,
+          old_completions,
+          failed_ids,
+          today,
+          expanded,
+          pending_collapse
+        )
+      end)
+
+    # Collapse-delay (Story 07, SC-7): a kid newly added to
+    # `pending_collapse` this pass just had their last routine chore
+    # completed — schedule the delayed reveal, once per transition.
+    if connected?(socket) do
+      for kid_id <- MapSet.difference(pending_collapse, socket.assigns.pending_collapse) do
+        Process.send_after(self(), {:collapse_ready, kid_id}, @collapse_delay_ms)
       end
+    end
 
     # Reveal gating flips clear the ephemeral re-expand entry (D34): a kid
     # stays in `expanded` only while their routine is still reveal-eligible.
@@ -109,14 +149,41 @@ defmodule BearCubWeb.KioskLive do
       columns: columns,
       completions: completions,
       expanded: still_expanded,
+      pending_collapse: pending_collapse,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
   end
 
-  defp build_column(kid, auto, night?, completions, failed_ids, today, expanded) do
+  defp build_column(
+         kid,
+         auto,
+         night?,
+         completions,
+         old_completions,
+         failed_ids,
+         today,
+         expanded,
+         pending_collapse
+       ) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
-    reveal? = not night? and complete?
+
+    # Collapse-delay (Story 07, SC-7): a routine that just now became fully
+    # complete enters `pending_collapse` and stays in :rows through this
+    # render — the last chore's own completion stays briefly visible before
+    # the routine list collapses. `handle_info({:collapse_ready, ...})` is
+    # what clears the entry once the delay has elapsed.
+    was_complete? = chores != [] and Enum.all?(chores, &Map.has_key?(old_completions, &1.id))
+
+    pending_collapse =
+      cond do
+        complete? and not was_complete? -> MapSet.put(pending_collapse, kid.id)
+        not complete? -> MapSet.delete(pending_collapse, kid.id)
+        true -> pending_collapse
+      end
+
+    delaying? = MapSet.member?(pending_collapse, kid.id)
+    reveal? = not night? and complete? and not delaying?
     kid_expanded? = MapSet.member?(expanded, kid.id)
 
     state =
@@ -135,7 +202,7 @@ defmodule BearCubWeb.KioskLive do
         []
       end
 
-    %{
+    column = %{
       kid: kid,
       state: state,
       routine: auto,
@@ -149,6 +216,8 @@ defmodule BearCubWeb.KioskLive do
       events: Calendars.today_events(kid.id, today),
       points: Chores.points_total(kid, today)
     }
+
+    {column, pending_collapse}
   end
 
   # A chore/extra reads "failed and not yet redone" (warning shown) only

@@ -811,7 +811,68 @@ defmodule BearCubWeb.KioskLiveTest do
 
       view |> element("#chore-#{chore.id}") |> render_click()
 
+      # re-completing the last chore starts the collapse-delay (Story 07);
+      # simulate the timer firing rather than sleeping in the test
+      refute has_element?(view, "#band-#{kid.id}")
+      send(view.pid, {:collapse_ready, kid.id})
       assert has_element?(view, "#band-#{kid.id}")
+    end
+  end
+
+  describe "collapse-delay before the routine list collapses (Story 07)" do
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    defp morning_active_delay do
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[00:00:00], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+    end
+
+    test "completing the last routine chore keeps it visible in rows before the routine list collapses, then collapses once the delay elapses (AC1, AC2)",
+         %{conn: conn, kid: kid} do
+      morning_active_delay()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#chores-#{kid.id}")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      # the last chore's own completion is visible before the collapse
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+      refute has_element?(view, "#band-#{kid.id}")
+
+      send(view.pid, {:collapse_ready, kid.id})
+
+      assert has_element?(view, "#band-#{kid.id}")
+    end
+
+    test "completing a chore that is not the last causes no delay — the routine stays in rows with no pending collapse (AC2)",
+         %{conn: conn, kid: kid} do
+      morning_active_delay()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      _companion = chore_fixture(kid, %{name: "Comb Hair", icon: "💇", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}[data-done]")
+      refute has_element?(view, "#band-#{kid.id}")
+
+      # nothing was scheduled for a non-last completion — a stray message is a no-op
+      send(view.pid, {:collapse_ready, kid.id})
+      refute has_element?(view, "#band-#{kid.id}")
     end
   end
 
@@ -1056,6 +1117,10 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#points-badge-#{kid.id}")
 
       {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "kiosk")
+      # collapse-delay (Story 07): still rows until the delay elapses
+      refute has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+      send(view.pid, {:collapse_ready, kid.id})
       assert has_element?(view, "#band-#{kid.id}")
       assert has_element?(view, "#points-badge-#{kid.id}")
 
