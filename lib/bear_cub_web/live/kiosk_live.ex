@@ -501,7 +501,18 @@ defmodule BearCubWeb.KioskLive do
       <span class={["text-2xl font-semibold", @done? && "text-white drop-shadow-sm"]}>
         {@chore.name}
       </span>
-      <.icon :if={@done?} name="hero-check" class="ml-auto size-10 text-white drop-shadow-sm" />
+      <span
+        :if={@done? and @extra?}
+        id={"chore-earned-#{@chore.id}"}
+        class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-bold text-success-content drop-shadow-sm"
+      >
+        +{@chore.points}
+      </span>
+      <.icon
+        :if={@done?}
+        name="hero-check"
+        class={["size-10 text-white drop-shadow-sm", not @extra? && "ml-auto"]}
+      />
       <.icon
         :if={@failed? and not @extra?}
         name="hero-exclamation-triangle"

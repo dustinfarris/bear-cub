@@ -1160,6 +1160,75 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "earned-value marking (Story 10, D54)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    test "a completed extra in the morning reveal shows a green +N chip (AC1, D54)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+      {:ok, _} = Chores.complete_chore(extra, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#chore-earned-#{extra.id}", "+12")
+    end
+
+    test "an outstanding extra shows no +N chip; a failed extra shows the −N warning instead, never both (AC2, D46, D54)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      outstanding = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+
+      failed = chore_fixture(kid, %{name: "Rake Leaves", icon: "🍂", routine: nil, points: 7})
+      {:ok, _} = Chores.complete_chore(failed, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(failed, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#chore-earned-#{outstanding.id}")
+      refute has_element?(view, "#chore-earned-#{failed.id}")
+      assert has_element?(view, "#chore-penalty-#{failed.id}", "−7")
+    end
+
+    test "a completed routine chore shows no per-chore chip (AC3, D45, D54)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore =
+        chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning", points: 9})
+
+      _companion = chore_fixture(kid, %{name: "Comb Hair", icon: "💇", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#chore-#{chore.id} #chore-earned-#{chore.id}")
+      refute has_element?(view, "#chore-#{chore.id}", "9")
+    end
+  end
+
   describe "points badge (Story 03, D43)" do
     alias BearCub.Chores
     alias BearCub.Chores.Completion
