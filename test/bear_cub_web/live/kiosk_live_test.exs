@@ -814,4 +814,96 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#band-#{kid.id}")
     end
   end
+
+  describe "points badge (Story 03, D43)" do
+    alias BearCub.Chores
+    alias BearCub.Chores.Completion
+    alias BearCub.Repo
+
+    defp fail_completion(%Completion{} = completion, at) do
+      completion
+      |> Ecto.Changeset.change(undone_at: at, failed_at: at)
+      |> Repo.update!()
+    end
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      %{kid: kid}
+    end
+
+    test "the banner shows a persistent points badge at zero before any completions",
+         %{conn: conn, kid: kid} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#points-badge-#{kid.id}", "0")
+    end
+
+    test "the badge shows the kid's live points total derived from completions",
+         %{conn: conn, kid: kid} do
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#points-badge-#{kid.id}", "12")
+    end
+
+    test "the badge never shows a negative number — a below-zero signed total displays 0 (SC-4)",
+         %{conn: conn, kid: kid} do
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+      {:ok, completion} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+      fail_completion(completion, ~U[2026-07-16 15:00:00Z])
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#points-badge-#{kid.id}", "0")
+    end
+
+    test "a completion from another surface updates the badge on the existing re-fetch (FR-9)",
+         %{conn: conn, kid: kid} do
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#points-badge-#{kid.id}", "0")
+
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+
+      assert has_element?(view, "#points-badge-#{kid.id}", "12")
+    end
+
+    test "the badge stays visible across every routine state — rows, collapsed band, re-expanded rows, and Good Night",
+         %{conn: conn, kid: kid} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[00:00:00], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#chores-#{kid.id}")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "kiosk")
+      assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+
+      view |> element("#band-#{kid.id}") |> render_click()
+      assert has_element?(view, "#chores-#{kid.id}")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[23:59:59], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+
+      send(view.pid, :boundary)
+
+      assert has_element?(view, "#goodnight-#{kid.id}")
+      assert has_element?(view, "#points-badge-#{kid.id}")
+    end
+  end
 end

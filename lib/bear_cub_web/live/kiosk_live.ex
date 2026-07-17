@@ -139,7 +139,8 @@ defmodule BearCubWeb.KioskLive do
       chores:
         for(chore <- chores, do: %{chore: chore, done?: Map.has_key?(completions, chore.id)}),
       extras: extras,
-      events: Calendars.today_events(kid.id, today)
+      events: Calendars.today_events(kid.id, today),
+      points: Chores.points_total(kid, today)
     }
   end
 
@@ -181,7 +182,8 @@ defmodule BearCubWeb.KioskLive do
               routine: routine,
               chores: chores,
               extras: extras,
-              events: events
+              events: events,
+              points: points
             } <-
               @columns
           }
@@ -190,14 +192,24 @@ defmodule BearCubWeb.KioskLive do
         >
           <%!-- Header band: the color block, not the name, is the primary
                identifier (FR-5a) — a pre-reader finds their column by color.
-               Never dimmed: identity stays legible across the kitchen. --%>
+               Never dimmed: identity stays legible across the kitchen.
+               The points badge belongs to the child, not the routine (D43):
+               it renders unconditionally here, independent of the routine
+               card's collapse/expand and of any routine state below. --%>
           <header
-            class="flex items-center justify-center py-5"
+            class="relative flex items-center justify-center py-5"
             style={"background-color: #{kid.color}"}
           >
             <h1 class="text-4xl font-bold tracking-tight text-white drop-shadow-sm">
               {kid.name}
             </h1>
+            <span
+              id={"points-badge-#{kid.id}"}
+              class="absolute right-5 flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-lg font-bold text-white drop-shadow-sm"
+            >
+              <.icon name="hero-star-solid" class="size-4" />
+              {points}
+            </span>
           </header>
 
           <%!-- Events strip: chronological, blended per-kid + family list
