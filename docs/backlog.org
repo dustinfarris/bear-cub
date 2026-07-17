@@ -19,6 +19,8 @@ Need a way to reward the kids for completing their tasks.  A couple thoughts:
 Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brainstorm:
 - Consider claiming the collapse-delay and big-icon items below as batch members — same completion-reward theme.
 - Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets =undone_at=, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
 * TODO [#B] need a darker screen for night mode (after 23:00) :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:28]
@@ -35,6 +37,8 @@ Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.or
 So the child can get the quick "I completed that task" visual reward before seeing that they've completed the entire routine.
 
 Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted — hold until that brainstorm rules.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (collapse-delay, §6.3).
 * TODO [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:01]
@@ -47,6 +51,8 @@ Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification
 This would then make the routine's persistent header bar obsolete.  The kid can tap the big icon to restore the list instead.
 
 Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted. Retiring the persistent header bar is a design-language ruling, not just implementation — record it in docs/design-language.org when done.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (big-icon, §6.3).
 * TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]

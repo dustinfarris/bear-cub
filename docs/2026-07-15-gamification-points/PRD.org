@@ -1,0 +1,32 @@
+#+title: PRD — Bear Cub: Gamification (Points)
+#+date: 2026-07-15
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The kids work through their morning and evening routines and one-off extras with nothing to show for it — no running reward, no reason to care whether a chore was really done. And when a kid taps a chore "done" without doing it, a parent's only recourse today is a silent undo that carries no consequence for the lie. Bear Cub needs a per-child reward that accrues for real completion and a fail-on-inspection consequence that costs points, all inside the routine-first kiosk model that off-the-shelf chore/allowance apps don't fit.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. Each kid has an always-visible, per-child points total on the kiosk that grows as they complete routines and extras and never resets.
+2. Completing a whole routine (morning or evening) earns a fixed bonus no matter how many chores it holds; each parent-added extra is worth its own parent-adjustable value.
+3. A parent can fail a chore a kid faked: the chore reverts to incomplete so the kid can redo it, and its points are deducted as a penalty — so a caught lie that is then redone nets zero gain. Failing multiple chores within the same routine on the same day incurs a single routine penalty, not one per chore.
+4. The kiosk never displays a negative total (floored at zero), while the underlying signed penalty records persist permanently as an audit trail and are never erased or clamped.
+5. A failed routine chore not redone before its routine window ends is a permanent loss with no recovery path; a failed extra stays recoverable on a later day.
+6. A failed chore is visibly marked as failed on the kiosk with its point impact shown — per extra on the chore, and once at the routine level (not per chore) for a failed routine.
+7. Routine completion is visibly celebrated on the kiosk: each chore's completion is briefly visible before the routine list collapses, and a completed routine shows a large morning/evening completion icon in the banner with the child's name, replacing the routine header; tapping the icon expands the completed chore list and tapping it again collapses it.  The icon has a badge showing the points awarded (if not forfeited).
+
+* Out of Scope
+
+- Rewards / redemption — no store, spending flow, or streaks this version. The points total is deliberately shaped so a future signed spend event slots in without reshaping earnings; the seam must not be precluded.
+- Per-day or per-week reset, leaderboards, or ranking between kids — the total is cumulative all-time per child.
+- Default emoji for extras — a separate untriaged backlog item, not claimed by this initiative.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+- [2026-07-16 Thu] SC-5 :: recovery boundary tightened from the local day to the routine window. Design review surfaced that the kiosk renders only the active routine, so a cross-window redo was unreachable in practice; ruled that the window, not the day, closes recovery. DESIGN.org re-reviewed against this amendment in the same design-fix round; no stories existed.
