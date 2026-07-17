@@ -14,7 +14,7 @@ The collapsed-routine message renders inside the collapsed card — do not re-li
 
 The persistent routine header bar (the routine-colored title bar above the chore rows, and its twin atop the collapsed band) is retired [2026-07-16]; the banner completion icon beside the child's name is now the routine card's collapse/expand affordance. Do not reintroduce a routine-region header without a ruling.
 
-Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + message were the only completion signals. Superseded [2026-07-16]: a large sun (morning) / moon (evening) completion icon with a green check now renders in the child's banner whenever their routine is complete, carrying the routine bonus badge (intact or forfeited). Do not add further indicators without a ruling.
+Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + message were the only completion signals. Superseded [2026-07-16]: a large sun (morning) / moon (evening) completion icon now renders in the child's banner whenever their routine is complete. Refined [2026-07-17]: the icon carries no separate checkmark glyph — a single green bonus badge is the completion/reward signal, shown only when the routine bonus is not forfeited (a redo-after-fail completion shows the icon alone, no badge). Do not add further indicators without a ruling.
 
 A green +N chip on a completed extra's card shows its earned value (its own =chore.points=); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip.
 
