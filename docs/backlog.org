@@ -5,6 +5,10 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO I want the vertical height of a chore to shrink a little when it is completed
+:PROPERTIES:
+:CREATED:  [2026-07-17 Fri 06:29]
+:END:
 * TODO [#A] Gamification: Points system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:27]
