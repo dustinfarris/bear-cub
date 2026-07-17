@@ -18,6 +18,20 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     active
   end
 
+  # For tests that also mount the kiosk view: the kiosk's own night/day
+  # state must agree with whichever routine `active_routine/0` already
+  # picked for this test's fixtures, regardless of real wall-clock time
+  # (tests must pin the local datetime, never inherit the real one — see
+  # docs/learnings.org). Mirrors the kiosk tests' morning_active/0.
+  defp pin_active_routine(active) do
+    inactive = Routines.other(active)
+
+    Application.put_env(:bear_cub, :routine_windows, [
+      {active, {~T[00:00:00], ~T[23:59:59]}},
+      {inactive, {~T[23:59:59], ~T[23:59:59]}}
+    ])
+  end
+
   setup do
     kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
     kid_b = kid_fixture(%{name: "Kid B", color: "#0ea5e9", position: 1})
@@ -77,6 +91,10 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
 
   test "tapping a chore completes it on the kid's behalf; the kiosk follows",
        %{conn: conn} = ctx do
+    original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+    on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+    pin_active_routine(ctx.active)
+
     {:ok, kiosk, _} = live(Phoenix.ConnTest.build_conn(), ~p"/")
     {:ok, view, _html} = live(conn, ~p"/admin")
 
@@ -87,8 +105,10 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     completion = Repo.one!(from c in Completion, where: c.chore_id == ^ctx.a_active.id)
     assert completion.source == "admin"
 
-    # kid_a's only active-routine chore is now done — the kiosk auto-collapses
-    # it to the reveal band (story 05) rather than showing a done row
+    # kid_a's only active-routine chore is now done — the kiosk enters the
+    # collapse-delay (story 07) before showing the reveal band rather than
+    # a done row; simulate the timer firing rather than sleeping in the test
+    send(kiosk.pid, {:collapse_ready, ctx.kid_a.id})
     assert has_element?(kiosk, "#band-#{ctx.kid_a.id}")
   end
 
@@ -174,6 +194,10 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
 
     test "a fail live-updates the kiosk: the chore reverts and the points badge drops",
          %{conn: conn} = ctx do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      pin_active_routine(ctx.active)
+
       {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
 
       {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")

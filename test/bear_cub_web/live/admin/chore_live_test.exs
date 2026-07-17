@@ -15,6 +15,17 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
     auto
   end
 
+  # Pins morning active all day, evening never active — deterministic
+  # regardless of when the suite runs, mirroring the kiosk tests' helper
+  # of the same name (tests must pin the local datetime, never inherit the
+  # real one — see docs/learnings.org).
+  defp morning_active do
+    Application.put_env(:bear_cub, :routine_windows,
+      morning: {~T[00:00:00], ~T[23:59:59]},
+      evening: {~T[23:59:59], ~T[23:59:59]}
+    )
+  end
+
   defp ordered_ids(html, selector) do
     html
     |> LazyHTML.from_fragment()
@@ -57,6 +68,10 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
     test "▼ swaps the chore with the one below; the kiosk re-orders live",
          %{conn: conn, kid_a: kid_a} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       routine = Atom.to_string(auto_routine())
       first = chore_fixture(kid_a, %{name: "First", icon: "1️⃣", routine: routine})
       second = chore_fixture(kid_a, %{name: "Second", icon: "2️⃣", routine: routine})

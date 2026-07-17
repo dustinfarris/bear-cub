@@ -73,6 +73,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "renders the shown routine's chores as icon + name rows",
          %{conn: conn, kid_a: kid_a} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       chore =
         chore_fixture(kid_a, %{
           name: "Brush Teeth",
@@ -89,6 +93,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "renders a persistent routine header with a centered title and no completion badge yet",
          %{conn: conn, kid_a: kid_a} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       chore_fixture(kid_a, %{
         name: "Brush Teeth",
         icon: "🪥",
@@ -105,6 +113,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "chore cards render at a fixed height instead of equally filling the column",
          %{conn: conn, kid_a: kid_a} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       chore_fixture(kid_a, %{
         name: "Brush Teeth",
         icon: "🪥",
@@ -136,6 +148,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "with no calendars configured, the events strip renders empty and chores still render",
          %{conn: conn, kid_a: kid_a} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       chore =
         chore_fixture(kid_a, %{
           name: "Brush Teeth",
@@ -368,6 +384,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "shows the auto-selected routine's chores, never a manually flipped one",
          %{conn: conn, chores: chores} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       auto = auto_routine()
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -390,10 +410,15 @@ defmodule BearCubWeb.KioskLiveTest do
     alias BearCub.Repo
 
     setup do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      # pinned rather than left to the real clock (tests must never inherit
+      # the real clock — see docs/learnings.org), so the routine is always
+      # in its active window no matter when the suite runs
+      morning_active()
+
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      # the chore lives in whichever routine the kiosk is showing right now,
-      # so taps land on a visible row no matter when the suite runs
       chore =
         chore_fixture(kid, %{
           name: "Brush Teeth",
