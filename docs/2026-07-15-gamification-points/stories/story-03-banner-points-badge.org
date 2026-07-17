@@ -1,0 +1,54 @@
+#+title: Story 03 — Kiosk banner: always-visible points badge
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk banner (=KioskLive=, per kid =<header>=)
+
+The kid-color banner is the standing home of child identity and now carries the points readout and the completion icon:
+
+- *Points badge* — a persistent per-kid badge in the banner, tied to child identity (child-color semantics), *always visible* regardless of routine state. Displays =max(0, total)= (never negative, SC-4). It belongs to the child, not the routine, so it is independent of the routine card's collapse/expand and of the header-bar retirement. (SC-1, D43)
+
+** Live updates (context this design builds on, in scope)
+
+*Live updates*: =Phoenix.PubSub= topic ="chores"=; every =Chores= write broadcasts a payload-free =:chores_changed=; subscribers re-fetch (never patch from payload). A derived points total recomputes for free on that existing re-fetch — no new broadcast plumbing.
+
+** Context (=BearCub.Chores=) — in scope
+
+- The kiosk reads the total in =load/2= and recomputes for free on the existing =:chores_changed= re-fetch.
+
+** Decision Log entry in scope
+
+- *D43 (2026-07-16) — Persistent per-kid points badge in the banner:* the always-visible points readout lives in the kid-color banner tied to child identity, showing =max(0, total)=, independent of the routine card's collapse/expand and of the header-bar retirement because it belongs to the child, not the routine. Rejected — a completion-only or routine-scoped indicator: SC-1 requires the total be always visible, so it cannot live on the routine card that collapses. Settles SC-1 placement. → Screens (banner), Key Behaviors.
+
+* User Story
+
+As a kid, I need my points total always showing in my banner next to my name, so that I can see my growing reward at any time — during the routine, after I finish, or at night — without tapping anything.
+
+* Acceptance Criteria
+
+** [ ] Each kid's banner (=<header>=) shows a persistent points badge displaying =max(0, total)= for that kid, using the child-color semantics of the banner. (SC-1, D43)
+** [ ] The points badge is present in every routine state — normal rows, collapsed/complete, expanded, and night — i.e. it is independent of the routine card's collapse/expand. (SC-1, D43)
+** [ ] The badge never displays a negative number; a kid whose signed total is below zero shows 0. (SC-4, D43)
+** [ ] When a =Chores= write broadcasts =:chores_changed=, the badge re-renders with the recomputed total on the existing re-fetch, with no new broadcast added. (SC-1, D43)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 02 (the floored per-kid total) and Story 01 (the columns it derives from). This is the first story that puts a real, growing points figure on the kiosk — the early-visibility milestone (SC-1) before any fail or celebration UI exists.
+- Read the total in =load/2= per kid and assign it; the badge is plain server-rendered markup in the banner =<header>=, not a LiveComponent (the kiosk renders server-side). The existing ="chores"= =:chores_changed= re-fetch recomputes it for free — do not add a broadcast.
+- Give the badge a stable DOM id per kid (e.g. =points-badge-#{kid.id}=) so LiveView tests can assert the number via =element/2=; test against the element, not raw HTML text.
+- The completion icon and its bonus badge are a *different* affordance landed in Story 08; this story adds only the always-visible per-child total. The badge here must remain visible even after Story 08 introduces the completion icon (it belongs to the child, not the routine).
+- Floor is already applied by the Story 02 total; the badge just displays it. Include a test with a below-zero signed standing to prove the displayed value is 0.

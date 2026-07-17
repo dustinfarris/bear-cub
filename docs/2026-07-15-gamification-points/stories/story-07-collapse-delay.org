@@ -1,0 +1,43 @@
+#+title: Story 07 — Collapse-delay before the routine list collapses
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Batch member — collapse-delay (Overview)
+
+Two oneshots from the same completion-reward theme are claimed as batch members of this initiative (PRD SC-7): the *collapse-delay* (the brief per-chore-completion pause before the list collapses) and the *big-icon* completion affordance.
+
+** Completion celebration — collapse-delay (Key Behaviors)
+
+Routine completion is celebrated on the kiosk (SC-7):
+
+- *Collapse-delay:* a short delay between the last routine chore completing and the routine list collapsing, so the child sees the per-chore completion reward before the whole-routine collapse/bonus moment. (Batch member; SC-7 "each chore's completion is briefly visible before the routine list collapses.")
+
+* User Story
+
+As a kid, I need a brief moment to see my last chore turn "done" before the whole routine collapses, so that finishing the last task feels like its own small reward before the finished-the-routine celebration.
+
+* Acceptance Criteria
+
+** [ ] When the last routine chore is completed, its completion is briefly visible before the routine list collapses — a short delay separates the last-chore-done moment from the collapse/bonus moment. (SC-7)
+** [ ] After the short delay, the routine list collapses to its completed state as before; completing a chore that is *not* the last one causes no delay. (SC-7)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- One of the two claimed batch members (collapse-delay). Independent of the other stories in ordering, but placed here so it lands alongside the completion celebration work. Depends on the existing collapse mechanic (Extras Story 05).
+- The design deliberately specifies "a short delay" at the design level — the concrete duration is implementation freedom, tuned at the on-device gate. Write the test at that specificity: assert the last-chore-completion is visible before the collapse, not a specific millisecond value.
+- No gaps surfaced — the "short delay" imprecision is intentional per the initiative's guidance (design-level, tuned at the on-device gate), not an uncovered detail.
+- The on-device feel (the actual pause length in Fully Kiosk's WebView) is verified at the manual batch-close gate, not by a per-story AC.

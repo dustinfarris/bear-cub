@@ -1,0 +1,70 @@
+#+title: Story 06 — Kiosk failed-chore marking + window reachability
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk routine region (the =1fr= card), by state — states in scope
+
+The persistent routine header bar (the =routine-header-#{kid.id}= button and its twin inside the collapse band) is *retired*; the banner completion icon is now the collapse/expand affordance (D44, D48). The region renders exactly one of:
+
+1. *Normal* (=:rows=, active routine incomplete): chore rows as today. If ≥1 routine chore is failed that day, that chore shows a *"redo me" warning* (no per-chore number), and a single *routine-penalty strip* shows *−R* once at the top of the region (D45, D46). No banner completion icon in this state.
+2. *Complete + window active* (collapsed): … A failed extra here shows a *warning + −N* (its own value). (SC-6, SC-7)
+
+** In-window redo recovers; a closed window is a permanent loss (Key Behaviors)
+
+The routine-day contribution is scoped to =(kid, routine, local_date)= in the derivation; the *recovery boundary* is the routine /window/, enforced by kiosk reachability rather than by the derivation (amended SC-5, [2026-07-16]). The derivation stays day-scoped and unchanged — no timestamp checks — because the kiosk only ever renders the *active* routine's chore rows, so there is no kid write path to a chore whose window has closed:
+
+- *Redo while the routine window is active:* the failed chore's row still renders (its routine is the active one, reverted to incomplete), so the child can tap it again. The redo's new live row is dated today, so today's =complete?= becomes true again (+R) while today's =failed?= stays true (−R) → net zero. Recovered.
+- *Not redone before the window ends:* once =Routines.current/2= moves past the window, the routine region stops rendering that routine's rows entirely — the failed chore is no longer reachable on the kiosk, so no new live row can be created for it. Its routine-day keeps =complete? = false= (that chore never got a fresh live row) and =failed? = true=, so it contributes a bare −R that is now *final*. This is the *permanent loss with no recovery path* (SC-5), and it needs no timestamp gate in the derivation because the kid write path simply ceases to exist. Human-ruled: a parent *on-behalf completion* through admin after the window closes is a deliberate parent override that MAY net the penalty — an accepted, intentional escape hatch, not a leak to close (D49).
+- *A failed extra stays recoverable* (SC-5): a fail sets =undone_at=, so the extra has no current completion → it is *outstanding* again (D28) and reappears at the next morning reveal (until-done). Redoing it on any later day inserts a fresh live +value that offsets the persisted −value. Unlike a routine-day, an extra is not window-bound, so recovery is not time-boxed. Its −value persists in the audit trail regardless. (SC-5, D40, D41, D49)
+
+** Failed-chore marking on the kiosk (Key Behaviors)
+
+A failed chore is visibly failed, with its point impact shown (SC-6):
+
+- *Failed extra:* a warning icon *+ −N* (its own =chore.points= value) on the extra card, in the morning reveal (state 2).
+- *Failed routine chore:* a warning icon on the card (signals "redo me"), *no per-chore number*. The numeric −R impact is shown *once at the routine level*: as a routine-penalty strip in the expanded region while any routine chore is failed-and-not-redone (state 1), or carried by the forfeited completion badge once the routine is redone-and-complete (state 2). This is honest about the cap — two failed routine chores never read as −10 when the real hit is a single −R. (SC-6, D45, D46)
+
+** Where the routine −R lives (relocation from the pre-PRD position)
+
+The superseded pre-PRD position hung the routine-level −R on the big sun/moon area at the *old routine-header location*. With the completion icon relocated to the banner (D44) and the header bar retired, that anchor no longer exists — and a failed, not-yet-redone routine is *incomplete*, so no completion icon is even showing. The −R therefore surfaces where the failed routine actually is: the *routine-penalty strip* at the top of the expanded routine region (state 1), and, after an in-window redo re-completes the routine, the *forfeited completion badge* (state 2). Either way it appears once per routine-day, satisfying SC-6. (D45)
+
+** Decision Log entries in scope
+
+- *D45 (2026-07-16) — Routine-level −R surfaces in the expanded region (penalty strip) and, after redo, in the forfeited badge:* … the SC-6 "once at the routine level" −R is re-derived to where the failed routine actually is — a routine-penalty strip at the top of the expanded routine region while any routine chore is failed-and-not-redone, and the forfeited completion badge once an in-window redo re-completes the routine. Either way it appears once per routine-day. … Settles SC-6 routine-level placement (divergence 2). → Key Behaviors (where the routine −R lives, failed-chore marking), Screens (routine region).
+- *D46 (2026-07-16) — Failed-chore marking: per-extra warning + −N; per-routine-chore warning only, no per-chore number:* a failed extra shows a warning icon and its own −N (=chore.points=); a failed routine chore shows only a "redo me" warning with no per-chore number, because the routine impact is a single capped −R shown once at the routine level (D45), not a per-chore sum. Rejected — a per-chore −N on failed routine chores: would misrepresent the capped penalty (two fails reading as −10 when the hit is one −R). Settles SC-6 per-chore marking. → Key Behaviors (failed-chore marking), Screens (routine region).
+- *D49 (2026-07-16) — SC-5 recovery boundary is the routine window, enforced by kiosk reachability, not the local day:* … a failed routine chore is recoverable only while its routine window is active. Once =Routines.current/2= moves past the window, the routine region stops rendering that routine's rows, so no kid write path exists to redo the chore and its −R is *final*. The points derivation stays day-scoped (=(kid, routine, local_date)=) and unchanged — the boundary is enforced by *reachability*, needing no timestamp check. Human-ruled: a parent on-behalf completion through admin after the window closes is a deliberate override that MAY net the penalty — accepted as an intentional escape hatch, not a leak. … Authority: amended SC-5. Settles the SC-5 recovery boundary. → Key Behaviors (in-window redo recovers), Data Model.
+
+* User Story
+
+As a kid, I need a failed chore to show me clearly that I have to redo it — and to see the one honest point cost, not an inflated one — so that I know what to fix, and so a routine window that has closed simply no longer offers the chore rather than pretending I can still recover it.
+
+* Acceptance Criteria
+
+** [ ] In the normal routine state (=:rows=, active routine incomplete), a failed routine chore shows a "redo me" warning icon on its card with *no per-chore number*. (SC-6, D46)
+** [ ] While ≥1 routine chore is failed-and-not-redone in the active routine, a single routine-penalty strip shows =−R= once at the top of the routine region; two failed routine chores still show a single =−R=, never =−2R=. (SC-6, D45, D46)
+** [ ] A failed extra in the morning reveal (state 2) shows a warning icon *and its own =−N=* (=chore.points=). (SC-6, D46)
+** [ ] While the routine window is active, a failed routine chore's row still renders and can be tapped to redo (it reverts to incomplete); after the redo the routine is complete again and the penalty strip is gone. (SC-5, D49)
+** [ ] Once =Routines.current/2= has moved past the routine's window, the routine region no longer renders that routine's rows, so the failed chore is unreachable on the kiosk and no new live completion can be created for it — the permanent-loss path. (SC-5, D49)
+** [ ] A failed extra returns to *outstanding* (its fail set =undone_at=, leaving no current completion) and reappears at the next morning reveal, recoverable on a later day. (SC-5, D40, D49)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 05 (=fail_chore/2=, to create failed rows to render) and Story 02 (=R=, for the −R strip value). It renders states 1 (normal, with failed markings) and the failed-extra case of state 2; the completion icon and the *forfeited badge* half of the routine-level −R (state 2 redone-complete) are Story 08.
+- The routine-penalty strip renders once per routine-region while =failed?= (any routine chore failed-and-not-redone) — model it on the boolean routine-day =failed?=, not a per-chore loop, so the cap is structural. Failed routine chore cards get a warning icon only (no number); failed extra cards get warning + their own =−N=.
+- SC-5 reachability is a *rendering* property, not a derivation change: the kiosk already fetches only the active routine's rows (D33 gating from the Extras initiative). Test the closed-window case by driving the LiveView with a local datetime past the window and asserting the failed chore row is absent (=refute has_element?=) — there is no kid write path to assert against because the row is not there.
+- Do not add any timestamp gate to the derivation; the day-scoped derivation from Story 02 is unchanged. The parent on-behalf-completion override after window close (D49) is an accepted escape hatch — not something this story closes or tests as a leak.
+- Reuse the existing chore-row / extra-row markup; add warning affordances with stable DOM ids so tests assert via =element/2= / =has_element?=.

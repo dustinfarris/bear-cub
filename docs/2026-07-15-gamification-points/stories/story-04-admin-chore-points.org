@@ -1,0 +1,46 @@
+#+title: Story 04 — Admin chore form: parent-adjustable points
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** =chores.points= — integer, default 5, NOT NULL
+
+Authoritative for *extras* (=routine = nil=), parent-adjustable in the admin chore form. Routine chores carry the column too (it is present on every row for a uniform schema and changeset) but *ignore it* in derivation — a routine's value is the constant =R=, never the sum of its chores' =points= (D39, D40). Choosing a non-null column on all rows over NULL-for-routine-chores avoids nullable handling in every points read for no modeling gain; the discriminator that matters is =routine=, already present.
+
+** Admin — chore form
+
+The chore form gains a =points= input (default 5), parent-adjustable, authoritative for extras. Routine chores may carry a value but it does not affect scoring. (SC-2, D39)
+
+** Decision Log entry in scope
+
+- *D39 (2026-07-16) — Storage: extend =completions= with =failed_at=, add =chores.points=; no =points_ledger= table:* … extra values live in =chores.points= (integer, default 5, NOT NULL on all rows; routine chores ignore it in favor of the constant =R=). … Settles SC-2 storage, SC-4 audit trail. → Data Model, Key Behaviors (points model).
+
+* User Story
+
+As a parent, I need to set how many points an extra chore is worth when I add or edit it, so that a big job can be worth more than the default and the reward matches the effort.
+
+* Acceptance Criteria
+
+** [ ] The admin chore form has a =points= input, defaulting to 5, that a parent can adjust; submitting it persists the value on the chore. (SC-2, D39)
+** [ ] Editing an existing chore's =points= and saving updates the stored value. (SC-2, D39)
+** [ ] The =points= input is present for extras (=routine = nil=) and its value is what drives an extra's contribution; a routine chore may carry a value but it does not affect scoring. (SC-2, D39)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01 (the =chores.points= column and its changeset cast). The changeset already casts =points=; this story adds the form input and its LiveView test.
+- Add the input to the admin chore form (=ChoreLive= form) using the imported =<.input>= component with a stable DOM id, so the LiveView test can drive it via =render_submit/2= / =render_change/2= and assert the persisted value.
+- The design says the input applies to the chore form generally (default 5, parent-adjustable, "authoritative for extras"); it does not ask for the input to be hidden on routine chores. Render it on the form as the design states; scoring already ignores the value for routine chores (Story 02 derivation uses =R=).
+- Out of scope: a default *emoji* for extras is a separate untriaged backlog item (PRD Out of Scope), not this story.

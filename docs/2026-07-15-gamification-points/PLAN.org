@@ -1,0 +1,25 @@
+#+title: PLAN — Bear Cub: Gamification (Points)
+#+date: 2026-07-16
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+# Ordering rationale: the derivation layer (01, 02) and the always-visible banner points badge (03) put a real, growing total on the kiosk before any fail or celebration UI exists (SC-1, front-loaded). The parent-facing points input (04) and fail action (05) follow, then the kiosk failed-chore marking + window reachability (06). The two claimed batch members close the batch: collapse-delay (07) and the banner completion icon with its tap-toggle, intact/forfeited badge, header-bar retirement, and the two D48 design-language recordings (08).
+
+** TODO [[file:stories/story-01-data-model.org][Story 01 — Data model: completions.failed_at + chores.points]]
+** TODO [[file:stories/story-02-points-derivation.org][Story 02 — Points derivation: contributions, cap, floored total]]
+** TODO [[file:stories/story-03-banner-points-badge.org][Story 03 — Kiosk banner: always-visible points badge]]
+** TODO [[file:stories/story-04-admin-chore-points.org][Story 04 — Admin chore form: parent-adjustable points]]
+** TODO [[file:stories/story-05-fail-on-inspection.org][Story 05 — Fail-on-inspection: fail_chore/2 + admin action]]
+** TODO [[file:stories/story-06-kiosk-failed-marking.org][Story 06 — Kiosk failed-chore marking + window reachability]]
+** TODO [[file:stories/story-07-collapse-delay.org][Story 07 — Collapse-delay before the routine list collapses]]
+** TODO [[file:stories/story-08-completion-icon.org][Story 08 — Banner completion icon: toggle, forfeited badge, header retirement]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

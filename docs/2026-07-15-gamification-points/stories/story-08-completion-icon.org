@@ -1,0 +1,75 @@
+#+title: Story 08 — Banner completion icon: toggle, forfeited badge, header retirement
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Batch member + design-language rulings (Overview)
+
+Two oneshots from the same completion-reward theme are claimed as batch members of this initiative (PRD SC-7): the *collapse-delay* … and the *big-icon* completion affordance. This initiative also makes two /design-language rulings/ — retiring the persistent routine header bar, and superseding the [2026-07-12] deferral of a sun/moon completion badge in =docs/design-language.org= (D48). Those rulings are recorded in =design-language.org= when the work lands (per repo convention), not now.
+
+** Kiosk banner — completion icon (Screens)
+
+- *Completion icon* — when the active routine is complete (collapsed state), a large sun (morning) / moon (evening) icon appears in the banner beside the name, with a green check upper-right, carrying a *points badge* (see Key Behaviors → completion celebration for the badge's intact/forfeited states). Tapping the icon expands the completed chore list; tapping it again collapses it (D44, D47). When the routine is incomplete, no completion icon shows — only name + points badge.
+
+** Kiosk routine region — states in scope (Screens)
+
+The persistent routine header bar (the =routine-header-#{kid.id}= button and its twin inside the collapse band) is *retired*; the banner completion icon is now the collapse/expand affordance (D44, D48). The region renders exactly one of:
+
+2. *Complete + window active* (collapsed): banner shows the completion icon + badge; the region shows the completion message (=morning_complete/0= / =evening_complete/0=), and *morning additionally reveals extras* (outstanding + done-today, each tap-to-complete / undo — D28, D33). The chore list is hidden. A failed extra here shows a *warning + −N* (its own value). (SC-6, SC-7)
+3. *Expanded-complete* (banner icon tapped): the completed chore rows return (all done, tap-to-undo); the message and extras are hidden. Re-tapping the icon returns to state 2. Undoing any chore → routine no longer complete → back to state 1. (D47)
+
+** Completion celebration and the badge's forfeited state (Key Behaviors)
+
+Routine completion is celebrated on the kiosk (SC-7):
+
+- *Banner completion icon + tap-toggle:* on collapse, the banner shows the large sun/moon icon with a green check; *tapping it expands* the completed chore list and *tapping again collapses* it (D47 — the superseded pre-PRD position offered only tap-to-restore; the toggle is SC-7 contract). Undoing a chore from the expanded view returns to normal incomplete rows.
+- *Points badge — intact vs. forfeited.* The completion icon carries a badge showing the routine bonus "if not forfeited." *Forfeited* is defined precisely against the routine-day: =forfeited? = failed?= (the routine-day carries ≥1 failed completion). The badge renders only in the collapsed complete state (=complete? = true=), and shows:
+
+#+begin_src
+failed? = false  ->  bonus INTACT     -> badge shows +R           (full, celebratory)
+failed? = true   ->  bonus FORFEITED  -> badge shows +R zeroed    (net 0: finished, but the caught lie cost the bonus)
+#+end_src
+
+  This is the honest signal for the redo case: a routine completed via an in-window redo (=complete? = true=, =failed? = true=) contributes +R −R = 0, and the badge reads forfeited rather than a live +R. When a routine chore is failed and *not yet redone*, the routine is incomplete → no completion icon shows → the −R surfaces instead as the routine-penalty strip in the expanded rows (below). Across both states, the −R routine impact is shown *once at the routine level* (SC-6). (D45, D47)
+
+** Decision Log entries in scope
+
+- *D44 (2026-07-16) — The completion icon lives in the banner beside the child's name; the header bar is retired with its toggle role moving to the icon:* the large sun/moon completion icon renders in the kid banner (with the points badge and a green check), and the persistent routine header bar is retired — its identity and its expand/collapse role move to the icon. Rejected — the superseded pre-PRD position, the icon replacing the header bar /in situ/ at the old header location: PRD SC-7 puts the icon in the banner with the child's name, and the banner is also where the always-visible points badge lives, so co-locating child identity, score, and completion celebration in one child-owned region is cleaner than a routine-region icon. The header bar is still retired either way; only the icon's home differs. Settles SC-7 placement (divergence 1). → Screens (banner, routine region), Overview.
+- *D47 (2026-07-16) — Completion badge "forfeited" semantics and the tap-toggle:* the completion icon's points badge shows the bonus "if not forfeited," with =forfeited? = failed?= (the routine-day carries ≥1 failed completion); the badge renders only in the collapsed complete state and reads +R when intact and +R-zeroed (net 0) when forfeited — honest that a redo-after-fail completion earns nothing net. The icon *tap-toggles* the completed chore list open and closed. Rejected — the superseded pre-PRD tap-to-restore-only affordance: SC-7 specifies a toggle (expand /and/ collapse), so a one-way restore is insufficient. Rejected — defining "forfeited" as "any fail ever": forfeiture is per routine-day (=failed?=), matching the capped, day-scoped penalty (D40) — a fail on a /different/ day does not forfeit today's bonus. Settles SC-7 badge + toggle (divergence 3, SC-7 content beyond the spec). → Key Behaviors (completion celebration), Screens (banner, routine region).
+- *D48 (2026-07-16) — Design-language rulings: retire the routine header bar; supersede the [2026-07-12] completion-badge deferral:* this initiative rules that (a) retiring the persistent routine header bar is a design-language ruling, not merely implementation, and (b) its sun/moon completion icon *supersedes* the [2026-07-12] deferral in =docs/design-language.org= ("Completion badge (sun/moon) considered and deferred; collapse + message are the completion signals. Do not add indicators without a ruling.") — this initiative /is/ that ruling. Both are recorded in =design-language.org= when the work lands (per repo convention: that file is edited as the work lands, not at design time), so they are noted here as *pending design-language recordings*. Rejected — treating the header-bar removal as a silent implementation detail: the design-language file governs kids'-view visuals and must carry the ruling so future styling work does not re-litigate or reintroduce the bar/deferral. → Overview, Screens (routine region), Key Behaviors (completion celebration).
+
+* User Story
+
+As a kid, I need my finished routine to show a big sun or moon with a green check and my bonus right in my banner — tapping it to peek at my completed chores and tapping again to close — so that finishing is celebrated where my name lives, and if I was caught faking a chore, the badge honestly shows the bonus was lost.
+
+* Acceptance Criteria
+
+** [ ] When the active routine is complete (collapsed state), the kid's banner shows a large sun (morning) / moon (evening) icon beside the name with a green check upper-right; when the routine is incomplete, no completion icon shows (only name + points badge). (SC-7, D44)
+** [ ] The persistent routine header bar (=routine-header-#{kid.id}= button and its twin inside the collapse band) is removed; the banner completion icon is the collapse/expand affordance. (SC-7, D44, D48)
+** [ ] Tapping the completion icon expands the completed chore list (rows shown done, tap-to-undo); tapping it again collapses back to the completion message (and morning extras); undoing a chore from the expanded view returns the column to normal incomplete rows. (SC-7, D47)
+** [ ] The completion icon carries a bonus badge that renders only in the collapsed complete state: when =failed? = false= it shows =+R= (intact), and when =failed? = true= (a routine completed via in-window redo) it shows the bonus forfeited / zeroed (net 0). (SC-6, SC-7, D45, D47)
+** [ ] The header-bar retirement is recorded as a design-language ruling in =docs/design-language.org= as the work lands (per repo convention). (D48)
+** [ ] The sun/moon completion icon superseding the [2026-07-12] completion-badge deferral is recorded in =docs/design-language.org= as the work lands, replacing/annotating that deferral entry. (D48)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- The second claimed batch member (big-icon completion affordance). Depends on Story 02 (=R= and the routine-day =failed?= predicate for the forfeited badge), Story 03 (the persistent points badge it sits beside in the banner), and Story 06 (the failed-not-redone state 1 where the routine-penalty strip carries −R instead of this badge). Read `docs/design-language.org` first per CLAUDE.md — its invariants are binding for any kids'-view visual change.
+- This story lands the collapse/expand *affordance move*: the header bar is deleted and its toggle role becomes the banner icon (D44). Preserve the existing ephemeral re-expand state (the =@expanded= MapSet, D34) but drive it from the icon tap rather than the retired header button.
+- =forfeited? = failed?= is the routine-day boolean from Story 02's derivation — reuse it, do not recompute. The badge renders only when =complete? = true=; the failed-not-redone case shows no icon at all (that −R is Story 06's penalty strip). The two states together satisfy SC-6 "once at the routine level."
+- The two D48 recordings are explicit ACs, not technical notes: repo convention records design-language rulings in =docs/design-language.org= when the work lands, and this is the story where the header bar is retired and the sun/moon icon ships. Edit that file as part of this story (retire-the-header-bar ruling; supersede the [2026-07-12] deferral entry).
+- Give the completion icon a stable DOM id per kid (e.g. =completion-icon-#{kid.id}=) so tests drive the tap-toggle and assert intact vs. forfeited badge via =element/2= / =has_element?=; test both morning (sun) and evening (moon), and the redo-forfeited case (=complete? = true=, =failed? = true=).
+- Cover the cross-day negative case from D47's rejected alternative ("forfeited = any fail ever"): a fail on a /different/ day does not forfeit today's bonus. =forfeited? = failed?= is the day-scoped routine-day predicate from Story 02, so assert that a routine completed today shows an intact =+R= badge even when the same kid/routine carries a failed completion from a prior day.
+- On-device: the 5-chore no-scroll budget *with the badge present* and the sun/moon rendering in Fully Kiosk's WebView are verified at the manual batch-close gate, not by a per-story AC.

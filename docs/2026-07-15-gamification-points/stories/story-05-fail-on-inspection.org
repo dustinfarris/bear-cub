@@ -1,0 +1,68 @@
+#+title: Story 05 — Fail-on-inspection: fail_chore/2 + admin action
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** =completions.failed_at= — how a fail stamps (Data Model)
+
+The fail marker, distinct from =undone_at=. A fail stamps *both* columns on the current live completion for =(chore, local_date)=:
+
+- =undone_at= — reverts the chore to incomplete, reusing every existing done-derivation (=undone_at IS NULL=, unchanged) and freeing the partial unique index so the child can redo.
+- =failed_at= — the persistent penalty record.
+
+An ordinary admin undo stamps only =undone_at= (contribution 0). Only a fail stamps =failed_at= (contribution −value). The fail/undo distinction is load-bearing for the score (D40). Rows are never deleted; the partial unique index =(chore_id, local_date) WHERE undone_at IS NULL= already permits a fresh live row on redo — exactly the fail→redo cycle. (D39)
+
+** Admin — fail-on-inspection
+
+The parent reviews a kid's day (phone-first, over Tailscale) and fails a chore the child faked. A new =fail_chore/2= context action stamps =undone_at= + =failed_at= on the current live completion; the existing ="chores"= PubSub broadcast drives the kiosk live update (chore reverts to incomplete, routine bonus drops if it had been complete, failed-chore UI appears, points badge and completion badge update). This is a distinct action from the existing on-behalf undo. (SC-3, D40)
+
+** Fail-on-inspection and redo net to zero (Key Behaviors)
+
+- *Fail* (=fail_chore/2=, parent-initiated in admin): on the current live completion for =(chore, local_date)=, stamp =undone_at= + =failed_at=. The chore reverts to incomplete (redoable), the −value penalty is recorded, and PubSub updates the kiosk. Takes a local-datetime argument.
+- *Redo* (child taps the chore again on the kiosk): a new live completion row is inserted (the partial unique index permits it; the failed row stays, undone). The restored +value and the persisted −value net to zero — because the child lied, the best outcome is back to start.
+- *Routine cap in action:* completing the whole morning routine → +R. Fail one chore → routine no longer complete (bonus gone) *and* −R → net −R from the bonus. Fail a *second* chore in the same routine → still one −R (capped). Redo all failed chores → routine complete again (+R), penalty persists (−R) → net zero. (SC-3, D40)
+
+*Worked examples (SC-3):* child at 20 completes a 5-point extra → 25; parent fails it → +5 becomes −5 → 15; child redoes → new +5, failed −5 persists → 20 (back to start). Floor case: child at 3 completes a 5-point chore (→8), failed (true −2, shows *0*), redoes (→3).
+
+** Context (=BearCub.Chores=) — in scope
+
+- Add =fail_chore/2= =(chore, local_now)= — stamp =undone_at= + =failed_at= on the current live completion; broadcast ="chores"=. Returns an error if there is no live completion to fail.
+- =complete_chore= / =undo_chore= / =toggle_completion= / =current_completions= and the ="chores"= broadcast are unchanged; a fail is the only new write path.
+
+** Decision Log entry in scope
+
+- *D40 (2026-07-16) — Fail = undo + persistent penalty; routine penalty capped at one −R per routine-day; extras cost their own value:* a fail stamps both =undone_at= (reverts the chore, contribution 0-path freed) and =failed_at= (contribution −value); an ordinary undo stamps only =undone_at= (contribution 0) — the fail/undo distinction is load-bearing for the score. Derivation checks =failed_at= first. … Rejected — per-chore routine penalties (−R each): would read as −10 for two fails when the real, intended hit is a single −R. Settles SC-3. → Data Model, Key Behaviors (fail-on-inspection, points model), Screens (admin fail).
+
+* User Story
+
+As a parent, I need to fail a chore my child tapped done but did not really do, so that the chore reverts to incomplete for a redo and its points are deducted as a real consequence for the lie — a caught-then-redone chore netting zero.
+
+* Acceptance Criteria
+
+** [ ] =BearCub.Chores.fail_chore/2= =(chore, local_now)= stamps *both* =undone_at= and =failed_at= on the current live completion for =(chore, local_date)=, reverting the chore to incomplete while retaining the row. (SC-3, D40)
+** [ ] =fail_chore/2= is distinct from an ordinary on-behalf undo (which stamps only =undone_at=): only a fail stamps =failed_at=, and the failed row persists permanently (never deleted). (SC-3, SC-4, D40)
+** [ ] =fail_chore/2= returns an error when there is no live completion to fail. (SC-3, D40)
+** [ ] =fail_chore/2= broadcasts on the existing ="chores"= topic, and the kiosk live-updates: the chore reverts to incomplete and the points badge drops by the failed value (bonus drop included when the routine had been complete). (SC-3, D40)
+** [ ] The admin per-kid review surface exposes a fail action, separate from the existing on-behalf undo, that invokes =fail_chore/2= with a local-datetime argument. (SC-3, D40)
+** [ ] After a fail, the child redoing the chore on the kiosk inserts a fresh live completion (the partial unique index permits it); the restored +value and persisted −value net to zero, matching the worked example (20 → 25 → 15 → 20). (SC-3, D40)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01 (=failed_at= column), Story 02 (derivation, so the fail's point effect is observable), and Story 03 (banner badge, so the live-update drop is assertable). Precedes Story 06, which renders the failed-chore marking this write path creates.
+- =fail_chore/2= is the *only* new write path; =complete_chore= / =undo_chore= / =toggle_completion= / =current_completions= and the ="chores"= broadcast are unchanged. Stamp both columns via =Ecto.Changeset.change/2= (programmatic, not =cast=) on the current live completion; return an error tuple when none exists.
+- Thread =local_now= as an argument per the design invariant — no =utc_now= inside the action, no clock mocking in tests.
+- The admin surface is =Admin.TodayLive= (the per-kid correction surface); add a fail control alongside the existing on-behalf unmark, with a stable DOM id for the LiveView test. The kiosk/admin fence is unaffected — the fail action lives only in admin.
+- Test the net-zero redo end-to-end here through the write path (fail then a kiosk complete), complementing Story 02's pure-function net-zero test.

@@ -1,0 +1,87 @@
+#+title: Story 02 — Points derivation: contributions, cap, floored total
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Routine bonus constant =R=
+
+=R= (default *5*) is an app constant in =runtime.exs=, env-overridable — the same treatment routine windows get (D8), read via =Application.fetch_env!/2= behind a =BearCub.Routines.bonus/0= accessor mirroring =windows/0=. Not a DB row, not =chores.points=. (D39, D40)
+
+** Points model — two granularities, purely derived
+
+Points are earned at two granularities, a deliberate distinction: a whole routine is worth a fixed bonus no matter how many chores it holds, while each extra is worth its own value. The total is cumulative all-time, derived from =completions= (nothing stored, no reset job), and floored at zero on the aggregate only.
+
+#+begin_src
+total(kid) = max(0, Σ routine-day contributions + Σ extra contributions + Σ other_signed_inputs)
+#+end_src
+
+where =other_signed_inputs= is *empty today* — the seam for future redemption spends (D42), not hard-wired away.
+
+*Extra contribution* (per completion row):
+
+#+begin_src
+Row state       undone_at   failed_at   Contribution
+Live (earned)   NULL        NULL        +chore.points
+Ordinary undo   set         NULL        0
+Failed          set         set         −chore.points
+#+end_src
+
+*Routine contribution* (per kid × routine × local day — /not/ per row, because the penalty is capped):
+
+#+begin_src
+complete? = every routine chore has a live completion that day        -> +R
+failed?   = one or more routine chores has a failed completion that day -> −R   (capped: 2+ fails still −R)
+routine-day contribution = (complete? ? +R : 0) + (failed? ? −R : 0)
+#+end_src
+
+The cap falls out of =failed?= being a *boolean per routine-day*, not a per-row sum. A 4-chore routine and a 2-chore routine both earn exactly =R= — routine points never scale with chore count (SC-2). All contribution functions take a local-date / local-datetime argument; no buried =utc_now=, no clock mocking. (D40, D41)
+
+** Floor-at-zero applies to the aggregate only
+
+The =max(0, …)= floor applies to the *aggregate total*. Individual signed rows are *never* clamped — a failed row's −value physically persists as the permanent penalty record and audit trail (SC-4). The kiosk never shows a negative number; the aggregate returns to its true value once positive. Accepted, deliberate trade-off: flooring loses information (two kids both showing 0 may have different true standings) — a future redemption feature that needs a true balance sums the raw signed contributions directly; the floored total is the display/reward figure, not the only figure derivable. (D41)
+
+** Context (=BearCub.Chores=) — in scope
+
+- Add points derivation — pure functions over =completions= and =chores.points= / =R= that compute the extra and routine-day contributions above and the floored per-kid total, each taking a local-date argument. The kiosk reads the total in =load/2= and recomputes for free on the existing =:chores_changed= re-fetch.
+
+** Decision Log entries in scope
+
+- *D40 (2026-07-16) — Fail = undo + persistent penalty; routine penalty capped at one −R per routine-day; extras cost their own value:* a fail stamps both =undone_at= (reverts the chore, contribution 0-path freed) and =failed_at= (contribution −value); an ordinary undo stamps only =undone_at= (contribution 0) — the fail/undo distinction is load-bearing for the score. Derivation checks =failed_at= first. The routine penalty is a boolean =failed?= per =(kid, routine, local_date)= yielding a single −R regardless of how many chores were failed, coexisting with +R after a redo to net zero; extras are per-row and cost their own =chore.points=. Rejected — per-chore routine penalties (−R each): would read as −10 for two fails when the real, intended hit is a single −R. Settles SC-3. → Data Model, Key Behaviors (fail-on-inspection, points model), Screens (admin fail).
+- *D41 (2026-07-16) — Cumulative all-time derived total, floored at zero on the aggregate only:* the total is =max(0, Σ contributions)=, purely derived from =completions= (nothing stored, no reset job, honoring D10), and never resets. The floor applies to the aggregate only; individual signed rows are never clamped, so a failed row's −value persists forever as the audit trail (SC-4) and the aggregate returns to its true value once positive. Accepted trade-off: flooring loses information (two 0s may differ in true standing) — a future balance-needing feature sums the raw signed rows; the floored total is the display figure, not the only derivable one. Rejected — a stored running total or per-day/week reset: violates the derived-state doctrine (D10) and the cumulative-all-time contract (SC-1, PRD Out of Scope). Settles SC-1, SC-4. → Key Behaviors (points model, floor-at-zero).
+- *D42 (2026-07-16) — Redemption seam: total shaped as =max(0, earnings + other_signed_inputs)=, spends deferred:* the summation carries an =other_signed_inputs= term that is empty today, so a future redemption spend (a negative, non-completion signed input) slots in without reshaping earnings — the total is deliberately /not/ hard-wired as a pure function of =completions=. Redemption itself (store, spending flow, streaks) is out of scope, ruled by the human. Rejected — hard-wiring the total to =completions= only: would force a reshape of the earnings derivation when redemption arrives, precluding the seam the PRD requires be kept open. Settles the SC-4 / Out-of-Scope seam. → Key Behaviors (points model), Out of Scope.
+
+* User Story
+
+As a kid, I need my points total to add up correctly from what I have really completed — a fixed bonus per finished routine, each extra's own value, a single capped penalty when a routine chore is failed — and never show a negative number, so that the score on the kiosk is an honest, stable reward that a caught lie cannot inflate.
+
+* Acceptance Criteria
+
+** [ ] =BearCub.Routines.bonus/0= reads =R= (default 5) from =runtime.exs= via =Application.fetch_env!/2=, mirroring =windows/0=; it is not a DB row and not =chores.points=. (SC-2, D40)
+** [ ] An extra's contribution is =+chore.points= for a live (earned) row, =0= for an ordinary undo (=undone_at= set, =failed_at= null), and =−chore.points= for a failed row (both set). (SC-2, SC-3, D40)
+** [ ] A routine-day contributes =+R= when every routine chore has a live completion that day and =−R= when one or more routine chores has a failed completion that day; two or more fails in the same routine-day still contribute a single =−R= (capped), and =+R= is fixed regardless of chore count — a 4-chore and a 2-chore routine each earn exactly =R=. (SC-2, SC-3, D40)
+** [ ] Failing a routine chore after the routine was complete nets =−R= (bonus lost + penalty), and redoing all failed routine chores restores =+R= while the persisted =−R= remains, netting zero for that routine-day. (SC-3, D40)
+** [ ] The floored per-kid total is =max(0, Σ routine-day contributions + Σ extra contributions)=; the worked cases hold — 20 → complete a 5-pt extra → 25 → fail it → 15 → redo → 20; and the floor case 3 → complete a 5-pt chore → 8 → fail → shows 0 → redo → 3. (SC-1, SC-4, D41)
+** [ ] The =max(0, …)= floor is applied to the aggregate total only; the underlying signed contributions are never clamped, so the raw signed sum (including a persisted −value below zero) remains recoverable from the same derivation inputs. (SC-4, D41)
+** [ ] Every contribution and total function takes a local-date / local-datetime argument; expected test values are computed with those same pure functions, with no =utc_now= inside the derivation and no clock mocking in tests. (D40, D41)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01 (needs =completions.failed_at= and =chores.points= to derive from).
+- Pure functions over =completions= and =chores.points= / =R= in =BearCub.Chores= (or a focused derivation module it delegates to). No stored total, no reset job, no ledger — honoring D10/D41.
+- Derivation checks =failed_at= *first*, then =undone_at=, then live — matching the "Points-derivation checks =failed_at= first" rule from the Data Model.
+- The routine cap is *structural*: model =failed?= as a boolean per =(kid, routine, local_date)=, never a per-row sum, so two fails cannot read as −2R. The =other_signed_inputs= term is present but empty (the D42 redemption seam) — keep it in the summation shape, do not fold it away.
+- This story lands the derivation and its unit tests only. The banner badge that *displays* =max(0, total)= is Story 03; the fail write path that *creates* failed rows is Story 05. Test the fail→redo net-zero and floor cases here at the pure-function layer by constructing completion rows directly (fail = a row with both =undone_at= and =failed_at= stamped, plus a fresh live row for the redo).
+- All functions thread a local datetime/date argument (configured timezone) per the design invariant; compute expected values in tests with the same pure functions — no =DateTime.utc_now/0= in domain code, no clock mocking.

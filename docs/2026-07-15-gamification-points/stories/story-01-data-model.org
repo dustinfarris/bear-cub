@@ -1,0 +1,70 @@
+#+title: Story 01 — Data model: completions.failed_at + chores.points
+#+date: 2026-07-16
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Data Model (intro)
+
+Two columns, no new table. =completions= gains a fail marker; =chores= gains an extra-points value. The =kids= table is unchanged — no points total is stored (the score is derived).
+
+** =completions.failed_at= — nullable =utc_datetime=
+
+The fail marker, distinct from =undone_at=. A fail stamps *both* columns on the current live completion for =(chore, local_date)=:
+
+- =undone_at= — reverts the chore to incomplete, reusing every existing done-derivation (=undone_at IS NULL=, unchanged) and freeing the partial unique index so the child can redo.
+- =failed_at= — the persistent penalty record.
+
+Points-derivation checks =failed_at= *first*:
+
+#+begin_src
+failed_at set  ->  −value        (penalty; persists forever as audit trail)
+undone_at set  ->  0             (ordinary undo)
+otherwise      ->  +value        (live/earned)
+#+end_src
+
+An ordinary admin undo stamps only =undone_at= (contribution 0). Only a fail stamps =failed_at= (contribution −value). The fail/undo distinction is load-bearing for the score (D40). Rows are never deleted; the partial unique index =(chore_id, local_date) WHERE undone_at IS NULL= already permits a fresh live row on redo — exactly the fail→redo cycle. (D39)
+
+** =chores.points= — integer, default 5, NOT NULL
+
+Authoritative for *extras* (=routine = nil=), parent-adjustable in the admin chore form. Routine chores carry the column too (it is present on every row for a uniform schema and changeset) but *ignore it* in derivation — a routine's value is the constant =R=, never the sum of its chores' =points= (D39, D40). Choosing a non-null column on all rows over NULL-for-routine-chores avoids nullable handling in every points read for no modeling gain; the discriminator that matters is =routine=, already present.
+
+** Why this reuses D10 / D27 rather than a =points_ledger=
+
+A fail *is* a completion event, so it belongs on the completion row (the D27 nullable-discriminator pattern applied a second time; see =docs/learnings.org=, [2026-07-12]). A standalone ledger would duplicate the dating, undo, on-behalf =source=, history, and PubSub that =completions= already provides, and would fork the audit trail from the completion history it is inseparable from — a parent inspecting "what happened to this chore today" would have to join two logs. Every scoring event is a completion event (earn = a live completion; fail = an undo+marker on a completion; future redemption spends are the only non-completion inputs, and those are deferred). The ledger buys nothing the discriminator column does not. Rejected. (D39)
+
+** Decision Log entry in scope
+
+- *D39 (2026-07-16) — Storage: extend =completions= with =failed_at=, add =chores.points=; no =points_ledger= table:* a fail is a completion event, so the fail marker lives on the completion row (=failed_at=, nullable =utc_datetime=, beside =undone_at=), and extra values live in =chores.points= (integer, default 5, NOT NULL on all rows; routine chores ignore it in favor of the constant =R=). This is the D27 nullable-discriminator pattern applied a second time (see =docs/learnings.org= [2026-07-12]). Rejected — a standalone =points_ledger= table: duplicates the dating/undo/=source=/history/PubSub =completions= already provides and forks the audit trail from the completion history it is inseparable from; every scoring event is a completion event, so the ledger buys nothing the column does not. Rejected — NULL =points= for routine chores: adds nullable handling to every points read for no modeling gain (the =routine= discriminator already distinguishes them). Settles SC-2 storage, SC-4 audit trail. → Data Model, Key Behaviors (points model).
+
+* User Story
+
+As a developer building the points feature, I need the storage schema to carry a fail marker on completions and a per-chore points value, so that every later story — derivation, the fail action, and the kiosk badges — has a single, uniform place to read fail state and extra values from without a parallel ledger table.
+
+* Acceptance Criteria
+
+** [ ] A migration adds a nullable =failed_at= (=utc_datetime=) column to =completions= and a =points= (integer, =NOT NULL=, default 5) column to =chores=; existing =chores= rows take the default value 5. (SC-2, SC-4, D39)
+** [ ] The =Completion= schema exposes =failed_at=, and the existing partial unique index =(chore_id, local_date) WHERE undone_at IS NULL= is unchanged, so a fresh live completion is still insertable after a prior row is undone (the redo path). (D39)
+** [ ] The =Chore= schema exposes =points=, and the chore changeset casts =points= (present on every row including routine chores, default 5); a chore created without a =points= value validates and persists with 5. (SC-2, D39)
+** [ ] =failed_at= is stamped programmatically, not cast from user params — the completion changeset does not accept =failed_at= from external params. (D39, D40)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Foundation story for the initiative; every later story depends on it. No dependencies of its own.
+- Generate the migration with ~mix ecto.gen.migration~ (underscored name) per CLAUDE.md; add both columns in the one migration. =chores.points= is =NOT NULL default 5= so existing rows backfill without a data step.
+- =failed_at= sits beside =undone_at= on =completions= as a second nullable discriminator — the D27 pattern (=routine= nil-discriminator on =chores=) applied again. Do *not* add a ledger table; the "Why this reuses D10 / D27" excerpt is the standing rejection.
+- The partial unique index is *not* changed by this story — it already permits the fail→redo cycle (a failed row keeps =undone_at IS NULL= false after fail stamps both columns; a fresh live row is then insertable). Confirm the index is intact after the migration; do not re-create or alter it.
+- Per Ecto guidelines (CLAUDE.md), programmatically-set fields stay out of =cast=: =failed_at= is stamped by =fail_chore/2= (Story 05), not accepted from params.
+- The derivation that *reads* these columns, the =R= bonus accessor, and the admin chore-form =points= input are later stories (02, 04) — this story lands only the schema/migration/changeset.
