@@ -16,4 +16,6 @@ The persistent routine header bar (the routine-colored title bar above the chore
 
 Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + message were the only completion signals. Superseded [2026-07-16]: a large sun (morning) / moon (evening) completion icon with a green check now renders in the child's banner whenever their routine is complete, carrying the routine bonus badge (intact or forfeited). Do not add further indicators without a ruling.
 
+A green +N chip on a completed extra's card shows its earned value (its own =chore.points=); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip.
+
 Tokens live in assets/css/app.css, in the block above the LiveView class variants.

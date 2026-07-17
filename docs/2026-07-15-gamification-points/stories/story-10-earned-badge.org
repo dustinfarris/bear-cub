@@ -35,17 +35,49 @@ As a kid, I want to see how many points an extra earned me right on its card whe
 
 * Acceptance Criteria
 
-** [ ] A completed (done-today) extra in the morning reveal (state 2) shows a green *+N chip* — its own =chore.points= value — to the left of the checkmark. (SC-2, SC-6, D54)
-** [ ] An incomplete extra shows *no* +N chip; a failed extra shows Story 06's *warning + −N* instead of a +N chip (never both). (SC-6, D46, D54)
-** [ ] A completed routine chore shows *no per-chore chip* (no +N) — the routine-level reward remains the Story 08 completion-icon bonus badge, unchanged. (SC-2, D45, D54)
-** [ ] The green earned chip is recorded as a design-language ruling (green chip = earned value on extras) in =docs/design-language.org= as the work lands (per repo convention). (D48, D54)
+** [X] A completed (done-today) extra in the morning reveal (state 2) shows a green *+N chip* — its own =chore.points= value — to the left of the checkmark. (SC-2, SC-6, D54)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:26] \\
+  Verified: ~lib/bear_cub_web/live/kiosk_live.ex~ ~chore_row/1~ (lines 504-515) renders =<span :if={@done? and @extra?} id={"chore-earned-#{@chore.id}"} class="ml-auto text-2xl font-bold text-success">+{@chore.points}</span>= immediately before the checkmark =<.icon :if={@done?} .../>=, within the =extras-{kid.id}= list gated to =state == :band and routine == :morning=. Test ~test/bear_cub_web/live/kiosk_live_test.exs:1175~ "a completed extra in the morning reveal shows a green +N chip (AC1, D54)" asserts =has_element?(view, "#chore-earned-#{extra.id}", "+12")= and passes.
+:END:
+** [X] An incomplete extra shows *no* +N chip; a failed extra shows Story 06's *warning + −N* instead of a +N chip (never both). (SC-6, D46, D54)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:26] \\
+  Verified: the chip guard =:if={@done? and @extra?}= and the penalty guard =:if={@failed? and @extra?}= can never both hold, since ~build_rows/3~ (~kiosk_live.ex:237~) computes =failed?: not done? and MapSet.member?(failed_ids, chore.id)= — mutual exclusivity is structural, not incidental. Test ~kiosk_live_test.exs:1192~ "an outstanding extra shows no +N chip; a failed extra shows the −N warning instead, never both (AC2, D46, D54)" refutes =#chore-earned-{outstanding.id}= and =#chore-earned-{failed.id}=, asserts =#chore-penalty-{failed.id}= shows "−7". Passes.
+:END:
+** [X] A completed routine chore shows *no per-chore chip* (no +N) — the routine-level reward remains the Story 08 completion-icon bonus badge, unchanged. (SC-2, D45, D54)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:26] \\
+  Verified: the routine-chore call site (~kiosk_live.ex:419-426~) never passes =extra?=, defaulting to =false= (~attr :extra?, :boolean, default: false~, ~kiosk_live.ex:480~), so =@done? and @extra?= is always false for routine rows — the chip cannot render there. Test ~kiosk_live_test.exs:1213~ "a completed routine chore shows no per-chore chip (AC3, D45, D54)" refutes =#chore-#{chore.id} #chore-earned-{chore.id}= and refutes the bare points value "9" anywhere in the row. Passes. Story 08's banner bonus-badge markup is untouched — this story's diff is confined to ~chore_row/1~.
+:END:
+** [X] The green earned chip is recorded as a design-language ruling (green chip = earned value on extras) in =docs/design-language.org= as the work lands (per repo convention). (D48, D54)
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:26] \\
+  Verified: ~docs/design-language.org~ line 19 adds the Ruling "A green +N chip on a completed extra's card shows its earned value (its own =chore.points=); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip." — matches the story's required ruling text and is dated the landing day per the D48 pattern.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:27] \\
+  All 4 ACs marked =[X]= above with LOGBOOK evidence citing concrete file/line and test-name references; no deferrals needed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:27] \\
+  ~describe "earned-value marking (Story 10, D54)"~ at ~test/bear_cub_web/live/kiosk_live_test.exs:1163-1230~, 3 tests covering AC1-AC3 (AC4 is a docs artifact, no test target). ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → =Result: 65 passed=.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:27] \\
+  Spot-checked ~chore_row/1~ (~kiosk_live.ex:475-531~): correct =attr= declarations, HEEx =class={[...]}= list syntax used for conditional classes, no deprecated APIs, no map-access misuse, new chip mirrors the existing =chore-penalty= pattern's stable DOM id convention.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-17 Fri 07:27] \\
+  Ran ~mix precommit~ (=compile --warnings-as-errors=, =deps.unlock --unused=, =format=, =test=): =Result: 283 passed=, exit code 0. =mix format --check-formatted= and =mix compile --warnings-as-errors --force= independently confirmed clean.
+:END:
 
 * Technical Notes
 
@@ -56,3 +88,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - Read =docs/design-language.org= first per CLAUDE.md — its invariants are binding for any kids'-view visual change. The chip is a new kids'-view indicator, so its ruling is recorded there as part of this story (the D48 pattern), when the work lands: a new =* Rulings= entry stating "a green +N chip on a completed extra's card shows its earned value; routine chores carry no per-chore number."
 - Story 06's failed-chore rendering (warning icons, =−N=, the routine-penalty strip) and Story 08's completion-icon bonus badge are *untouched* — this story adds only the positive-earned chip on completed extras. Do not add a chip to routine chores (D54 / D45 honesty).
 - On-device: the 5-chore no-scroll budget *with the chip present* is verified at the manual batch-close gate, not by a per-story AC.
+- Deferred discovery: ~mix test~/~mix precommit~ runs emit stderr noise (=Exqlite.Connection ... disconnected: DBConnection.ConnectionError=) during teardown; pre-existing, unrelated to this story's changes, does not affect pass/fail. Out of scope here.
