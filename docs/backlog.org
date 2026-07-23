@@ -5,10 +5,41 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO =mix test=/=mix precommit= runs emit stderr noise (=Exqlite.Connection ... disconnected: DBConnection.ConnectionError=) during teardown (Story 10, and observed on unrelated batches too); pre-existing, does not affect pass/fail.
+* TODO [#A] Rewards / redemption system :promote:
 :PROPERTIES:
-:CREATED:  [2026-07-17 Fri 07:31]
+:CREATED:  [2026-07-18 Sat 23:35]
 :END:
+Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as =max(0, completions_earnings + other_signed_inputs)=, with =other_signed_inputs= empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
+
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
+* TODO =points_total/2= N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+=points_total/2= (=lib/bear_cub/chores.ex=, Story 02) issues one query for distinct =(routine, local_date)= pairs, then one =routine_day_contribution/3= call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every =:chores_changed= re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows.
+
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery).
+* TODO Kiosk collapse-delay can double-schedule its collapse timer on a rapid undo/redo
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+=BearCubWeb.KioskLive='s collapse-delay (=lib/bear_cub_web/live/kiosk_live.ex=, Story 07): a rapid undo/redo of a routine's last chore within the =@collapse_delay_ms= (400ms) window can schedule more than one =Process.send_after(self(), {:collapse_ready, kid_id}, ...)= for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (=MapSet.delete= on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
+
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
+* TODO Remove =BearCub.MigrationTestRepo= and the remaining migration-execution test :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway =MigrationTestRepo=-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch =BearCub.MigrationTestRepo= pool (=test/support/migration_test_repo.ex=) and the one remaining migration-execution test that still exercises it, =test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs= (its AC3 coverage — completion history surviving the =chores.routine= nullability rebuild — should be re-pointed to the standard =mix test= migration run, per Story 01's precedent).
+
+Removing this retires one of the two documented triggers on the Exqlite teardown-noise entry below (noted there).
+* TODO Inline-markup normalization sweep across the org corpus :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+Retro ruling ([2026-07-18]): enforce the org-conventions ~code~/=verbatim= distinction (~code~ for anything a language would parse — identifiers, module/function names, expressions, shell commands, file paths; =verbatim= only for literal non-code strings quoted exactly — stored values, config keys, log output) across the entire org corpus: all three initiative chains (mvp, extras, gamification-points — PRD.org/DESIGN.org/stories/ in each), =docs/learnings.org=, =docs/design-language.org=, and =docs/backlog.org= itself.
+
+Repair-class neutral pass: no D-entries, no Advisories — the convention already stands and isn't changing, the corpus is only being brought into line with it. Land as one dedicated doc-only commit.
 * TODO Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
@@ -96,6 +127,15 @@ same class of non-fatal sandbox-connection race, two known triggers:
 Occasionally logs a =Exqlite.Connection ... disconnected:
 (DBConnection.ConnectionError)= line during teardown; no test failures,
 never affects =mix precommit='s exit code.
+
+Also observed from the gamification-points initiative (Story 10, PLAN.org
+Deferred, 2026-07-17) — same class, no new trigger; folded in here rather
+than duplicated (a rough capture of this had briefly existed as its own
+backlog entry — merged in during the 2026-07-18 post-retro sweep).
+
+Retro ruling ([2026-07-18]): removing =BearCub.MigrationTestRepo= (see the
+dedicated backlog item above) retires the first of the two triggers above,
+leaving only the =today_live_test.exs= cross-process PubSub trigger.
 
 * From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
 =ChoreLive.Index='s three list sections (Morning/Evening/Extras)
