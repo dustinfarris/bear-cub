@@ -4,7 +4,7 @@ Active initiative: docs/2026-07-15-gamification-points/ (Gamification: Points)
 
 ## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 
-- Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — D-entries flow continuously through each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9). The next entry continues from the highest number anywhere in the chain regardless of which initiative it lands in; next entry is D39. Advisories adopted per kit default.
+- Decision Log: this repo runs one monotonic Decision Log sequence across initiatives — historical D-entries remain in situ inside each initiative's DESIGN.org `* Decision Log` (originating in the MVP chain's §10, 'Design decision log', which extended PRD §9), but as of the workflow-kit 0.7.0 adoption, new entries mint into the shared `docs/decisions.org` instead (see Authoritative docs below). Advisories adopted per kit default.
 - Early work predates the kit: no stories exist for it; git history is its record.
 - Stories are batch-scoped: /workflow-kit:user-stories is always invoked with an explicit batch scope and only excerpts the DESIGN sections that batch implements. ("Phase N" is at most a decorative label an initiative puts on a batch heading — never a repo-level concept.)
 - Gate close (`/workflow-kit:phase-close`) includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
@@ -23,6 +23,7 @@ Repo-level, cumulative across initiatives (not scoped to any one chain):
 
 - `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
 - `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms.
+- `docs/decisions.org` — Repo-level Decision Log: one monotonic D-sequence across all initiatives, never inside an initiative directory; each DESIGN.org's `* Decision Log` section is a pointer to it, with entry rules living in the workflow-kit org-conventions skill.
 
 Any change touching kids' view styling, colors, or component visuals: read `docs/design-language.org` first; its invariants and rulings are binding.
 
