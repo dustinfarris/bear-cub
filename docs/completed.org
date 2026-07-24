@@ -1,0 +1,86 @@
+#+title: Completed
+#+startup: showall
+#+TAGS: oneshot(o) hand(h) promote(p)
+
+Completed backlog items, moved here from docs/backlog.org when marked DONE (per the rule recorded in its preamble, [2026-07-24 Fri]). Entries keep their full capture/triage/done trail; new arrivals append at the end.
+* DONE [#A] Gamification: Points system :promote:
+:PROPERTIES:
+:CREATED:  [2026-07-13 Mon 23:27]
+:END:
+Need a way to reward the kids for completing their tasks.  A couple thoughts:
+- Completing an entire routine (morning or evening) is worth maybe 5 points
+- Ad-hoc chores added by parents are worth 5 points by default but parent can adjust
+- Need a points total readout for each child on the main page
+- Parents need to be able to "fail" a chore upon inspection (i.e. the child tapped it done but did not actually do it)
+  - This /deducts/ the points that would have been otherwise added, and the chore completion is undone so that the child can actually do it and mark it off and earn the points back (netting zero as a consequence for the lie).
+
+Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brainstorm:
+- Consider claiming the collapse-delay and big-icon items below as batch members — same completion-reward theme.
+- Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets ~undone_at~, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
+
+Done [2026-07-24 Fri]: initiative shipped — all 10 stories closed, Batch 1 gate closed [2026-07-18]. Marked at backlog review.
+* DONE Remove ~BearCub.MigrationTestRepo~ and the remaining migration-execution test :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway ~MigrationTestRepo~-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch ~BearCub.MigrationTestRepo~ pool (~test/support/migration_test_repo.ex~) and the one remaining migration-execution test that still exercises it, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ (its AC3 coverage — completion history surviving the ~chores.routine~ nullability rebuild — should be re-pointed to the standard ~mix test~ migration run, per Story 01's precedent).
+
+Removing this retires one of the two documented triggers on the Exqlite teardown-noise entry in docs/backlog.org (noted there).
+
+Done [2026-07-24 Fri]: both files removed (~test/support/migration_test_repo.ex~, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~); no other references existed. AC3 coverage now rides the standard ~mix test~ migration run per Story 01's precedent. ~mix precommit~ clean, 282 passed.
+* DONE Inline-markup normalization sweep across the org corpus :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+Retro ruling ([2026-07-18]): enforce the org-conventions ~code~/=verbatim= distinction (~code~ for anything a language would parse — identifiers, module/function names, expressions, shell commands, file paths; =verbatim= only for literal non-code strings quoted exactly — stored values, config keys, log output) across the entire org corpus: all three initiative chains (mvp, extras, gamification-points — PRD.org/DESIGN.org/stories/ in each), ~docs/learnings.org~, ~docs/design-language.org~, and ~docs/backlog.org~ itself.
+
+Repair-class neutral pass: no D-entries, no Advisories — the convention already stands and isn't changing, the corpus is only being brought into line with it. Land as one dedicated doc-only commit.
+
+Done [2026-07-24 Fri]: ~1,700 span conversions across the scoped corpus (PRD/DESIGN/stories in all three chains, learnings, design-language, backlog); also repaired ~25 lines of author-broken org markup found along the way (early-closing = spans like ~value=""~, doubled ~~ around sigil-bearing code, pluralized =EXDATE=s). Approximation tildes (~15 minutes), ICS property literals (=FREQ=MONTHLY=), and quoted stored values stayed verbatim. The mvp PRD's 4 markup-only conversions were applied under a human-authorized one-time prd-lock bypass. PLAN.org files and docs/decisions.org were outside the item's stated scope and untouched.
+* DONE I want the vertical height of a chore to shrink a little when it is completed :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-17 Fri 06:29]
+:END:
+Triage [2026-07-24 Fri]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies (mind the 5-chore no-scroll check — shrinking completed rows should help it, never hurt it).
+
+Done [2026-07-24 Fri]: done rows (chores and extras, via the shared ~chore_row~) render at ~h-20~ against the pending ~h-24~, with the row grids switched from fixed ~auto-rows-[6rem]~ tracks to content-sized ~auto-rows-min~ so the per-row height takes effect; ~transition-all~ animates the shrink. Only helps the no-scroll budget (rows only ever get shorter). Ruling recorded in docs/design-language.org. On-device look remains for the next gate's manual checklist.
+* DONE [#B] need a darker screen for night mode (after 23:00) :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-13 Mon 23:28]
+:END:
+Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
+
+Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies. Independent of gamification.
+
+Done [2026-07-24 Fri]: the night window now renders a single ~#night-screen~ (dark ~bg-stone-950~, one large ~hero-moon-solid~ colored ~var(--routine-evening)~) replacing the per-kid columns entirely — D56 minted (supersedes D32's Good Night message, scopes D43's always-visible badge to waking windows); design-language ruling recorded; ~Messages.good_night/0~ retired. TDD at the LiveView layer, ~mix precommit~ clean. On-device check (dark render on the tablet, no light bleed) still owed at the next gate.
+* DONE [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
+:PROPERTIES:
+:ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
+:CREATED:  [2026-07-12 Sun 23:04]
+:END:
+
+So the child can get the quick "I completed that task" visual reward before seeing that they've completed the entire routine.
+
+Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted — hold until that brainstorm rules.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (collapse-delay, §6.3).
+
+Done [2026-07-24 Fri]: shipped as gamification-points Story 07 (400ms ~@collapse_delay_ms~). Marked at backlog review. A deferred discovery from that story lives in docs/backlog.org as the double-schedule entry.
+* DONE [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-12 Sun 23:01]
+:END:
+
+- Big sun icon for completing morning routine
+- Big moon icon for completing evening routine
+- Maybe a green checkmark in the upper-right corner of both
+
+This would then make the routine's persistent header bar obsolete.  The kid can tap the big icon to restore the list instead.
+
+Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted. Retiring the persistent header bar is a design-language ruling, not just implementation — record it in docs/design-language.org when done.
+
+Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (big-icon, §6.3).
+
+Done [2026-07-24 Fri]: shipped as gamification-points Story 08 (completion icon + tap-toggle, header bar retired; refined by D51/D52). Design-language recordings landed. Marked at backlog review.

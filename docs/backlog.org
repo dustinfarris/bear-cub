@@ -2,17 +2,16 @@
 #+startup: showall
 #+TAGS: oneshot(o) hand(h) promote(p)
 
-Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
+Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO [#C] animation for hiding/showing routine chores :oneshot:
+* TODO [#A] Rewards / redemption system :promote:
 :PROPERTIES:
-:CREATED:  [2026-07-24 Fri 15:58]
+:CREATED:  [2026-07-18 Sat 23:35]
 :END:
+Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
 
-when the last chore is completed for the routine, have it animate away rather than abruptly disappearing (e.g. collapse or similar).  likewise, if it is toggled back into view, animate it into view rather than abruptly showing it
-
-Triage [2026-07-24 Fri]: oneshot, #C — kids' view visuals: docs/design-language.org read is binding; on-device gate applies, and animation smoothness on Fully Kiosk's WebView is the bar, not desktop Chrome. This is the Story 07/08 collapse path (delay → band, big-icon tap restores), so claim it together with the collapse-timer double-schedule entry below — same code, one session.
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
 * TODO [#B] admin "quick add" extra chore from Today view :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
@@ -30,13 +29,6 @@ Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state al
 Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
 
 Ruled [2026-07-24 Fri]: ntfy push, per-chore granularity for now — customization (batching, quiet hours, per-kid settings) possible later, not in scope. Collapses to oneshot, #B: a Req POST per completion event, topic/server via ~runtime.exs~ env config. Treat the topic URL like the ICS URLs — never in git, never logged. Self-hosted ntfy vs ntfy.sh is an implementation-time deployment choice (NixOS module side).
-* TODO [#A] Rewards / redemption system :promote:
-:PROPERTIES:
-:CREATED:  [2026-07-18 Sat 23:35]
-:END:
-Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
-
-Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
 * TODO ~points_total/2~ N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
@@ -46,33 +38,6 @@ Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery).
 
 Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points becoming load-bearing. Claim candidate for the rewards/redemption initiative (the Rewards entry above), which is exactly what would make the total load-bearing; size it there, not here.
-* TODO [#C] Kiosk collapse-delay can double-schedule its collapse timer on a rapid undo/redo :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-18 Sat 23:35]
-:END:
-~BearCubWeb.KioskLive~'s collapse-delay (~lib/bear_cub_web/live/kiosk_live.ex~, Story 07): a rapid undo/redo of a routine's last chore within the ~@collapse_delay_ms~ (400ms) window can schedule more than one ~Process.send_after(self(), {:collapse_ready, kid_id}, ...)~ for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (~MapSet.delete~ on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
-
-Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
-
-Triage [2026-07-24 Fri]: oneshot, #C — store the timer reference and cancel it on undo. Behavior today is a harmless no-op, so this is polish, not a bug fix.
-* DONE Remove ~BearCub.MigrationTestRepo~ and the remaining migration-execution test :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-18 Sat 23:35]
-:END:
-Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway ~MigrationTestRepo~-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch ~BearCub.MigrationTestRepo~ pool (~test/support/migration_test_repo.ex~) and the one remaining migration-execution test that still exercises it, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ (its AC3 coverage — completion history surviving the ~chores.routine~ nullability rebuild — should be re-pointed to the standard ~mix test~ migration run, per Story 01's precedent).
-
-Removing this retires one of the two documented triggers on the Exqlite teardown-noise entry below (noted there).
-
-Done [2026-07-24 Fri]: both files removed (~test/support/migration_test_repo.ex~, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~); no other references existed. AC3 coverage now rides the standard ~mix test~ migration run per Story 01's precedent. ~mix precommit~ clean, 282 passed.
-* DONE Inline-markup normalization sweep across the org corpus :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-18 Sat 23:35]
-:END:
-Retro ruling ([2026-07-18]): enforce the org-conventions ~code~/=verbatim= distinction (~code~ for anything a language would parse — identifiers, module/function names, expressions, shell commands, file paths; =verbatim= only for literal non-code strings quoted exactly — stored values, config keys, log output) across the entire org corpus: all three initiative chains (mvp, extras, gamification-points — PRD.org/DESIGN.org/stories/ in each), ~docs/learnings.org~, ~docs/design-language.org~, and ~docs/backlog.org~ itself.
-
-Repair-class neutral pass: no D-entries, no Advisories — the convention already stands and isn't changing, the corpus is only being brought into line with it. Land as one dedicated doc-only commit.
-
-Done [2026-07-24 Fri]: ~1,700 span conversions across the scoped corpus (PRD/DESIGN/stories in all three chains, learnings, design-language, backlog); also repaired ~25 lines of author-broken org markup found along the way (early-closing = spans like ~value=""~, doubled ~~ around sigil-bearing code, pluralized =EXDATE=s). Approximation tildes (~15 minutes), ICS property literals (=FREQ=MONTHLY=), and quoted stored values stayed verbatim. The mvp PRD's 4 markup-only conversions were applied under a human-authorized one-time prd-lock bypass. PLAN.org files and docs/decisions.org were outside the item's stated scope and untouched.
 * TODO Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
@@ -83,83 +48,11 @@ Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged —
 :CREATED:  [2026-07-17 Fri 07:02]
 :END:
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — same points-UI theme as the rewards/redemption initiative; a stats view would also make ~points_total/2~'s N+1 shape (entry above) load-bearing, so consider claiming both together.
-* DONE I want the vertical height of a chore to shrink a little when it is completed :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-17 Fri 06:29]
-:END:
-Triage [2026-07-24 Fri]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies (mind the 5-chore no-scroll check — shrinking completed rows should help it, never hurt it).
-
-Done [2026-07-24 Fri]: done rows (chores and extras, via the shared ~chore_row~) render at ~h-20~ against the pending ~h-24~, with the row grids switched from fixed ~auto-rows-[6rem]~ tracks to content-sized ~auto-rows-min~ so the per-row height takes effect; ~transition-all~ animates the shrink. Only helps the no-scroll budget (rows only ever get shorter). Ruling recorded in docs/design-language.org. On-device look remains for the next gate's manual checklist.
-* DONE [#A] Gamification: Points system :promote:
-:PROPERTIES:
-:CREATED:  [2026-07-13 Mon 23:27]
-:END:
-Need a way to reward the kids for completing their tasks.  A couple thoughts:
-- Completing an entire routine (morning or evening) is worth maybe 5 points
-- Ad-hoc chores added by parents are worth 5 points by default but parent can adjust
-- Need a points total readout for each child on the main page
-- Parents need to be able to "fail" a chore upon inspection (i.e. the child tapped it done but did not actually do it)
-  - This /deducts/ the points that would have been otherwise added, and the chore completion is undone so that the child can actually do it and mark it off and earn the points back (netting zero as a consequence for the lie).
-
-Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brainstorm:
-- Consider claiming the collapse-delay and big-icon items below as batch members — same completion-reward theme.
-- Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets ~undone_at~, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
-
-Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
-
-Done [2026-07-24 Fri]: initiative shipped — all 10 stories closed, Batch 1 gate closed [2026-07-18]. Marked at backlog review.
-* DONE [#B] need a darker screen for night mode (after 23:00) :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-13 Mon 23:28]
-:END:
-Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
-
-Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies. Independent of gamification.
-
-Done [2026-07-24 Fri]: the night window now renders a single ~#night-screen~ (dark ~bg-stone-950~, one large ~hero-moon-solid~ colored ~var(--routine-evening)~) replacing the per-kid columns entirely — D56 minted (supersedes D32's Good Night message, scopes D43's always-visible badge to waking windows); design-language ruling recorded; ~Messages.good_night/0~ retired. TDD at the LiveView layer, ~mix precommit~ clean. On-device check (dark render on the tablet, no light bleed) still owed at the next gate.
-* DONE [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
-:PROPERTIES:
-:ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
-:CREATED:  [2026-07-12 Sun 23:04]
-:END:
-
-So the child can get the quick "I completed that task" visual reward before seeing that they've completed the entire routine.
-
-Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted — hold until that brainstorm rules.
-
-Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (collapse-delay, §6.3).
-
-Done [2026-07-24 Fri]: shipped as gamification-points Story 07 (400ms ~@collapse_delay_ms~). Marked at backlog review. A deferred discovery from that story lives above as the double-schedule entry.
-* DONE [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-12 Sun 23:01]
-:END:
-
-- Big sun icon for completing morning routine
-- Big moon icon for completing evening routine
-- Maybe a green checkmark in the upper-right corner of both
-
-This would then make the routine's persistent header bar obsolete.  The kid can tap the big icon to restore the list instead.
-
-Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted. Retiring the persistent header bar is a design-language ruling, not just implementation — record it in docs/design-language.org when done.
-
-Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (big-icon, §6.3).
-
-Done [2026-07-24 Fri]: shipped as gamification-points Story 08 (completion icon + tap-toggle, header bar retired; refined by D51/D52). Design-language recordings landed. Marked at backlog review.
 * TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]
 :END:
 Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
-* TODO [#C] Change ~next_position/2~ to take a bare ~kid_id~ :oneshot:
-From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
-~update_chore/2~ (~lib/bear_cub/chores.ex~) builds a partial
-~%Kid{id: chore.kid_id}~ struct purely to satisfy ~next_position/2~'s
-~%Kid{}~ guard clause, avoiding an extra query. Works correctly and is
-covered by tests, but is a slightly unusual pattern — change
-~next_position/2~'s signature to take a bare ~kid_id~ instead and update
-callers and tests.
-
 * Test-teardown Exqlite disconnect log noise — act only if log-clean output becomes a goal
 Merged [2026-07-14 Tue] from extras stories 01 and 06 (both 2026-07-12) —
 same class of non-fatal sandbox-connection race, two known triggers:
@@ -196,3 +89,28 @@ guideline. Pre-existing pattern — Morning/Evening already did this before
 Story 03; Extras just mirrors it. Consistent with the rest of the
 admin/kiosk codebase at family-scale list sizes (single-digit item counts).
 Act only if that scale assumption changes.
+* TODO [#C] animation for hiding/showing routine chores :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-24 Fri 15:58]
+:END:
+
+when the last chore is completed for the routine, have it animate away rather than abruptly disappearing (e.g. collapse or similar).  likewise, if it is toggled back into view, animate it into view rather than abruptly showing it
+
+Triage [2026-07-24 Fri]: oneshot, #C — kids' view visuals: docs/design-language.org read is binding; on-device gate applies, and animation smoothness on Fully Kiosk's WebView is the bar, not desktop Chrome. This is the Story 07/08 collapse path (delay → band, big-icon tap restores), so claim it together with the collapse-timer double-schedule entry below — same code, one session.
+* TODO [#C] Kiosk collapse-delay can double-schedule its collapse timer on a rapid undo/redo :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+~BearCubWeb.KioskLive~'s collapse-delay (~lib/bear_cub_web/live/kiosk_live.ex~, Story 07): a rapid undo/redo of a routine's last chore within the ~@collapse_delay_ms~ (400ms) window can schedule more than one ~Process.send_after(self(), {:collapse_ready, kid_id}, ...)~ for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (~MapSet.delete~ on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
+
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
+
+Triage [2026-07-24 Fri]: oneshot, #C — store the timer reference and cancel it on undo. Behavior today is a harmless no-op, so this is polish, not a bug fix.
+* TODO [#C] Change ~next_position/2~ to take a bare ~kid_id~ :oneshot:
+From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
+~update_chore/2~ (~lib/bear_cub/chores.ex~) builds a partial
+~%Kid{id: chore.kid_id}~ struct purely to satisfy ~next_position/2~'s
+~%Kid{}~ guard clause, avoiding an extra query. Works correctly and is
+covered by tests, but is a slightly unusual pattern — change
+~next_position/2~'s signature to take a bare ~kid_id~ instead and update
+callers and tests.

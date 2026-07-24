@@ -24,7 +24,8 @@ The live chain is the active initiative (see the `Active initiative:` line above
 Repo-level, cumulative across initiatives (not scoped to any one chain):
 
 - `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
-- `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms.
+- `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms. Holds open work only — entries marked DONE move to `docs/completed.org`.
+- `docs/completed.org` — Completed backlog items, full capture/triage/done trail intact; append-only archive.
 - `docs/decisions.org` — Repo-level Decision Log: one monotonic D-sequence across all initiatives, never inside an initiative directory; each DESIGN.org's `* Decision Log` section is a pointer to it, with entry rules living in the workflow-kit org-conventions skill.
 
 Any change touching kids' view styling, colors, or component visuals: read `docs/design-language.org` first; its invariants and rulings are binding.
