@@ -13,7 +13,9 @@ Active initiative: docs/2026-07-15-gamification-points/ (Gamification: Points)
 
 ## Weight class
 
-personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below. `mix precommit` is the repo's verification gate wherever the DoD or gate close names format/test commands.
+personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below.
+
+Verify command: `mix precommit`
 
 ## Authoritative docs
 
