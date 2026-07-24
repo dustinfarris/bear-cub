@@ -23,11 +23,13 @@ Triage [2026-07-24 Fri]: oneshot, #B — the Today view already renders a per-ki
 :CREATED:  [2026-07-24 Fri 15:05]
 :END:
 Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state already lives in ~today_live.ex~ (per-kid cards, the ~expanded~ MapSet), so tabs replace the stacked sections and auto-collapsing completed routines extends the existing ~toggle-section~ derivation. Admin-only — no design-language or on-device-gate concerns. Sequence before the quick-add entry above if both are claimed.
-* TODO parent notifications when kids complete chores
+* TODO [#B] parent notifications when kids complete chores :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:04]
 :END:
 Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
+
+Ruled [2026-07-24 Fri]: ntfy push, per-chore granularity for now — customization (batching, quiet hours, per-kid settings) possible later, not in scope. Collapses to oneshot, #B: a Req POST per completion event, topic/server via ~runtime.exs~ env config. Treat the topic URL like the ICS URLs — never in git, never logged. Self-hosted ntfy vs ntfy.sh is an implementation-time deployment choice (NixOS module side).
 * TODO [#A] Rewards / redemption system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
