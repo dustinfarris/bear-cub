@@ -10,9 +10,4 @@ defmodule BearCub.MessagesTest do
   test "evening_complete/0 returns the evening-routine affirmation" do
     assert Messages.evening_complete() == "You did great today!"
   end
-
-  test "good_night/0 returns the Good Night lockdown line, distinct from evening_complete/0" do
-    assert Messages.good_night() == "Good night"
-    assert Messages.good_night() != Messages.evening_complete()
-  end
 end

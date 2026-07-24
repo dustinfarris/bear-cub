@@ -528,7 +528,7 @@ defmodule BearCubWeb.KioskLiveTest do
     end
 
     for evening_state <- [:complete, :incomplete] do
-      test "the boundary handler drops into Good Night mode when the evening window closes (evening #{evening_state})",
+      test "the boundary handler drops into the night screen when the evening window closes (evening #{evening_state})",
            %{conn: conn, kid: kid, evening_chore: evening_chore} do
         now = LocalTime.now()
         time = DateTime.to_time(now)
@@ -540,7 +540,7 @@ defmodule BearCubWeb.KioskLiveTest do
         end
 
         {:ok, view, _html} = live(conn, ~p"/")
-        refute has_element?(view, "#goodnight-#{kid.id}")
+        refute has_element?(view, "#night-screen")
 
         # completing the sole evening chore while its window is active
         # auto-collapses to the band (story 05); incomplete stays rows
@@ -553,12 +553,12 @@ defmodule BearCubWeb.KioskLiveTest do
         put_windows({~T[00:00:00], time}, {time, time})
         send(view.pid, :boundary)
 
-        assert has_element?(view, "#goodnight-#{kid.id}", BearCub.Messages.good_night())
+        assert has_element?(view, "#night-screen")
         refute has_element?(view, "#chores-#{kid.id}")
       end
     end
 
-    test "Good Night mode is not tap-expandable — no band affordance to reveal rows",
+    test "the night screen is a single dark screen with an evening-colored moon and nothing else (D56)",
          %{conn: conn, kid: kid} do
       now = LocalTime.now()
       time = DateTime.to_time(now)
@@ -570,11 +570,35 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, "#goodnight-#{kid.id}")
-      refute has_element?(view, "#goodnight-#{kid.id}[phx-click]")
+      assert has_element?(view, "#night-screen .hero-moon-solid")
+      assert has_element?(view, "#night-screen[style*='--routine-evening']")
+
+      # nothing else: the per-kid columns — banner, points badge, events
+      # strip, routine card — do not render at night (D56 supersedes D43's
+      # unconditional badge visibility for this window)
+      refute has_element?(view, "#kid-column-#{kid.id}")
+      refute has_element?(view, "#points-badge-#{kid.id}")
+      refute has_element?(view, "#events-#{kid.id}")
+      refute has_element?(view, "#goodnight-#{kid.id}")
     end
 
-    test "the boundary handler leaves Good Night mode and renders normal morning rows when the morning window opens",
+    test "the night screen is not tap-expandable — no affordance to reveal rows",
+         %{conn: conn, kid: _kid} do
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      put_windows(
+        {Time.add(time, 60, :second), Time.add(time, 90, :second)},
+        {~T[00:00:00], time}
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#night-screen")
+      refute has_element?(view, "#night-screen[phx-click]")
+    end
+
+    test "the boundary handler leaves the night screen and renders normal morning rows when the morning window opens",
          %{conn: conn, kid: kid, morning_chore: morning_chore} do
       now = LocalTime.now()
       time = DateTime.to_time(now)
@@ -585,7 +609,7 @@ defmodule BearCubWeb.KioskLiveTest do
       )
 
       {:ok, view, _html} = live(conn, ~p"/")
-      assert has_element?(view, "#goodnight-#{kid.id}", BearCub.Messages.good_night())
+      assert has_element?(view, "#night-screen")
       refute has_element?(view, "#chores-#{kid.id}")
 
       put_windows(
@@ -596,7 +620,7 @@ defmodule BearCubWeb.KioskLiveTest do
       send(view.pid, :boundary)
 
       assert has_element?(view, "#chore-#{morning_chore.id}")
-      refute has_element?(view, "#goodnight-#{kid.id}")
+      refute has_element?(view, "#night-screen")
     end
   end
 
@@ -748,7 +772,7 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       refute has_element?(view, "#band-#{kid.id}")
-      refute has_element?(view, "#goodnight-#{kid.id}")
+      refute has_element?(view, "#night-screen")
       assert has_element?(view, "#chores-#{kid.id}")
     end
 
@@ -1133,7 +1157,7 @@ defmodule BearCubWeb.KioskLiveTest do
       put_windows({time, time}, {~T[00:00:00], time})
       send(view.pid, :boundary)
 
-      assert has_element?(view, "#goodnight-#{kid.id}")
+      assert has_element?(view, "#night-screen")
       refute has_element?(view, "#chore-#{chore.id}")
       refute has_element?(view, "#routine-penalty-#{kid.id}")
     end
@@ -1285,7 +1309,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#points-badge-#{kid.id}", "12")
     end
 
-    test "the badge stays visible across every routine state — rows, collapsed band, re-expanded rows, and Good Night",
+    test "the badge stays visible across rows, collapsed band, and re-expanded rows; the night screen replaces it entirely (D56)",
          %{conn: conn, kid: kid} do
       original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
       on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
@@ -1320,8 +1344,8 @@ defmodule BearCubWeb.KioskLiveTest do
 
       send(view.pid, :boundary)
 
-      assert has_element?(view, "#goodnight-#{kid.id}")
-      assert has_element?(view, "#points-badge-#{kid.id}")
+      assert has_element?(view, "#night-screen")
+      refute has_element?(view, "#points-badge-#{kid.id}")
     end
   end
 end

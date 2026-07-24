@@ -149,6 +149,7 @@ defmodule BearCubWeb.KioskLive do
       columns: columns,
       completions: completions,
       expanded: still_expanded,
+      night?: night?,
       pending_collapse: pending_collapse,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
@@ -256,12 +257,27 @@ defmodule BearCubWeb.KioskLive do
         id="kiosk"
         class="relative grid h-dvh grid-cols-2 gap-px overflow-hidden bg-base-300"
       >
+        <%!-- Night screen (D56, supersedes D32's per-column Good Night
+             message): the 23:00–05:00 gap is a single dark screen with one
+             large evening-colored moon and nothing else — no columns, no
+             banners, no points badges (the D43 always-visible badge is
+             scoped to the waking windows), no events, no stale glyph.
+             Corrections still go to admin; nothing here is tappable. --%>
+        <div
+          :if={@night?}
+          id="night-screen"
+          class="col-span-2 flex items-center justify-center bg-stone-950"
+          style="color: var(--routine-evening)"
+        >
+          <.icon name="hero-moon-solid" class="size-52" />
+        </div>
+
         <%!-- Corner glyph (D4): dim when the calendar cache has gone stale.
              Global, not per-calendar or per-column — per-calendar diagnosis
              belongs in server logs. Sits alongside the existing (unstyled)
              socket-down disconnect indicator from Layouts.app. --%>
         <div
-          :if={@calendars_stale?}
+          :if={@calendars_stale? and not @night?}
           id="calendar-stale-glyph"
           class="absolute left-4 top-4 z-10 text-base-content/30"
         >
@@ -284,6 +300,7 @@ defmodule BearCubWeb.KioskLive do
             } <-
               @columns
           }
+          :if={!@night?}
           id={"kid-column-#{kid.id}"}
           class="grid grid-rows-[auto_auto_1fr_auto] overflow-hidden bg-base-100"
         >
@@ -369,25 +386,14 @@ defmodule BearCubWeb.KioskLive do
             </ul>
           </div>
 
-          <%!-- Good Night mode (state 5, D32): the 23:00–05:00 gap. No rows,
-               no extras, not expandable — corrections go to admin. --%>
-          <div
-            :if={state == :night}
-            id={"goodnight-#{kid.id}"}
-            class="flex items-center justify-center overflow-hidden bg-base-100 px-6 text-center"
-          >
-            <p class="text-2xl font-semibold text-base-content/60">
-              {Messages.good_night()}
-            </p>
-          </div>
-
           <%!-- Routine card: either the chore rows (normal or manually
                re-expanded) or the completion message (collapsed band). The
                persistent routine header bar is retired (D44, D48) — the
                banner completion icon above is now the sole collapse/expand
                affordance; a tap is a no-op server-side unless the routine
-               is reveal-eligible (D33/D34). --%>
-          <div :if={state != :night} id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
+               is reveal-eligible (D33/D34). Columns never render at night
+               (D56), so no :night state reaches this markup. --%>
+          <div id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
             <%!-- Chores: fixed-height full-width rows, top-aligned (empty
                  space below the last card is fine); beyond capacity only
                  this region scrolls (FR-6). Not done = routine tint fill +
