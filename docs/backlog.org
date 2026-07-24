@@ -19,13 +19,17 @@ Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org
 =points_total/2= (=lib/bear_cub/chores.ex=, Story 02) issues one query for distinct =(routine, local_date)= pairs, then one =routine_day_contribution/3= call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every =:chores_changed= re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery).
-* TODO Kiosk collapse-delay can double-schedule its collapse timer on a rapid undo/redo
+
+Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points becoming load-bearing. Claim candidate for the rewards/redemption initiative (the Rewards entry above), which is exactly what would make the total load-bearing; size it there, not here.
+* TODO [#C] Kiosk collapse-delay can double-schedule its collapse timer on a rapid undo/redo :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
 =BearCubWeb.KioskLive='s collapse-delay (=lib/bear_cub_web/live/kiosk_live.ex=, Story 07): a rapid undo/redo of a routine's last chore within the =@collapse_delay_ms= (400ms) window can schedule more than one =Process.send_after(self(), {:collapse_ready, kid_id}, ...)= for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (=MapSet.delete= on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
+
+Triage [2026-07-24 Fri]: oneshot, #C — store the timer reference and cancel it on undo. Behavior today is a harmless no-op, so this is polish, not a bug fix.
 * TODO Remove =BearCub.MigrationTestRepo= and the remaining migration-execution test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
@@ -44,15 +48,18 @@ Repair-class neutral pass: no D-entries, no Advisories — the convention alread
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
 :END:
+Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — not a clean oneshot because it needs a points-semantics ruling first (does a skipped chore earn its points? count toward the routine bonus? interacts with D10 derived day state and the D40/D41 contribution shapes). Settle the ruling in the rewards/redemption brainstorm, then size.
 * TODO Ollie idea: tapping on the points should show you daily points progress and stats on your points
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:02]
 :END:
-* TODO I want the vertical height of a chore to shrink a little when it is completed
+Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — same points-UI theme as the rewards/redemption initiative; a stats view would also make ~points_total/2~'s N+1 shape (entry above) load-bearing, so consider claiming both together.
+* TODO I want the vertical height of a chore to shrink a little when it is completed :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 06:29]
 :END:
-* TODO [#A] Gamification: Points system :promote:
+Triage [2026-07-24 Fri]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies (mind the 5-chore no-scroll check — shrinking completed rows should help it, never hurt it).
+* DONE [#A] Gamification: Points system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:27]
 :END:
@@ -68,6 +75,8 @@ Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brains
 - Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets =undone_at=, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
 
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
+
+Done [2026-07-24 Fri]: initiative shipped — all 10 stories closed, Batch 1 gate closed [2026-07-18]. Marked at backlog review.
 * TODO [#B] need a darker screen for night mode (after 23:00) :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:28]
@@ -75,7 +84,7 @@ Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (
 Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
 
 Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies. Independent of gamification.
-* TODO [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
+* DONE [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
 :PROPERTIES:
 :ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
 :CREATED:  [2026-07-12 Sun 23:04]
@@ -86,7 +95,9 @@ So the child can get the quick "I completed that task" visual reward before seei
 Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted — hold until that brainstorm rules.
 
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (collapse-delay, §6.3).
-* TODO [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
+
+Done [2026-07-24 Fri]: shipped as gamification-points Story 07 (400ms ~@collapse_delay_ms~). Marked at backlog review. A deferred discovery from that story lives above as the double-schedule entry.
+* DONE [#B] extra-large completed icon for routines in the top bar where their names are :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:01]
 :END:
@@ -100,6 +111,8 @@ This would then make the routine's persistent header bar obsolete.  The kid can 
 Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification initiative if promoted. Retiring the persistent header bar is a design-language ruling, not just implementation — record it in docs/design-language.org when done.
 
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (big-icon, §6.3).
+
+Done [2026-07-24 Fri]: shipped as gamification-points Story 08 (completion icon + tap-toggle, header bar retired; refined by D51/D52). Design-language recordings landed. Marked at backlog review.
 * TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]
