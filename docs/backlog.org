@@ -30,13 +30,15 @@ Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points b
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
 
 Triage [2026-07-24 Fri]: oneshot, #C — store the timer reference and cancel it on undo. Behavior today is a harmless no-op, so this is polish, not a bug fix.
-* TODO Remove =BearCub.MigrationTestRepo= and the remaining migration-execution test :oneshot:
+* DONE Remove =BearCub.MigrationTestRepo= and the remaining migration-execution test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
 Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway =MigrationTestRepo=-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch =BearCub.MigrationTestRepo= pool (=test/support/migration_test_repo.ex=) and the one remaining migration-execution test that still exercises it, =test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs= (its AC3 coverage — completion history surviving the =chores.routine= nullability rebuild — should be re-pointed to the standard =mix test= migration run, per Story 01's precedent).
 
 Removing this retires one of the two documented triggers on the Exqlite teardown-noise entry below (noted there).
+
+Done [2026-07-24 Fri]: both files removed (=test/support/migration_test_repo.ex=, =test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs=); no other references existed. AC3 coverage now rides the standard ~mix test~ migration run per Story 01's precedent. ~mix precommit~ clean, 282 passed.
 * TODO Inline-markup normalization sweep across the org corpus :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
@@ -149,6 +151,11 @@ backlog entry — merged in during the 2026-07-18 post-retro sweep).
 Retro ruling ([2026-07-18]): removing =BearCub.MigrationTestRepo= (see the
 dedicated backlog item above) retires the first of the two triggers above,
 leaving only the =today_live_test.exs= cross-process PubSub trigger.
+
+Update [2026-07-24 Fri]: =BearCub.MigrationTestRepo= removed — first
+trigger retired. The remaining =today_live_test.exs= trigger still fires
+(two disconnect lines observed in the same ~mix precommit~ run); no test
+failures, entry stands as act-only-if-log-clean-becomes-a-goal.
 
 * From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
 =ChoreLive.Index='s three list sections (Morning/Evening/Extras)
