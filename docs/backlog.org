@@ -5,24 +5,29 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO animation for hiding/showing routine chores
+* TODO [#C] animation for hiding/showing routine chores :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:58]
 :END:
 
 when the last chore is completed for the routine, have it animate away rather than abruptly disappearing (e.g. collapse or similar).  likewise, if it is toggled back into view, animate it into view rather than abruptly showing it
-* TODO admin "quick add" extra chore from Today view
+
+Triage [2026-07-24 Fri]: oneshot, #C — kids' view visuals: docs/design-language.org read is binding; on-device gate applies, and animation smoothness on Fully Kiosk's WebView is the bar, not desktop Chrome. This is the Story 07/08 collapse path (delay → band, big-icon tap restores), so claim it together with the collapse-timer double-schedule entry below — same code, one session.
+* TODO [#B] admin "quick add" extra chore from Today view :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
 :END:
-* TODO redesign admin "Today" view put each kid on their own tab and collapse completed routines
+Triage [2026-07-24 Fri]: oneshot, #B — the Today view already renders a per-kid Extras section (~lib/bear_cub_web/live/admin/today_live.ex~), and extras are just chores with ~routine: nil~, so quick add is an inline minimal create landing there. A plain link to the existing form isn't enough: ~ChoreLive.Form~ hard-navigates to the chores index after save. Depends on the default-emoji item below (a quick add shouldn't demand icon picking) — do that first or in the same session. If the Today redesign (next entry) is also claimed, sequence it first: it owns the layout this lands in.
+* TODO [#B] redesign admin "Today" view put each kid on their own tab and collapse completed routines :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:05]
 :END:
+Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state already lives in ~today_live.ex~ (per-kid cards, the ~expanded~ MapSet), so tabs replace the stacked sections and auto-collapsing completed routines extends the existing ~toggle-section~ derivation. Admin-only — no design-language or on-device-gate concerns. Sequence before the quick-add entry above if both are claimed.
 * TODO parent notifications when kids complete chores
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:04]
 :END:
+Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
 * TODO [#A] Rewards / redemption system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
