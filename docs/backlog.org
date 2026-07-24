@@ -21,14 +21,14 @@ Size tags: oneshot (compiled single-session prompt), hand (inert edit, no sessio
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as =max(0, completions_earnings + other_signed_inputs)=, with =other_signed_inputs= empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
+Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
-* TODO =points_total/2= N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
+* TODO ~points_total/2~ N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-=points_total/2= (=lib/bear_cub/chores.ex=, Story 02) issues one query for distinct =(routine, local_date)= pairs, then one =routine_day_contribution/3= call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every =:chores_changed= re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows.
+~points_total/2~ (~lib/bear_cub/chores.ex~, Story 02) issues one query for distinct ~(routine, local_date)~ pairs, then one ~routine_day_contribution/3~ call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every ~:chores_changed~ re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery).
 
@@ -37,27 +37,29 @@ Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points b
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-=BearCubWeb.KioskLive='s collapse-delay (=lib/bear_cub_web/live/kiosk_live.ex=, Story 07): a rapid undo/redo of a routine's last chore within the =@collapse_delay_ms= (400ms) window can schedule more than one =Process.send_after(self(), {:collapse_ready, kid_id}, ...)= for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (=MapSet.delete= on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
+~BearCubWeb.KioskLive~'s collapse-delay (~lib/bear_cub_web/live/kiosk_live.ex~, Story 07): a rapid undo/redo of a routine's last chore within the ~@collapse_delay_ms~ (400ms) window can schedule more than one ~Process.send_after(self(), {:collapse_ready, kid_id}, ...)~ for the same kid — the first timer's reference is never stored or cancelled on undo. The extra message is a harmless no-op (~MapSet.delete~ on an already-absent key, then an idempotent reload), so no incorrect UI state results, but a very fast undo→redo could make the band appear slightly earlier than a full fresh delay after the final completion. Not covered by any AC — the design's "short delay" is explicitly imprecise at this level.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 07 discovery).
 
 Triage [2026-07-24 Fri]: oneshot, #C — store the timer reference and cancel it on undo. Behavior today is a harmless no-op, so this is polish, not a bug fix.
-* DONE Remove =BearCub.MigrationTestRepo= and the remaining migration-execution test :oneshot:
+* DONE Remove ~BearCub.MigrationTestRepo~ and the remaining migration-execution test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway =MigrationTestRepo=-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch =BearCub.MigrationTestRepo= pool (=test/support/migration_test_repo.ex=) and the one remaining migration-execution test that still exercises it, =test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs= (its AC3 coverage — completion history surviving the =chores.routine= nullability rebuild — should be re-pointed to the standard =mix test= migration run, per Story 01's precedent).
+Retro ruling ([2026-07-18]): migration mechanics are framework contract, not app behavior — the same judgment Story 01 already applied when it dropped its own throwaway ~MigrationTestRepo~-based backfill test (docs/2026-07-15-gamification-points/PLAN.org, Story 01 LOGBOOK). Remove the scratch ~BearCub.MigrationTestRepo~ pool (~test/support/migration_test_repo.ex~) and the one remaining migration-execution test that still exercises it, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ (its AC3 coverage — completion history surviving the ~chores.routine~ nullability rebuild — should be re-pointed to the standard ~mix test~ migration run, per Story 01's precedent).
 
 Removing this retires one of the two documented triggers on the Exqlite teardown-noise entry below (noted there).
 
-Done [2026-07-24 Fri]: both files removed (=test/support/migration_test_repo.ex=, =test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs=); no other references existed. AC3 coverage now rides the standard ~mix test~ migration run per Story 01's precedent. ~mix precommit~ clean, 282 passed.
-* TODO Inline-markup normalization sweep across the org corpus :oneshot:
+Done [2026-07-24 Fri]: both files removed (~test/support/migration_test_repo.ex~, ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~); no other references existed. AC3 coverage now rides the standard ~mix test~ migration run per Story 01's precedent. ~mix precommit~ clean, 282 passed.
+* DONE Inline-markup normalization sweep across the org corpus :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-Retro ruling ([2026-07-18]): enforce the org-conventions ~code~/=verbatim= distinction (~code~ for anything a language would parse — identifiers, module/function names, expressions, shell commands, file paths; =verbatim= only for literal non-code strings quoted exactly — stored values, config keys, log output) across the entire org corpus: all three initiative chains (mvp, extras, gamification-points — PRD.org/DESIGN.org/stories/ in each), =docs/learnings.org=, =docs/design-language.org=, and =docs/backlog.org= itself.
+Retro ruling ([2026-07-18]): enforce the org-conventions ~code~/=verbatim= distinction (~code~ for anything a language would parse — identifiers, module/function names, expressions, shell commands, file paths; =verbatim= only for literal non-code strings quoted exactly — stored values, config keys, log output) across the entire org corpus: all three initiative chains (mvp, extras, gamification-points — PRD.org/DESIGN.org/stories/ in each), ~docs/learnings.org~, ~docs/design-language.org~, and ~docs/backlog.org~ itself.
 
 Repair-class neutral pass: no D-entries, no Advisories — the convention already stands and isn't changing, the corpus is only being brought into line with it. Land as one dedicated doc-only commit.
+
+Done [2026-07-24 Fri]: ~1,700 span conversions across the scoped corpus (PRD/DESIGN/stories in all three chains, learnings, design-language, backlog); also repaired ~25 lines of author-broken org markup found along the way (early-closing = spans like ~value=""~, doubled ~~ around sigil-bearing code, pluralized =EXDATE=s). Approximation tildes (~15 minutes), ICS property literals (=FREQ=MONTHLY=), and quoted stored values stayed verbatim. The mvp PRD's 4 markup-only conversions were applied under a human-authorized one-time prd-lock bypass. PLAN.org files and docs/decisions.org were outside the item's stated scope and untouched.
 * TODO Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
@@ -86,7 +88,7 @@ Need a way to reward the kids for completing their tasks.  A couple thoughts:
 
 Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brainstorm:
 - Consider claiming the collapse-delay and big-icon items below as batch members — same completion-reward theme.
-- Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets =undone_at=, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
+- Settle the ledger fork early: the fail-on-inspection flow interacts with D10 (undo sets ~undone_at~, completion rows are never deleted, day state is derived). A points total derived from completions needs the failed completion to leave a trace that /counts against/ — that's a D27-style extend-vs-new-table fork and belongs in the PRD, not implementation.
 
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
 
@@ -132,46 +134,46 @@ Done [2026-07-24 Fri]: shipped as gamification-points Story 08 (completion icon 
 :CREATED:  [2026-07-12 Sun 23:06]
 :END:
 Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
-* TODO [#C] Change =next_position/2= to take a bare =kid_id= :oneshot:
+* TODO [#C] Change ~next_position/2~ to take a bare ~kid_id~ :oneshot:
 From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
-=update_chore/2= (=lib/bear_cub/chores.ex=) builds a partial
-=%Kid{id: chore.kid_id}= struct purely to satisfy =next_position/2='s
-=%Kid{}= guard clause, avoiding an extra query. Works correctly and is
+~update_chore/2~ (~lib/bear_cub/chores.ex~) builds a partial
+~%Kid{id: chore.kid_id}~ struct purely to satisfy ~next_position/2~'s
+~%Kid{}~ guard clause, avoiding an extra query. Works correctly and is
 covered by tests, but is a slightly unusual pattern — change
-=next_position/2='s signature to take a bare =kid_id= instead and update
+~next_position/2~'s signature to take a bare ~kid_id~ instead and update
 callers and tests.
 
 * Test-teardown Exqlite disconnect log noise — act only if log-clean output becomes a goal
 Merged [2026-07-14 Tue] from extras stories 01 and 06 (both 2026-07-12) —
 same class of non-fatal sandbox-connection race, two known triggers:
-- The scratch =BearCub.MigrationTestRepo= pool
-  (=test/support/migration_test_repo.ex=), started per-test via
-  =start_supervised!= with the default (non-Sandbox) pool, shutting down at
+- The scratch ~BearCub.MigrationTestRepo~ pool
+  (~test/support/migration_test_repo.ex~), started per-test via
+  ~start_supervised!~ with the default (non-Sandbox) pool, shutting down at
   test-process exit.
-- The admin→kiosk cross-process PubSub test in =today_live_test.exs= (two
-  independent =live/2= processes), where the second LiveView process
+- The admin→kiosk cross-process PubSub test in ~today_live_test.exs~ (two
+  independent ~live/2~ processes), where the second LiveView process
   outlives the first.
 Occasionally logs a =Exqlite.Connection ... disconnected:
 (DBConnection.ConnectionError)= line during teardown; no test failures,
-never affects =mix precommit='s exit code.
+never affects ~mix precommit~'s exit code.
 
 Also observed from the gamification-points initiative (Story 10, PLAN.org
 Deferred, 2026-07-17) — same class, no new trigger; folded in here rather
 than duplicated (a rough capture of this had briefly existed as its own
 backlog entry — merged in during the 2026-07-18 post-retro sweep).
 
-Retro ruling ([2026-07-18]): removing =BearCub.MigrationTestRepo= (see the
+Retro ruling ([2026-07-18]): removing ~BearCub.MigrationTestRepo~ (see the
 dedicated backlog item above) retires the first of the two triggers above,
-leaving only the =today_live_test.exs= cross-process PubSub trigger.
+leaving only the ~today_live_test.exs~ cross-process PubSub trigger.
 
-Update [2026-07-24 Fri]: =BearCub.MigrationTestRepo= removed — first
-trigger retired. The remaining =today_live_test.exs= trigger still fires
+Update [2026-07-24 Fri]: ~BearCub.MigrationTestRepo~ removed — first
+trigger retired. The remaining ~today_live_test.exs~ trigger still fires
 (two disconnect lines observed in the same ~mix precommit~ run); no test
 failures, entry stands as act-only-if-log-clean-becomes-a-goal.
 
 * From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
-=ChoreLive.Index='s three list sections (Morning/Evening/Extras)
-(=lib/bear_cub_web/live/admin/chore_live/index.ex=) render plain =:for= lists
+~ChoreLive.Index~'s three list sections (Morning/Evening/Extras)
+(~lib/bear_cub_web/live/admin/chore_live/index.ex~) render plain ~:for~ lists
 rather than LiveView streams, per CLAUDE.md's "always use streams"
 guideline. Pre-existing pattern — Morning/Evening already did this before
 Story 03; Extras just mirrors it. Consistent with the rest of the

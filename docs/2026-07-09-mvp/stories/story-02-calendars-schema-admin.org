@@ -12,24 +12,24 @@ calendars      id, kid_id → kids (null = family), label, ics_url (redact: true
                last_payload (raw ICS text), last_fetched_at, last_error, timestamps
 #+end_example
 
-- *Calendars are database data (D9)*, entered and edited through admin — one or more per kid, plus family calendars as =kid_id: null= (rendered in both columns). There is no local-secrets mechanism and no hand-placed /application or family/ secret on the box (infrastructure credentials for backups are a distinct, explicit rebuild input — §9). Rotating a URL is a phone action; every backup contains the secret URLs, so the off-box backup destination must be private — it already held kid names and the family schedule, so this tightens nothing that wasn't already required, but it is now load-bearing.
+- *Calendars are database data (D9)*, entered and edited through admin — one or more per kid, plus family calendars as ~kid_id: null~ (rendered in both columns). There is no local-secrets mechanism and no hand-placed /application or family/ secret on the box (infrastructure credentials for backups are a distinct, explicit rebuild input — §9). Rotating a URL is a phone action; every backup contains the secret URLs, so the off-box backup destination must be private — it already held kid names and the family schedule, so this tightens nothing that wasn't already required, but it is now load-bearing.
 - *Integrity:*
-  - =ics_url= uses Ecto's =redact: true=, so by construction the URL is omitted from inspected structs and renders as =**redacted**= in inspected changesets and crash reports.
-- *Contexts:* =BearCub.Chores= (kids, chores, completions — pure local CRUD, no network) and =BearCub.Calendars= (calendar CRUD, fetching, parsing — the external integration). They share nothing, fail differently, and never call each other; only the web layer reads both. Calendar trouble structurally cannot touch the tap-to-complete path (FR-20).
+  - ~ics_url~ uses Ecto's ~redact: true~, so by construction the URL is omitted from inspected structs and renders as =**redacted**= in inspected changesets and crash reports.
+- *Contexts:* ~BearCub.Chores~ (kids, chores, completions — pure local CRUD, no network) and ~BearCub.Calendars~ (calendar CRUD, fetching, parsing — the external integration). They share nothing, fail differently, and never call each other; only the web layer reads both. Calendar trouble structurally cannot touch the tap-to-complete path (FR-20).
 #+end_quote
 
 Verbatim from DESIGN.org §4 (LiveView topology & live updates):
 
 #+begin_quote
-- *Surfaces*, fenced for FR-26 by path prefix alone (same app, same server; Fully Kiosk's URL lock pins =/=; zero links from kiosk to admin):
-  - =/admin=, phone-first, navigated by a fixed bottom tab bar (=Layouts.admin=): [...] =Admin.CalendarsLive= (ICS URLs — Phase 4). The Index/Form module pairs are the phx.gen.live shape, superseding this doc's earlier single-module names.
-- *Implementation directive:* scaffold resources with =mix phx.gen.live= (context, schema, migration, LiveViews, PubSub notification wiring) and reshape toward this design — bespoke kiosk, phone-first admin — rather than hand-rolling the plumbing.
+- *Surfaces*, fenced for FR-26 by path prefix alone (same app, same server; Fully Kiosk's URL lock pins ~/~; zero links from kiosk to admin):
+  - ~/admin~, phone-first, navigated by a fixed bottom tab bar (~Layouts.admin~): [...] ~Admin.CalendarsLive~ (ICS URLs — Phase 4). The Index/Form module pairs are the phx.gen.live shape, superseding this doc's earlier single-module names.
+- *Implementation directive:* scaffold resources with ~mix phx.gen.live~ (context, schema, migration, LiveViews, PubSub notification wiring) and reshape toward this design — bespoke kiosk, phone-first admin — rather than hand-rolling the plumbing.
 #+end_quote
 
 Verbatim from DESIGN.org §10 (Decision Log, D9):
 
 #+begin_quote
-*D9 (2026-07-10) — ICS URLs are DB data:* admin-managed calendars table (N per kid + family as =kid_id: null=); no local-secrets mechanism; backups become secret-bearing; rebuild needs no locally supplied app secrets. Settles FR-21/§6.4. → §1, §9
+*D9 (2026-07-10) — ICS URLs are DB data:* admin-managed calendars table (N per kid + family as ~kid_id: null~); no local-secrets mechanism; backups become secret-bearing; rebuild needs no locally supplied app secrets. Settles FR-21/§6.4. → §1, §9
 #+end_quote
 
 Relevant PRD requirements: FR-21, FR-25.
@@ -40,30 +40,30 @@ As a parent, I need to add, edit, and delete each kid's and the family's calenda
 
 * Acceptance Criteria
 
-** [X] From =/admin=, a parent can add a calendar with a label and an ICS URL, either assigned to a specific kid or marked as a family calendar (=kid_id: null=).
+** [X] From ~/admin~, a parent can add a calendar with a label and an ICS URL, either assigned to a specific kid or marked as a family calendar (~kid_id: null~).
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:09] \\
-  =/admin/calendars/new= route (router.ex:37-39) renders =CalendarLive.Form= with label, ICS URL, and an owner select offering "Family (both columns)" (kid_id: nil) or a kid; =Calendars.create_calendar/1= (calendars.ex:41-46). Verified by =calendar_live_test.exs= "creates a family calendar" (asserts =kid_id == nil=) and "creates a calendar assigned to a kid" (asserts =kid_id == kid.id=); both pass in the 29-test LiveView suite.
+  ~/admin/calendars/new~ route (router.ex:37-39) renders ~CalendarLive.Form~ with label, ICS URL, and an owner select offering "Family (both columns)" (kid_id: nil) or a kid; ~Calendars.create_calendar/1~ (calendars.ex:41-46). Verified by ~calendar_live_test.exs~ "creates a family calendar" (asserts ~kid_id == nil~) and "creates a calendar assigned to a kid" (asserts ~kid_id == kid.id~); both pass in the 29-test LiveView suite.
 :END:
-** [X] From =/admin=, a parent can edit and delete an existing calendar's label or ICS URL.
+** [X] From ~/admin~, a parent can edit and delete an existing calendar's label or ICS URL.
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:10] \\
-  =/admin/calendars/:id/edit= route renders =CalendarLive.Form=; =apply_action(:edit, ...)= (form.ex:24-30), =save_calendar(:edit, ...)= (form.ex:64-75), and a =delete= handler (form.ex:42-49) calling =Calendars.delete_calendar/1=. Verified by =calendar_live_test.exs= "edits a calendar's label and URL", "reassigning from a kid to family clears kid_id", and "deletes a calendar from the edit form" (asserts =Calendars.list_calendars() == []= after); all pass.
+  ~/admin/calendars/:id/edit~ route renders ~CalendarLive.Form~; ~apply_action(:edit, ...)~ (form.ex:24-30), ~save_calendar(:edit, ...)~ (form.ex:64-75), and a ~delete~ handler (form.ex:42-49) calling ~Calendars.delete_calendar/1~. Verified by ~calendar_live_test.exs~ "edits a calendar's label and URL", "reassigning from a kid to family clears kid_id", and "deletes a calendar from the edit form" (asserts ~Calendars.list_calendars() == []~ after); all pass.
 :END:
-** [X] The calendars admin screen is reachable and usable from a phone browser, consistent with the rest of =/admin= (FR-25).
+** [X] The calendars admin screen is reachable and usable from a phone browser, consistent with the rest of ~/admin~ (FR-25).
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:10] \\
-  Both LiveViews wrap content in =<Layouts.admin flash={@flash} active={:calendars}>=, matching ChoreLive/KidLive's =mx-auto max-w-md px-4 py-6= phone-first container. The bottom tab bar (layouts.ex) gained a 4th "Calendars" destination (=grid-cols-4=, =hero-calendar-days= icon, =/admin/calendars=). Verified by =nav_test.exs=' parameterized test for =/admin/calendars= asserting the tab bar renders with Calendars active and all four =#admin-tabs a[href=...]= links present; passes alongside the other three destinations.
+  Both LiveViews wrap content in ~<Layouts.admin flash={@flash} active={:calendars}>~, matching ChoreLive/KidLive's ~mx-auto max-w-md px-4 py-6~ phone-first container. The bottom tab bar (layouts.ex) gained a 4th "Calendars" destination (~grid-cols-4~, =hero-calendar-days= icon, ~/admin/calendars~). Verified by ~nav_test.exs~' parameterized test for ~/admin/calendars~ asserting the tab bar renders with Calendars active and all four ~#admin-tabs a[href=...]~ links present; passes alongside the other three destinations.
 :END:
-** [X] The calendar schema's =ics_url= field is protected by Ecto's =redact: true=, verified by a test that inspects a calendar changeset or struct and asserts the URL does not appear in its inspected output.
+** [X] The calendar schema's ~ics_url~ field is protected by Ecto's ~redact: true~, verified by a test that inspects a calendar changeset or struct and asserts the URL does not appear in its inspected output.
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:10] \\
-  =calendar.ex:9= declares =field :ics_url, :string, redact: true=. =test/bear_cub/calendars/calendar_test.exs= (pre-existing from Story 01 prep) asserts =refute inspect(calendar) =~ "private-abc123"= for a struct and =refute inspect(changeset) =~ "private-abc123"= / =assert inspect(changeset) =~ "**redacted**"= for a changeset; both pass. Defense-in-depth: =calendar_live_test.exs= "the ICS URL never appears in the rendered page" additionally checks the admin HTML.
+  ~calendar.ex:9~ declares ~field :ics_url, :string, redact: true~. ~test/bear_cub/calendars/calendar_test.exs~ (pre-existing from Story 01 prep) asserts =refute inspect(calendar) =~ "private-abc123"= for a struct and =refute inspect(changeset) =~ "private-abc123"= / =assert inspect(changeset) =~ "**redacted**"= for a changeset; both pass. Defense-in-depth: ~calendar_live_test.exs~ "the ICS URL never appears in the rendered page" additionally checks the admin HTML.
 :END:
 ** [X] LiveView integration tests cover the create, edit, and delete flows for calendars (Repo conventions: §11 testing expectations fold into ACs wherever a flow is touched).
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:10] \\
-  =test/bear_cub_web/live/admin/calendar_live_test.exs=, =describe "form"=: create (family, kid-owned, validation errors), edit (label/URL, reassign kid to family), delete. =describe "index"=: list rendering, redaction in rendered HTML, and a PubSub live-update test ("a calendar created elsewhere appears without refresh"). Full suite =mix test= green at 151/151 with no regressions.
+  ~test/bear_cub_web/live/admin/calendar_live_test.exs~, ~describe "form"~: create (family, kid-owned, validation errors), edit (label/URL, reassign kid to family), delete. ~describe "index"~: list rendering, redaction in rendered HTML, and a PubSub live-update test ("a calendar created elsewhere appears without refresh"). Full suite ~mix test~ green at 151/151 with no regressions.
 :END:
 
 * Definition of Done
@@ -76,24 +76,24 @@ As a parent, I need to add, edit, and delete each kid's and the family's calenda
 ** [X] Tests written and passing for the acceptance criteria in this story
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:12] \\
-  =mix test test/bear_cub/calendars_test.exs test/bear_cub_web/live/admin/calendar_live_test.exs test/bear_cub/calendars/calendar_test.exs test/bear_cub_web/live/admin/nav_test.exs= → 29 passed, 0 failures. Full suite =mix test= → 151 passed, 0 failures.
+  ~mix test test/bear_cub/calendars_test.exs test/bear_cub_web/live/admin/calendar_live_test.exs test/bear_cub/calendars/calendar_test.exs test/bear_cub_web/live/admin/nav_test.exs~ → 29 passed, 0 failures. Full suite ~mix test~ → 151 passed, 0 failures.
 :END:
 ** [X] Code follows style guidelines in CLAUDE.md
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:12] \\
-  Verified against Phoenix v1.8/LiveView/Ecto guidelines: =Layouts.admin= wrapper on both LiveViews, =to_form/2= + =<.form for={@form}>= + =<.input field={@form[:...]}>= throughout, explicit DOM ids on every interactive element, =BearCub.Calendars= never references =BearCub.Chores= (only the web layer reads both, per design §1), =redact: true= on =ics_url=, kiosk/admin fence intact. No violations found.
+  Verified against Phoenix v1.8/LiveView/Ecto guidelines: ~Layouts.admin~ wrapper on both LiveViews, ~to_form/2~ + ~<.form for={@form}>~ + ~<.input field={@form[:...]}>~ throughout, explicit DOM ids on every interactive element, ~BearCub.Calendars~ never references ~BearCub.Chores~ (only the web layer reads both, per design §1), ~redact: true~ on ~ics_url~, kiosk/admin fence intact. No violations found.
 :END:
 ** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
 :LOGBOOK:
 - Note taken on [2026-07-11 Sat 14:12] \\
-  =mix format --check-formatted= → exit 0, no output. =mix test= → 151 passed, exit 0. =mix compile --warnings-as-errors= (part of =mix precommit=) → clean, exit 0.
+  ~mix format --check-formatted~ → exit 0, no output. ~mix test~ → 151 passed, exit 0. ~mix compile --warnings-as-errors~ (part of ~mix precommit~) → clean, exit 0.
 :END:
 
 * Technical Notes
 
-- Scaffold with =mix phx.gen.live= per the Design excerpt's Implementation directive (context, schema, migration, =Admin.CalendarsLive.Index/Form=, PubSub wiring), then reshape toward this design rather than hand-rolling.
-- This story covers only calendar CRUD (data entry) — no fetching, no parsing, no ETS, no kiosk rendering. The Refresher GenServer that fetches =ics_url= and populates =last_payload=/=last_fetched_at=/=last_error= is Story 03, which depends on this story's schema and context existing. The kiosk events strip that renders parsed events is Story 04, which depends on Story 03.
-- This story also does not depend on Story 01 (=BearCub.Calendars.ICS=) — CRUD on calendar rows doesn't parse anything. Both stories can be built in either order; D16 fixes Story 01 first only because it is the project's largest unknown, not because of a code dependency.
-- Per §1's contexts paragraph, =BearCub.Calendars= must not be called by =BearCub.Chores=, and vice versa — this story is establishing the =BearCub.Calendars= context boundary that Story 03 and 04 build on.
-- The migration must match the schema fields verbatim from the Design excerpt above: =kid_id= (nullable, references =kids=), =label=, =ics_url= (=redact: true=), =last_payload=, =last_fetched_at=, =last_error=, timestamps. =last_payload=/=last_fetched_at=/=last_error= are written by the Refresher in Story 03 — this story only needs the columns to exist, not populated.
-- Deferred discovery: =CalendarLive.Index= renders the calendars list with a plain =<li :for={calendar <- @calendars}>= rather than a LiveView =stream/3=, same as the pre-existing =KidLive.Index=/=ChoreLive.Index= pattern this story matched for consistency. CLAUDE.md's LiveView guidelines call for streams on all collections; this is a repo-wide convention gap predating this story, not introduced by it — surfaced here for a possible broader follow-up rather than fixed inline.
+- Scaffold with ~mix phx.gen.live~ per the Design excerpt's Implementation directive (context, schema, migration, ~Admin.CalendarsLive.Index/Form~, PubSub wiring), then reshape toward this design rather than hand-rolling.
+- This story covers only calendar CRUD (data entry) — no fetching, no parsing, no ETS, no kiosk rendering. The Refresher GenServer that fetches ~ics_url~ and populates ~last_payload~/~last_fetched_at~/~last_error~ is Story 03, which depends on this story's schema and context existing. The kiosk events strip that renders parsed events is Story 04, which depends on Story 03.
+- This story also does not depend on Story 01 (~BearCub.Calendars.ICS~) — CRUD on calendar rows doesn't parse anything. Both stories can be built in either order; D16 fixes Story 01 first only because it is the project's largest unknown, not because of a code dependency.
+- Per §1's contexts paragraph, ~BearCub.Calendars~ must not be called by ~BearCub.Chores~, and vice versa — this story is establishing the ~BearCub.Calendars~ context boundary that Story 03 and 04 build on.
+- The migration must match the schema fields verbatim from the Design excerpt above: ~kid_id~ (nullable, references ~kids~), ~label~, ~ics_url~ (~redact: true~), ~last_payload~, ~last_fetched_at~, ~last_error~, timestamps. ~last_payload~/~last_fetched_at~/~last_error~ are written by the Refresher in Story 03 — this story only needs the columns to exist, not populated.
+- Deferred discovery: ~CalendarLive.Index~ renders the calendars list with a plain ~<li :for={calendar <- @calendars}>~ rather than a LiveView ~stream/3~, same as the pre-existing ~KidLive.Index~/~ChoreLive.Index~ pattern this story matched for consistency. CLAUDE.md's LiveView guidelines call for streams on all collections; this is a repo-wide convention gap predating this story, not introduced by it — surfaced here for a possible broader follow-up rather than fixed inline.

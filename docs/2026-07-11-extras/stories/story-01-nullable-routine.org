@@ -9,19 +9,19 @@ Verbatim from DESIGN.org for this story's scope.
 
 ** Data Model
 
-One migration. The =completions= table is *unchanged*.
+One migration. The ~completions~ table is *unchanged*.
 
-- =chores.routine=: drop =NOT NULL= at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. =nil= marks an extra. Because =nil= is now valid, =Routines= window logic never sees an extra: =list_chores(kid, "morning"|"evening")= already guards its routine arg, so =nil= rows never leak into routine lists.
-  - Dropping =NOT NULL= on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place =ALTER=. Verify =ecto_sqlite3='s actual =ALTER TABLE= / column-modify support before writing the migration, and preserve the =completions= → =chores= foreign key through the rebuild so existing completion history is not orphaned.
-- =position=: extras occupy their own =kid + nil= bucket. =next_position/2= and the =[:kid_id, :routine, :position]= index already handle a =nil= routine group — no schema change beyond the nullability relaxation.
+- ~chores.routine~: drop ~NOT NULL~ at the DB level and relax the changeset to /optional; if present, must be =morning= or =evening=/. ~nil~ marks an extra. Because ~nil~ is now valid, ~Routines~ window logic never sees an extra: ~list_chores(kid, "morning"|"evening")~ already guards its routine arg, so ~nil~ rows never leak into routine lists.
+  - Dropping ~NOT NULL~ on SQLite is a *table rebuild* (create-new / copy-rows / drop-old / rename), not an in-place ~ALTER~. Verify ~ecto_sqlite3~'s actual ~ALTER TABLE~ / column-modify support before writing the migration, and preserve the ~completions~ → ~chores~ foreign key through the rebuild so existing completion history is not orphaned.
+- ~position~: extras occupy their own ~kid + nil~ bucket. ~next_position/2~ and the ~[:kid_id, :routine, :position]~ index already handle a ~nil~ routine group — no schema change beyond the nullability relaxation.
 
-An extra reuses the =completions= table wholesale: the =chore_id= FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
+An extra reuses the ~completions~ table wholesale: the ~chore_id~ FK, the partial-unique-per-day index, undo, on-behalf marking, and full history all apply unchanged. (D27, D28)
 
 ** Key Behaviors (relevant fragment)
 
-*** Extras are chore rows with =routine = nil=
+*** Extras are chore rows with ~routine = nil~
 
-An extra is a =chores= row whose =routine= is =nil=. This is the decisive modeling choice: it lets an extra reuse the =completions= table and all its machinery unchanged. =Routines= never sees a =nil= row, so extras have no window and no daily-reset semantics — exactly the separation wanted. (D27)
+An extra is a ~chores~ row whose ~routine~ is ~nil~. This is the decisive modeling choice: it lets an extra reuse the ~completions~ table and all its machinery unchanged. ~Routines~ never sees a ~nil~ row, so extras have no window and no daily-reset semantics — exactly the separation wanted. (D27)
 
 * User Story
 
@@ -29,25 +29,25 @@ As a parent of a kid using the Bear Cub dashboard, I need the data model to acce
 
 * Acceptance Criteria
 
-** [X] A chore can be created and persisted with =routine= = =nil= (an extra); the row is accepted by the database and by the changeset.
+** [X] A chore can be created and persisted with ~routine~ = ~nil~ (an extra); the row is accepted by the database and by the changeset.
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:26] \\
-  Verified at the changeset level (~lib/bear_cub/chores/chore.ex:19-25~ drops =:routine= from ~validate_required/2~, keeps ~validate_inclusion(:routine, @routines)~) and by test: ~test/bear_cub/chores_test.exs~ ~"create_chore/2 with a nil routine creates an extra"~ and ~"create_chore/2 with routine omitted creates an extra"~ both assert =chore.routine == nil=. DB-level acceptance (not just Ecto) confirmed in ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs:66-70~, a raw-SQL insert with =routine = NULL= after the migration.
+  Verified at the changeset level (~lib/bear_cub/chores/chore.ex:19-25~ drops ~:routine~ from ~validate_required/2~, keeps ~validate_inclusion(:routine, @routines)~) and by test: ~test/bear_cub/chores_test.exs~ ="create_chore/2 with a nil routine creates an extra"= and ="create_chore/2 with routine omitted creates an extra"= both assert ~chore.routine == nil~. DB-level acceptance (not just Ecto) confirmed in ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs:66-70~, a raw-SQL insert with ~routine = NULL~ after the migration.
 :END:
-** [X] Creating or updating a chore with =routine= = ="morning"= or ="evening"= still succeeds; a non-nil routine value that is neither is rejected by the changeset.
+** [X] Creating or updating a chore with ~routine~ = ="morning"= or ="evening"= still succeeds; a non-nil routine value that is neither is rejected by the changeset.
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:26] \\
-  ="morning"=/="evening"= creation exercised throughout ~test/bear_cub/chores_test.exs~ (default fixture routine is ="morning"=; ="evening"= used explicitly at line 80). Rejection of an unknown non-nil value: ~"create_chore/2 rejects an unknown routine"~ (attrs =routine: "afternoon"=) asserts =%{routine: ["is invalid"]} = errors_on(changeset)=. The =nil=-skip behavior called out in the story's Technical Notes is exercised (not assumed) via ~"update_chore/2 can clear routine to nil, turning a chore into an extra"~ and the AC1 tests, all against the real ~Chore.changeset/2~.
+  ="morning"=/="evening"= creation exercised throughout ~test/bear_cub/chores_test.exs~ (default fixture routine is ="morning"=; ="evening"= used explicitly at line 80). Rejection of an unknown non-nil value: ="create_chore/2 rejects an unknown routine"= (attrs ~routine: "afternoon"~) asserts ~%{routine: ["is invalid"]} = errors_on(changeset)~. The ~nil~-skip behavior called out in the story's Technical Notes is exercised (not assumed) via ="update_chore/2 can clear routine to nil, turning a chore into an extra"= and the AC1 tests, all against the real ~Chore.changeset/2~.
 :END:
-** [X] Existing completion history is preserved after the migration runs — every prior =completions= row still resolves to its =chores= row (the =completions= → =chores= foreign key survives the table rebuild).
+** [X] Existing completion history is preserved after the migration runs — every prior ~completions~ row still resolves to its ~chores~ row (the ~completions~ → ~chores~ foreign key survives the table rebuild).
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:26] \\
-  Dedicated migration test ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ ("completion history survives the chores.routine nullability rebuild (AC3)") runs the real migration files via ~Ecto.Migrator.run/4~ against a scratch SQLite file (throwaway repo in ~test/support/migration_test_repo.ex~), seeds a completion before the rebuild migration, then after it asserts: the completions row still resolves its =chore_id= (line 55-56); the FK is still enforced (a bogus =chore_id= insert fails with ="FOREIGN KEY constraint failed"=, lines 58-64); and a =nil=-routine insert now succeeds (lines 66-70). Also confirmed by hand via ~mix ecto.migrate~/~mix ecto.rollback~/~mix ecto.migrate~ round trip against the dev DB and ~mix ecto.migrations~ showing the migration =up=.
+  Dedicated migration test ~test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ ("completion history survives the chores.routine nullability rebuild (AC3)") runs the real migration files via ~Ecto.Migrator.run/4~ against a scratch SQLite file (throwaway repo in ~test/support/migration_test_repo.ex~), seeds a completion before the rebuild migration, then after it asserts: the completions row still resolves its ~chore_id~ (line 55-56); the FK is still enforced (a bogus ~chore_id~ insert fails with ="FOREIGN KEY constraint failed"=, lines 58-64); and a ~nil~-routine insert now succeeds (lines 66-70). Also confirmed by hand via ~mix ecto.migrate~/~mix ecto.rollback~/~mix ecto.migrate~ round trip against the dev DB and ~mix ecto.migrations~ showing the migration ~up~.
 :END:
-** [X] =list_chores(kid, "morning")= and =list_chores(kid, "evening")= never return a =nil=-routine chore.
+** [X] ~list_chores(kid, "morning")~ and ~list_chores(kid, "evening")~ never return a ~nil~-routine chore.
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:26] \\
-  ~lib/bear_cub/chores.ex:63~'s ~list_chores/2~ was left unchanged — its ~when routine in ~w(morning evening)~~ guard and =c.routine == ^routine= query filter structurally exclude =nil=-routine rows from either call. Verified by ~test/bear_cub/chores_test.exs~ ~"list_chores/2 never returns an extra (nil-routine) chore"~: creates one ="morning"= chore and one =routine: nil= chore, asserts =list_chores(kid, "morning") == [morning]= and =list_chores(kid, "evening") == []=.
+  ~lib/bear_cub/chores.ex:63~'s ~list_chores/2~ was left unchanged — its =when routine in ~w(morning evening)= guard and ~c.routine == ^routine~ query filter structurally exclude ~nil~-routine rows from either call. Verified by ~test/bear_cub/chores_test.exs~ ="list_chores/2 never returns an extra (nil-routine) chore"=: creates one ="morning"= chore and one ~routine: nil~ chore, asserts ~list_chores(kid, "morning") == [morning]~ and ~list_chores(kid, "evening") == []~.
 :END:
 
 * Definition of Done
@@ -60,7 +60,7 @@ As a parent of a kid using the Bear Cub dashboard, I need the data model to acce
 ** [X] Tests written and passing for the acceptance criteria in this story
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:29] \\
-  =mix test test/bear_cub/chores_test.exs test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs= → =46 passed=, exit 0.
+  ~mix test test/bear_cub/chores_test.exs test/bear_cub/repo/migrations/relax_chores_routine_nullability_test.exs~ → =46 passed=, exit 0.
 :END:
 ** [X] Code follows style guidelines in CLAUDE.md
 :LOGBOOK:
@@ -70,18 +70,18 @@ As a parent of a kid using the Bear Cub dashboard, I need the data model to acce
 ** [X] ~mix format --check-formatted~ and ~mix test~ pass without errors
 :LOGBOOK:
 - Note taken on [2026-07-12 Sun 11:29] \\
-  =mix format --check-formatted= → exit 0, no output. =mix test= (full suite) → =189 passed=, exit 0. Also =mix precommit= (=compile --warnings-as-errors=, =deps.unlock --unused=, =format=, =test=) → exit 0.
+  ~mix format --check-formatted~ → exit 0, no output. ~mix test~ (full suite) → =189 passed=, exit 0. Also ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) → exit 0.
 :END:
 
 * Technical Notes
 
 The Design excerpt above is the source of truth; DESIGN.org is broader context.
 
-- This is the foundation story: nullable =routine= is the entire schema change for the initiative. All later stories depend on it.
-- *Schema* (=lib/bear_cub/chores/chore.ex=): the field is =field :routine, :string= with =@routines ~w(morning evening)=. The changeset currently does =validate_required([:routine, :name, :icon])= and =validate_inclusion(:routine, @routines)=. Drop =:routine= from =validate_required= (keep =:name=, =:icon= required). Keep =validate_inclusion(:routine, @routines)= — Ecto validations skip =nil= by default, so =nil= passes, ="morning"=/="evening"= pass, and any other non-nil value is rejected. Verify this nil-skip behavior with a test rather than assuming.
-- *Migration*: generate with =mix ecto.gen.migration=. Dropping =NOT NULL= on SQLite is not an in-place =ALTER COLUMN= — SQLite has no such statement. Confirm what =ecto_sqlite3= (0.24.1 in mix.lock) supports for column modification; if it does not emit a working relaxation, perform the create-new / copy-rows / drop-old / rename table rebuild by hand. Whichever path, the =completions.chore_id= foreign key and the =completions= partial unique index must remain intact, and the existing =[:kid_id, :routine, :position]= index on =chores= must be recreated. Consider consulting Tidewave / the running app to confirm the emitted DDL.
-- The =chores= table was created by =priv/repo/migrations/20260710082929_create_chores.exs= (all columns NOT NULL, incl. =routine=; index =[:kid_id, :routine, :position]=). The completions partial unique index lives in =20260710083403_create_completions.exs=.
-- =next_position/2= (private, =lib/bear_cub/chores.ex=) already returns =0= for a =nil= routine bucket — no change needed here; extras get their own =kid + nil= position group.
-- =list_chores/2= already guards =routine in ~w(morning evening)=, so a =nil= row cannot leak into a routine list; the AC verifies this holds after the change.
-- Deferred discovery: an occasional (not consistently reproducible) transient log line, =Exqlite.Connection ... disconnected: ** (DBConnection.ConnectionError) client ... exited=, appears during test-suite teardown. Traced to the scratch =BearCub.MigrationTestRepo= pool (=test/support/migration_test_repo.ex=), started per-test via =start_supervised!= with the default (non-Sandbox) pool, shutting down at test-process exit. Never failed a test or affected =mix precommit='s exit code across many repeated runs; worth a look only if fully log-clean =mix precommit= output becomes a goal.
-- Deferred discovery: the DDL-transaction/connection-pool hazard this migration works around — =Ecto.Migration.Runner= dispatches =execute=/=create table=/=drop table= through a separate Agent process, so with =@disable_ddl_transaction true= a pooled (non-Sandbox) connection can schedule statements on different physical SQLite connections, letting a later statement observe a stale pre-drop schema — is a general footgun for any future SQLite migration needing a =PRAGMA= toggle outside a transaction (not specific to this story). Confirmed via direct reproduction against both a throwaway multi-connection test repo and the real =mix ecto.migrate= path (=Ecto.Migrator.with_repo/2=, pool_size 2 default). The workaround (raw =Ecto.Adapters.SQL.query!/3= calls inside =repo().checkout/1=, bypassing the Runner macros) is documented in the migration file's module comment and has been promoted to =docs/learnings.org= (2026-07-12 entry) per human ruling — transferable craft knowledge, not design-silence material, so it did not wait for a second occurrence.
+- This is the foundation story: nullable ~routine~ is the entire schema change for the initiative. All later stories depend on it.
+- *Schema* (~lib/bear_cub/chores/chore.ex~): the field is ~field :routine, :string~ with =@routines ~w(morning evening)=. The changeset currently does ~validate_required([:routine, :name, :icon])~ and ~validate_inclusion(:routine, @routines)~. Drop ~:routine~ from ~validate_required~ (keep ~:name~, ~:icon~ required). Keep ~validate_inclusion(:routine, @routines)~ — Ecto validations skip ~nil~ by default, so ~nil~ passes, ="morning"=/="evening"= pass, and any other non-nil value is rejected. Verify this nil-skip behavior with a test rather than assuming.
+- *Migration*: generate with ~mix ecto.gen.migration~. Dropping ~NOT NULL~ on SQLite is not an in-place ~ALTER COLUMN~ — SQLite has no such statement. Confirm what ~ecto_sqlite3~ (0.24.1 in mix.lock) supports for column modification; if it does not emit a working relaxation, perform the create-new / copy-rows / drop-old / rename table rebuild by hand. Whichever path, the ~completions.chore_id~ foreign key and the ~completions~ partial unique index must remain intact, and the existing ~[:kid_id, :routine, :position]~ index on ~chores~ must be recreated. Consider consulting Tidewave / the running app to confirm the emitted DDL.
+- The ~chores~ table was created by ~priv/repo/migrations/20260710082929_create_chores.exs~ (all columns NOT NULL, incl. ~routine~; index ~[:kid_id, :routine, :position]~). The completions partial unique index lives in ~20260710083403_create_completions.exs~.
+- ~next_position/2~ (private, ~lib/bear_cub/chores.ex~) already returns =0= for a ~nil~ routine bucket — no change needed here; extras get their own ~kid + nil~ position group.
+- ~list_chores/2~ already guards =routine in ~w(morning evening)=, so a ~nil~ row cannot leak into a routine list; the AC verifies this holds after the change.
+- Deferred discovery: an occasional (not consistently reproducible) transient log line, =Exqlite.Connection ... disconnected: ** (DBConnection.ConnectionError) client ... exited=, appears during test-suite teardown. Traced to the scratch ~BearCub.MigrationTestRepo~ pool (~test/support/migration_test_repo.ex~), started per-test via ~start_supervised!~ with the default (non-Sandbox) pool, shutting down at test-process exit. Never failed a test or affected ~mix precommit~'s exit code across many repeated runs; worth a look only if fully log-clean ~mix precommit~ output becomes a goal.
+- Deferred discovery: the DDL-transaction/connection-pool hazard this migration works around — ~Ecto.Migration.Runner~ dispatches ~execute~/~create table~/~drop table~ through a separate Agent process, so with ~@disable_ddl_transaction true~ a pooled (non-Sandbox) connection can schedule statements on different physical SQLite connections, letting a later statement observe a stale pre-drop schema — is a general footgun for any future SQLite migration needing a ~PRAGMA~ toggle outside a transaction (not specific to this story). Confirmed via direct reproduction against both a throwaway multi-connection test repo and the real ~mix ecto.migrate~ path (~Ecto.Migrator.with_repo/2~, pool_size 2 default). The workaround (raw ~Ecto.Adapters.SQL.query!/3~ calls inside ~repo().checkout/1~, bypassing the Runner macros) is documented in the migration file's module comment and has been promoted to ~docs/learnings.org~ (2026-07-12 entry) per human ruling — transferable craft knowledge, not design-silence material, so it did not wait for a second occurrence.

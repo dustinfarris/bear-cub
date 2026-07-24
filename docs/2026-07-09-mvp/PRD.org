@@ -41,7 +41,7 @@ Requirements are numbered for traceability into the design doc and stories. *AC*
 ** 5.1 Routines
 - *FR-1* /(design D8)/ Morning and Evening are application constants, not database entities: no routines table, no routine CRUD. Chores reference a routine by slug; active windows live in app config. Evening may be empty of chores at launch.
 - *FR-2* Each routine owns an ordered list of chore assignments per kid. Order is explicit, parent-controlled, and independent per kid.
-- *FR-3* The kiosk displays exactly one active routine at a time, selected automatically by time of day using per-routine active windows. Windows are configurable in app config — =runtime.exs= with env-var overrides (design D8). *Defaults:* Morning 05:00–17:00, Evening 17:00–23:00, local time. Outside all windows, the kiosk shows the nearest upcoming routine, dimmed.
+- *FR-3* The kiosk displays exactly one active routine at a time, selected automatically by time of day using per-routine active windows. Windows are configurable in app config — ~runtime.exs~ with env-var overrides (design D8). *Defaults:* Morning 05:00–17:00, Evening 17:00–23:00, local time. Outside all windows, the kiosk shows the nearest upcoming routine, dimmed.
 - *FR-3a* A routine's completion state is checkable at a glance for the rest of the day, not just during its window — parents make afternoon/evening decisions based on whether the morning routine got done. The long Morning default keeps it on screen all afternoon; after the Evening handoff, its final state remains reachable (via the flip, FR-4) until the midnight reset.
 - *FR-4* The kiosk provides a manual flip control to view the other routine; it reverts to automatic selection at the next window boundary (no sticky manual override across days).
   - *AC:* A parent can flip to Evening at 10am to preview it; next morning the kiosk shows Morning without intervention.
@@ -101,14 +101,14 @@ Requirements are numbered for traceability into the design doc and stories. *AC*
 - The app must boot and demo correctly with placeholder identities alone (this is also what CI and development use).
 
 ** 6.5 Deployment & config
-- Single mix release, one systemd unit, packaged as a NixOS module in the existing repo's =nixos/= structure (own imported module, not inlined).
-- Deploy = =git pull && nixos-rebuild switch=; an upgrade requires no manual steps beyond the rebuild (schema changes included).
+- Single mix release, one systemd unit, packaged as a NixOS module in the existing repo's ~nixos/~ structure (own imported module, not inlined).
+- Deploy = ~git pull && nixos-rebuild switch~; an upgrade requires no manual steps beyond the rebuild (schema changes included).
 - *Config/data split:* service definition and app config (ports, timezone, refresh intervals, etc.) are declarative in git. Kids, routines, chores, and completion history are application data — owned by the database, edited through admin, recovered from backup. Editing a routine never involves git or a rebuild.
 - Seed data exists only to bootstrap: placeholder kids are created at setup /(design D17: dev/CI via the seeds script, production once at first deploy)/, with demo chores for dev/CI. Seeding is idempotent and never modifies or overwrites existing data.
 - No hardcoded hosts in app config.
 
 ** 6.6 Stack & decided architecture (restated for traceability)
-- Elixir / Phoenix / LiveView; SQLite via =ecto_sqlite3=; supervised GenServers for periodic work — no job framework in v1. Postgres and Oban (Lite/SQLite engine) remain cheap two-way doors.
+- Elixir / Phoenix / LiveView; SQLite via ~ecto_sqlite3~; supervised GenServers for periodic work — no job framework in v1. Postgres and Oban (Lite/SQLite engine) remain cheap two-way doors.
 - /(design D10)/ Calendar refresh is the only periodic work, written as idempotent reconciliation run on boot and on interval. Daily rollover needs no job at all: day state is derived from date-scoped queries, so FR-13's self-healing holds by construction.
 - Calendar integration is server-side polling of each calendar's private ICS URL with a local cache; no OAuth. Serve the cache on any fetch failure.
 

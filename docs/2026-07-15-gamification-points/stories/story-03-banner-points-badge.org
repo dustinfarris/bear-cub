@@ -7,23 +7,23 @@ Design: [[file:../DESIGN.org]]
 
 Verbatim from DESIGN.org for this story's scope.
 
-** Kiosk banner (=KioskLive=, per kid =<header>=)
+** Kiosk banner (~KioskLive~, per kid ~<header>~)
 
 The kid-color banner is the standing home of child identity and now carries the points readout and the completion icon:
 
-- *Points badge* — a persistent per-kid badge in the banner, tied to child identity (child-color semantics), *always visible* regardless of routine state. Displays =max(0, total)= (never negative, SC-4). It belongs to the child, not the routine, so it is independent of the routine card's collapse/expand and of the header-bar retirement. (SC-1, D43)
+- *Points badge* — a persistent per-kid badge in the banner, tied to child identity (child-color semantics), *always visible* regardless of routine state. Displays ~max(0, total)~ (never negative, SC-4). It belongs to the child, not the routine, so it is independent of the routine card's collapse/expand and of the header-bar retirement. (SC-1, D43)
 
 ** Live updates (context this design builds on, in scope)
 
-*Live updates*: =Phoenix.PubSub= topic ="chores"=; every =Chores= write broadcasts a payload-free =:chores_changed=; subscribers re-fetch (never patch from payload). A derived points total recomputes for free on that existing re-fetch — no new broadcast plumbing.
+*Live updates*: ~Phoenix.PubSub~ topic ="chores"=; every ~Chores~ write broadcasts a payload-free ~:chores_changed~; subscribers re-fetch (never patch from payload). A derived points total recomputes for free on that existing re-fetch — no new broadcast plumbing.
 
-** Context (=BearCub.Chores=) — in scope
+** Context (~BearCub.Chores~) — in scope
 
-- The kiosk reads the total in =load/2= and recomputes for free on the existing =:chores_changed= re-fetch.
+- The kiosk reads the total in ~load/2~ and recomputes for free on the existing ~:chores_changed~ re-fetch.
 
 ** Decision Log entry in scope
 
-- *D43 (2026-07-16) — Persistent per-kid points badge in the banner:* the always-visible points readout lives in the kid-color banner tied to child identity, showing =max(0, total)=, independent of the routine card's collapse/expand and of the header-bar retirement because it belongs to the child, not the routine. Rejected — a completion-only or routine-scoped indicator: SC-1 requires the total be always visible, so it cannot live on the routine card that collapses. Settles SC-1 placement. → Screens (banner), Key Behaviors.
+- *D43 (2026-07-16) — Persistent per-kid points badge in the banner:* the always-visible points readout lives in the kid-color banner tied to child identity, showing ~max(0, total)~, independent of the routine card's collapse/expand and of the header-bar retirement because it belongs to the child, not the routine. Rejected — a completion-only or routine-scoped indicator: SC-1 requires the total be always visible, so it cannot live on the routine card that collapses. Settles SC-1 placement. → Screens (banner), Key Behaviors.
 
 * User Story
 
@@ -31,7 +31,7 @@ As a kid, I need my points total always showing in my banner next to my name, so
 
 * Acceptance Criteria
 
-** [X] Each kid's banner (=<header>=) shows a persistent points badge displaying =max(0, total)= for that kid, using the child-color semantics of the banner. (SC-1, D43)
+** [X] Each kid's banner (~<header>~) shows a persistent points badge displaying ~max(0, total)~ for that kid, using the child-color semantics of the banner. (SC-1, D43)
 :LOGBOOK:
 - Note taken on [2026-07-16 Thu 20:55] \\
   ~build_column/6~ in ~kiosk_live.ex:143~ assigns ~points: Chores.points_total(kid, today)~ per kid column; the badge renders as ~<span id={"points-badge-#{kid.id}"}>~ inside the child-color ~<header>~ (~kiosk_live.ex:206-212~, header style at line 201 sets ~background-color: #{kid.color}~). ~Chores.points_total/2~ (~chores.ex:381-410~, unchanged by this story) returns ~max(0, ...)~. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:834-849~ (badge at 0 before any completions; badge shows 12 after completing a 12-point extra), both passing per ~mix test test/bear_cub_web/live/kiosk_live_test.exs~.
@@ -46,7 +46,7 @@ As a kid, I need my points total always showing in my banner next to my name, so
 - Note taken on [2026-07-16 Thu 20:55] \\
   ~Chores.points_total/2~ floors via ~max(0, extra_sum + routine_sum + other_signed_inputs)~ (~chores.ex:410~) before the badge ever renders it. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:851-860~: completes a 12-point extra then fails it (driving the signed total to -12) and asserts the rendered badge shows =0= — passing.
 :END:
-** [X] When a =Chores= write broadcasts =:chores_changed=, the badge re-renders with the recomputed total on the existing re-fetch, with no new broadcast added. (SC-1, D43)
+** [X] When a ~Chores~ write broadcasts ~:chores_changed~, the badge re-renders with the recomputed total on the existing re-fetch, with no new broadcast added. (SC-1, D43)
 :LOGBOOK:
 - Note taken on [2026-07-16 Thu 20:55] \\
   ~handle_info(:chores_changed, socket)~ (~kiosk_live.ex:64-67~, unchanged) still calls ~load/2~, which recomputes ~points~ per kid via ~build_column/6~ on every re-fetch. ~grep -n "broadcast" lib/bear_cub/chores.ex~ shows a single broadcast site (~broadcast_change/1~), untouched by this story's diff. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs:862-872~, which completes a chore via a direct ~Chores.complete_chore/3~ call (simulating another surface) without touching the view, and asserts the badge updates from 0 to 12 — passing.
@@ -69,7 +69,7 @@ As a kid, I need my points total always showing in my banner next to my name, so
 - Note taken on [2026-07-16 Thu 20:58] \\
   Spot-checked against CLAUDE.md's Phoenix/LiveView conventions: ~<.icon>~ component used for the star glyph (not raw Heroicons), ~{points}~ interpolated via tag-body ~{...}~ syntax, no raw ~<script>~, no struct map-access syntax, stable per-kid DOM id (~points-badge-#{kid.id}~) matching the Technical Notes, tests assert via ~has_element?/3~ never raw HTML. ~mix format --check-formatted~ passes with no output.
 :END:
-** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] The repo's declared =Verify command:= (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
 :LOGBOOK:
 - Note taken on [2026-07-16 Thu 20:58] \\
   ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) passes clean: zero compiler warnings, zero unused deps, no formatting drift, =245 passed= across the full suite.
@@ -80,7 +80,7 @@ As a kid, I need my points total always showing in my banner next to my name, so
 The Design excerpt above is the source of truth; DESIGN.org is broader context.
 
 - Depends on Story 02 (the floored per-kid total) and Story 01 (the columns it derives from). This is the first story that puts a real, growing points figure on the kiosk — the early-visibility milestone (SC-1) before any fail or celebration UI exists.
-- Read the total in =load/2= per kid and assign it; the badge is plain server-rendered markup in the banner =<header>=, not a LiveComponent (the kiosk renders server-side). The existing ="chores"= =:chores_changed= re-fetch recomputes it for free — do not add a broadcast.
-- Give the badge a stable DOM id per kid (e.g. =points-badge-#{kid.id}=) so LiveView tests can assert the number via =element/2=; test against the element, not raw HTML text.
+- Read the total in ~load/2~ per kid and assign it; the badge is plain server-rendered markup in the banner ~<header>~, not a LiveComponent (the kiosk renders server-side). The existing ="chores"= ~:chores_changed~ re-fetch recomputes it for free — do not add a broadcast.
+- Give the badge a stable DOM id per kid (e.g. ~points-badge-#{kid.id}~) so LiveView tests can assert the number via ~element/2~; test against the element, not raw HTML text.
 - The completion icon and its bonus badge are a *different* affordance landed in Story 08; this story adds only the always-visible per-child total. The badge here must remain visible even after Story 08 introduces the completion icon (it belongs to the child, not the routine).
 - Floor is already applied by the Story 02 total; the badge just displays it. Include a test with a below-zero signed standing to prove the displayed value is 0.

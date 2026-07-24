@@ -4,10 +4,10 @@
 One-off visual redesign, backlog-tracked (no chain documents). Future kiosk styling work builds on this file rather than re-litigating it.
 
 * Semantics
-A child-color left border (=--child-border-width=) means chore ownership — whose card this is. A routine color (=--routine-morning=, =--routine-evening=) means temporal context — which part of the day this card belongs to. A routine tint (=--routine-morning-tint=, =--routine-evening-tint=) means pending within that routine — it disappears the moment a card is done.
+A child-color left border (~--child-border-width~) means chore ownership — whose card this is. A routine color (~--routine-morning~, ~--routine-evening~) means temporal context — which part of the day this card belongs to. A routine tint (~--routine-morning-tint~, ~--routine-evening-tint~) means pending within that routine — it disappears the moment a card is done.
 
 * Invariants
-Collapsed routine cards never carry a child-color border — collapse is a routine-level state, not any one child's. Extras render on a fixed neutral surface (=--extra-card-background=, =--extra-card-content=) independent of routine and theme, so they never inherit tint meaning.
+Collapsed routine cards never carry a child-color border — collapse is a routine-level state, not any one child's. Extras render on a fixed neutral surface (~--extra-card-background~, ~--extra-card-content~) independent of routine and theme, so they never inherit tint meaning.
 
 * Rulings
 The collapsed-routine message renders inside the collapsed card — do not re-litigate.
@@ -16,6 +16,6 @@ The persistent routine header bar (the routine-colored title bar above the chore
 
 Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + message were the only completion signals. Superseded [2026-07-16]: a large sun (morning) / moon (evening) completion icon now renders in the child's banner whenever their routine is complete. Refined [2026-07-17]: the icon carries no separate checkmark glyph — a single green bonus badge is the completion/reward signal, shown only when the routine bonus is not forfeited (a redo-after-fail completion shows the icon alone, no badge). Do not add further indicators without a ruling.
 
-A green +N chip on a completed extra's card shows its earned value (its own =chore.points=); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip.
+A green +N chip on a completed extra's card shows its earned value (its own ~chore.points~); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip.
 
 Tokens live in assets/css/app.css, in the block above the LiveView class variants.

@@ -5,21 +5,21 @@ Things we learned building the MVP that are *not* recorded in commit
 messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
 of each section are fine; every entry carries the date it was learned.
 
-* [2026-07-12 Sun] A pinned =nil= in an Ecto query comparison raises, it doesn't match
-Comparing a field against a pinned =nil= (=c.routine == ^value=, where =value=
-is =nil=) raises =ArgumentError= at query time rather than silently matching
-=nil= rows — Ecto only treats literal, unpinned =nil= as an =IS NULL= rewrite,
-never a pinned variable that happens to hold =nil=. Any query bucketing rows
-by a nullable discriminator needs a dedicated =is_nil/1= clause for the =nil=
+* [2026-07-12 Sun] A pinned ~nil~ in an Ecto query comparison raises, it doesn't match
+Comparing a field against a pinned ~nil~ (~c.routine == ^value~, where ~value~
+is ~nil~) raises ~ArgumentError~ at query time rather than silently matching
+~nil~ rows — Ecto only treats literal, unpinned ~nil~ as an ~IS NULL~ rewrite,
+never a pinned variable that happens to hold ~nil~. Any query bucketing rows
+by a nullable discriminator needs a dedicated ~is_nil/1~ clause for the ~nil~
 bucket; the pin-and-compare form that works for every other bucket value
 silently doesn't generalize to it. Bit twice in the same initiative on
 latent, pre-existing code exposed the moment a nullable column arrived:
-=next_position/2= (Story 02) and the =neighbor/2= helper behind =move_chore/2=
+~next_position/2~ (Story 02) and the ~neighbor/2~ helper behind ~move_chore/2~
 (Story 03) — both had compared against a bucket value that was always
-non-nil until extras introduced =routine = nil= as a real bucket. Evidence:
+non-nil until extras introduced ~routine = nil~ as a real bucket. Evidence:
 the two withdrawn repair-class advisories in
-docs/2026-07-11-extras/DESIGN.org's git history (§Data Model, =next_position/2=
-and =move_chore/2='s neighbor lookup) and both stories' PLAN.org LOGBOOK
+docs/2026-07-11-extras/DESIGN.org's git history (§Data Model, ~next_position/2~
+and ~move_chore/2~'s neighbor lookup) and both stories' PLAN.org LOGBOOK
 entries.
 
 * [2026-07-12 Sun] Confirmed pattern: give a new entity an existing entity's satellite machinery via a nullable discriminator, not a parallel table
@@ -27,59 +27,59 @@ When a new entity needs everything an existing entity already has —
 completions, undo, history, PubSub, admin toggles — extending the existing
 table with a nullable discriminator column beats adding a parallel table with
 its own copy of that machinery. The Extras initiative's D27
-(docs/2026-07-11-extras/DESIGN.org) modeled an extra as a =chores= row with
-=routine = nil=, reusing the =completions= table's FK, partial-unique-per-day
+(docs/2026-07-11-extras/DESIGN.org) modeled an extra as a ~chores~ row with
+~routine = nil~, reusing the ~completions~ table's FK, partial-unique-per-day
 index, undo, on-behalf marking, and history verbatim; the entire schema cost
-was one nullability migration plus the =is_nil/1= query-clause discipline
-above. Rejected alternatives (D27): a separate =extras= table (forfeits
-completion reuse, forcing a duplicate =extra_completions= table or a
-polymorphic FK on SQLite/Ecto) and a third routine constant =:extra= (a
+was one nullability migration plus the ~is_nil/1~ query-clause discipline
+above. Rejected alternatives (D27): a separate ~extras~ table (forfeits
+completion reuse, forcing a duplicate ~extra_completions~ table or a
+polymorphic FK on SQLite/Ecto) and a third routine constant ~:extra~ (a
 category error dragging windowless, reset-free extras through window logic
 built for routines). Held across all six of that initiative's stories with
 zero new state machinery introduced.
 
 * [2026-07-12 Sun] Ecto/SQLite migrations: a disabled DDL transaction needs a pinned connection too
-With =@disable_ddl_transaction true=, =Ecto.Migration.Runner= dispatches each
-=execute=/=create table=/=drop table= call through a separate Agent process,
+With ~@disable_ddl_transaction true~, ~Ecto.Migration.Runner~ dispatches each
+~execute~/~create table~/~drop table~ call through a separate Agent process,
 not the migration module's own process. On a pooled (non-Sandbox) SQLite
 connection this means consecutive statements can land on different physical
 connections; a later statement (e.g. recreating an index right after a
 rename) can then observe a stale, pre-drop schema and fail with a spurious
 "already exists" error. This bites any migration that must run outside a
-transaction at all — most commonly a =PRAGMA= toggle (=foreign_keys=, needed
+transaction at all — most commonly a ~PRAGMA~ toggle (~foreign_keys~, needed
 before a table rebuild that would otherwise reject or cascade-delete through
 the drop) that SQLite makes a silent no-op inside a transaction. Fix: pin the
 whole migration body to one physical connection by issuing raw
-=Ecto.Adapters.SQL.query!/3= calls inside =repo().checkout/1=, bypassing the
+~Ecto.Adapters.SQL.query!/3~ calls inside ~repo().checkout/1~, bypassing the
 Runner's execute/create/drop macros entirely — wrapping the macros themselves
-in =repo().checkout(fn -> ... end)= does *not* help, since checkout pins the
+in ~repo().checkout(fn -> ... end)~ does *not* help, since checkout pins the
 calling process, not the Agent process the macros actually dispatch to.
 Reproduced directly on both an isolated multi-connection test repo and the
-real =mix ecto.migrate= path (pool_size 2 default); see
-=priv/repo/migrations/20260712180527_relax_chores_routine_nullability.exs=
-and its migration test for the working pattern. Adjacent fact: =ecto_sqlite3=
+real ~mix ecto.migrate~ path (pool_size 2 default); see
+~priv/repo/migrations/20260712180527_relax_chores_routine_nullability.exs~
+and its migration test for the working pattern. Adjacent fact: ~ecto_sqlite3~
 (0.24.1) has no working column-modify — any SQLite constraint change is
 always the create-new/copy-rows/drop-old/rename table rebuild, never an
-in-place =ALTER COLUMN=.
+in-place ~ALTER COLUMN~.
 
 * [2026-07-10 Fri] Nix deploy: every mix.lock change needs a fetchMixDeps hash bump
-The mix deps fetch in =nix/package.nix= is a fixed-output derivation:
-when =mix.lock= changes but the pinned =hash= does not, Nix silently
+The mix deps fetch in ~nix/package.nix~ is a fixed-output derivation:
+when ~mix.lock~ changes but the pinned ~hash~ does not, Nix silently
 reuses the *cached pre-change deps* and the failure surfaces late — as
-~Could not find application :<new dep>~ during =mix release= inside
-=nixos-rebuild=, not at fetch time.
+=Could not find application :<new dep>= during ~mix release~ inside
+~nixos-rebuild~, not at fetch time.
 
 Fast TOFU loop that avoids committing broken pins: on the target box,
-=nix-build= a one-off expression that calls
-=beamPackages.fetchMixDeps= with =builtins.fetchGit= of the
-already-pushed rev and =hash = lib.fakeHash=; the mismatch error
+~nix-build~ a one-off expression that calls
+~beamPackages.fetchMixDeps~ with ~builtins.fetchGit~ of the
+already-pushed rev and ~hash = lib.fakeHash~; the mismatch error
 prints the real hash (no sudo needed). Bonus: the deps land in the
-store, so the subsequent =nixos-rebuild switch= skips refetching.
+store, so the subsequent ~nixos-rebuild switch~ skips refetching.
 
 * [2026-07-10 Fri] Elixir: map-pattern keys must be literals or pins
-=assert %{chore.id => found} = ...= is not legal Elixir — a pattern
+~assert %{chore.id => found} = ...~ is not legal Elixir — a pattern
 key can't be an arbitrary expression. Bind first, then pin:
-=chore_id = chore.id; assert %{^chore_id => found} = ...=.
+~chore_id = chore.id; assert %{^chore_id => found} = ...~.
 Wider point: code blocks embedded in planning docs are never
 compiler-checked, so expect (and review for) this class of fix when
 implementing from written plans.
@@ -87,17 +87,17 @@ implementing from written plans.
 * [2026-07-10 Fri] Nix: asset-binary versions drift from the mix config pins
 Under the sandboxed build, =MIX_TAILWIND_PATH= / =MIX_ESBUILD_PATH=
 supply nixpkgs binaries, which drift ahead of the versions pinned in
-=config.exs= (seen: esbuild 0.27.2 vs configured 0.25.4 → a warning in
+~config.exs~ (seen: esbuild 0.27.2 vs configured 0.25.4 → a warning in
 the build log). The config pin only governs mix-managed downloads on
 dev machines; the warning is cosmetic in the Nix build, but align the
 pin when convenient so real incompatibilities aren't masked by a
 warning everyone has learned to ignore.
 
 * [2026-07-10 Fri] tzdata boots fine from the read-only Nix store
-With =config :tzdata, :autoupdate, :disabled=, tzdata reads its
+With ~config :tzdata, :autoupdate, :disabled~, tzdata reads its
 bundled tables from its priv dir in the store without complaint — no
-=:data_dir= override needed. (If autoupdate is ever re-enabled it
-*will* need a writable =data_dir=, e.g. the service's
+~:data_dir~ override needed. (If autoupdate is ever re-enabled it
+*will* need a writable ~data_dir~, e.g. the service's
 StateDirectory.) tzdata also drags in hackney + friends as transitive
 deps; they're never started and Req remains the app's HTTP client.
 
@@ -106,21 +106,21 @@ deps; they're never started and Req remains the app's HTTP client.
 risk as a single-second edge race.) LiveView tests deliberately compute
 expected routine state from the real clock with the app's own pure
 functions — no clock mocking — but "no mocking" is not the same as "no
-pinning." 15 tests across =KioskLiveTest=, =Admin.TodayLiveTest=, and
-=Admin.ChoreLiveTest= called =auto_routine()=/=active_routine()= without
-pinning =:routine_windows=, so they inherited whichever routine (or the
+pinning." 15 tests across ~KioskLiveTest~, ~Admin.TodayLiveTest~, and
+~Admin.ChoreLiveTest~ called ~auto_routine()~/~active_routine()~ without
+pinning ~:routine_windows~, so they inherited whichever routine (or the
 23:00–05:00 Good Night gap) the real wall clock happened to land in —
 not a theoretical instant-edge race, but a deterministic failure for the
 *entire* six-hour gap, ridden across two initiative stories'
 close-outs (docs/2026-07-15-gamification-points/stories/story-06-kiosk-failed-marking.org,
-story-07-collapse-delay.org, both confirmed via a =git stash= baseline
+story-07-collapse-delay.org, both confirmed via a ~git stash~ baseline
 at the same wall-clock time) before being repaired in commit =4fc7247=.
-Fix: pin =:routine_windows= via the =morning_active=/=evening_active=/
-=put_windows= helper idiom already used by several =kiosk_live_test.exs=
-describe blocks — save the original value, register =on_exit= to
+Fix: pin ~:routine_windows~ via the ~morning_active~/~evening_active~/
+~put_windows~ helper idiom already used by several ~kiosk_live_test.exs~
+describe blocks — save the original value, register ~on_exit~ to
 restore it, then force whichever window(s) the test needs active for
 its whole duration. This still calls the real clock
-(=LocalTime.now()=, never mocked); it only widens or narrows which
+(~LocalTime.now()~, never mocked); it only widens or narrows which
 window that real clock falls into. A genuine instant-of-the-edge race
 (helper evaluates a hair before 05:00/17:00/23:00, mount lands a hair
 after) remains theoretically possible even with pinning applied
@@ -129,6 +129,6 @@ clock mocking.
 
 * [2026-07-10 Fri] Ops: reach the server over Tailscale, not the LAN IP
 From the dev machine the box's LAN IP times out on ssh; the Tailscale
-machine name (=nixos=) connects. Non-sudo deploy steps (=git pull=,
-one-off =nix-build=) are scriptable over ssh; =nixos-rebuild switch=
+machine name (~nixos~) connects. Non-sudo deploy steps (~git pull~,
+one-off ~nix-build~) are scriptable over ssh; ~nixos-rebuild switch~
 still needs a real terminal for sudo.
