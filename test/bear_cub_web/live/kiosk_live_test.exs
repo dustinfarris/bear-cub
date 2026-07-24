@@ -113,7 +113,7 @@ defmodule BearCubWeb.KioskLiveTest do
       html = render(view)
 
       refute html =~ "auto-rows-fr"
-      assert html =~ "auto-rows-[6rem]"
+      assert html =~ "auto-rows-min"
 
       [chore_a, chore_b] = BearCub.Chores.list_chores(kid_a, auto_routine() |> Atom.to_string())
       assert has_element?(view, "#chore-#{chore_a.id}.h-24")
@@ -436,6 +436,24 @@ defmodule BearCubWeb.KioskLiveTest do
       assert completion.source == "kiosk"
       assert completion.local_date == DateTime.to_date(LocalTime.now())
       assert completion.undone_at == nil
+    end
+
+    test "a completed chore row shrinks a little; undo restores full height",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{chore.id}.h-24")
+      refute has_element?(view, "#chore-#{chore.id}.h-20")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}.h-20")
+      refute has_element?(view, "#chore-#{chore.id}.h-24")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{chore.id}.h-24")
+      refute has_element?(view, "#chore-#{chore.id}.h-20")
     end
 
     test "tapping a done chore undoes it — no confirmation (FR-8)",

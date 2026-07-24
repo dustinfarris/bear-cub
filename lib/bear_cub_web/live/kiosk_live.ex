@@ -396,7 +396,10 @@ defmodule BearCubWeb.KioskLive do
           <div id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
             <%!-- Chores: fixed-height full-width rows, top-aligned (empty
                  space below the last card is fine); beyond capacity only
-                 this region scrolls (FR-6). Not done = routine tint fill +
+                 this region scrolls (FR-6). A done row shrinks a little
+                 (h-24 → h-20) — a quiet completion signal that also buys
+                 back vertical room for the no-scroll budget.
+                 Not done = routine tint fill +
                  child-color border (chore ownership); done = kid-color fill
                  + check, emoji still visible (FR-7), border merged into the
                  fill; tap again to undo, no confirmation (FR-8).
@@ -420,7 +423,7 @@ defmodule BearCubWeb.KioskLive do
 
               <ul
                 id={"chores-#{kid.id}"}
-                class="row-start-2 grid max-h-full auto-rows-[6rem] gap-px self-start overflow-y-auto bg-base-300"
+                class="row-start-2 grid max-h-full auto-rows-min gap-px self-start overflow-y-auto bg-base-300"
               >
                 <.chore_row
                   :for={%{chore: chore, done?: done?, failed?: failed?} <- chores}
@@ -460,7 +463,7 @@ defmodule BearCubWeb.KioskLive do
           <ul
             :if={state == :band and routine == :morning}
             id={"extras-#{kid.id}"}
-            class="grid auto-rows-[6rem] gap-px overflow-y-auto bg-base-300"
+            class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
           >
             <.chore_row
               :for={%{chore: chore, done?: done?, failed?: failed?} <- extras}
@@ -500,7 +503,10 @@ defmodule BearCubWeb.KioskLive do
       phx-click="toggle-chore"
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
-      class="flex h-24 cursor-pointer select-none items-center gap-5 border-l-[length:var(--child-border-width)] px-6 transition-colors"
+      class={[
+        "flex cursor-pointer select-none items-center gap-5 border-l-[length:var(--child-border-width)] px-6 transition-all",
+        if(@done?, do: "h-20", else: "h-24")
+      ]}
       style={chore_card_style(@done?, @extra?, @routine, @kid.color)}
     >
       <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
