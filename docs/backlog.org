@@ -5,6 +5,12 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO animation for hiding/showing routine chores
+:PROPERTIES:
+:CREATED:  [2026-07-24 Fri 15:58]
+:END:
+
+when the last chore is completed for the routine, have it animate away rather than abruptly disappearing (e.g. collapse or similar).  likewise, if it is toggled back into view, animate it into view rather than abruptly showing it
 * TODO admin "quick add" extra chore from Today view
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
