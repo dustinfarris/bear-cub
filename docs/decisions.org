@@ -9,3 +9,10 @@ Historical entries remain in situ, list-format:
 # D27–D38 docs/2026-07-11-extras/DESIGN.org
 # D39–D55 docs/2026-07-15-gamification-points/DESIGN.org
 # This log begins at D56.
+
+* D56 (2026-07-24) — Night screen: one dark screen, one evening-colored moon, nothing else — supersedes the per-column Good Night message (D32), scopes D43's always-visible badge to waking windows
+:PROPERTIES:
+:CUSTOM_ID: d56
+:END:
+
+The 23:00–05:00 gap renders a single full-kiosk dark screen (~bg-stone-950~) holding one large centered moon (~hero-moon-solid~, colored via ~var(--routine-evening)~) and nothing else: no kid columns, no banners, no events strip, no stale glyph, no copy. ~Messages.good_night/0~ retires with the message it carried — the D37/D38 =Good night=-vs-=You did great today!= copy distinction is moot when night carries no copy at all. Supersedes extras D32's per-column Good Night message block; D32's untappable-lockdown stance stands (nothing on the night screen is interactive; corrections still go to admin). Scopes gamification D43: "the points badge renders unconditionally" now holds within waking windows only — at night the whole per-kid surface is replaced, badge included (the badge's purpose, a kid seeing their total while using the kiosk, has no audience at night). Rejected — restyling the per-column Good Night blocks darker while keeping banners/badges/events: the backlog spec was explicit ("a dark screen with a evening-colored large moon in the center, and nothing else"), and a fridge-mounted tablet at night wants minimum emitted light, which retained white banner bands would defeat. Settles the night-mode backlog item (captured 2026-07-13). → design-language Rulings.

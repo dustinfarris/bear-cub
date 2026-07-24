@@ -93,13 +93,15 @@ Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brains
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
 
 Done [2026-07-24 Fri]: initiative shipped — all 10 stories closed, Batch 1 gate closed [2026-07-18]. Marked at backlog review.
-* TODO [#B] need a darker screen for night mode (after 23:00) :oneshot:
+* DONE [#B] need a darker screen for night mode (after 23:00) :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:28]
 :END:
 Should just be a dark screen with a evening-colored large moon in the center, and nothing else.
 
 Triage [2026-07-14 Tue]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies. Independent of gamification.
+
+Done [2026-07-24 Fri]: the night window now renders a single ~#night-screen~ (dark ~bg-stone-950~, one large ~hero-moon-solid~ colored ~var(--routine-evening)~) replacing the per-kid columns entirely — D56 minted (supersedes D32's Good Night message, scopes D43's always-visible badge to waking windows); design-language ruling recorded; ~Messages.good_night/0~ retired. TDD at the LiveView layer, ~mix precommit~ clean. On-device check (dark render on the tablet, no light bleed) still owed at the next gate.
 * DONE [#B] Need a short delay between completing the last routine task and collapsing the routine list :oneshot:
 :PROPERTIES:
 :ID:       90b89296-d77e-468b-9ad1-c8f4261cee70
