@@ -18,6 +18,8 @@ Completion badge (sun/moon) considered and deferred [2026-07-12] — collapse + 
 
 A green +N chip on a completed extra's card shows its earned value (its own ~chore.points~); routine chores carry no per-chore number — a routine earns a single +R no matter how many chores it holds, so a per-chore number there would misstate that. Added [2026-07-17]. The exact positive mirror of the failed extra's warning + −N chip.
 
+Completed rows shrink [2026-07-24]: a done chore/extra row renders at ~h-20~ against the pending ~h-24~ — a quiet in-row completion signal that also refunds vertical space toward the 5-chore no-scroll budget (FR-6). Row tracks are content-sized (~auto-rows-min~), never equal-fill. The shrink stays subtle: a done row must remain a comfortable undo tap target — do not shrink further without a ruling.
+
 Night screen [2026-07-24]: the 23:00–05:00 gap is a single dark screen (~bg-stone-950~) with one large centered moon (~hero-moon-solid~, colored ~var(--routine-evening)~ — the moon is temporal context, evening family) and nothing else: no columns, banners, points badges, events, or copy, and nothing tappable. Minimum emitted light is the point — do not add content or brighten the surface without a ruling. Rationale: [[file:decisions.org::#d56][D56]].
 
 Tokens live in assets/css/app.css, in the block above the LiveView class variants.

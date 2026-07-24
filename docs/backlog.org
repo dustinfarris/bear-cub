@@ -70,11 +70,13 @@ Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged —
 :CREATED:  [2026-07-17 Fri 07:02]
 :END:
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — same points-UI theme as the rewards/redemption initiative; a stats view would also make ~points_total/2~'s N+1 shape (entry above) load-bearing, so consider claiming both together.
-* TODO I want the vertical height of a chore to shrink a little when it is completed :oneshot:
+* DONE I want the vertical height of a chore to shrink a little when it is completed :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 06:29]
 :END:
 Triage [2026-07-24 Fri]: oneshot. Kids' view visuals — docs/design-language.org read is binding; on-device gate applies (mind the 5-chore no-scroll check — shrinking completed rows should help it, never hurt it).
+
+Done [2026-07-24 Fri]: done rows (chores and extras, via the shared ~chore_row~) render at ~h-20~ against the pending ~h-24~, with the row grids switched from fixed ~auto-rows-[6rem]~ tracks to content-sized ~auto-rows-min~ so the per-row height takes effect; ~transition-all~ animates the shrink. Only helps the no-scroll budget (rows only ever get shorter). Ruling recorded in docs/design-language.org. On-device look remains for the next gate's manual checklist.
 * DONE [#A] Gamification: Points system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-13 Mon 23:27]
