@@ -45,22 +45,74 @@ As a parent, I need a rewards screen on my phone where I can add what the kids c
 
 * Acceptance Criteria
 
-** [ ] ~/admin/rewards~ is a route reachable from a fifth bottom-nav entry beside Today, Chores, Kids, and Calendars, and it lists the catalog in ~position~ order showing each reward's icon, name, price, whether it is repeatable, and who it is offered to. (SC-1, D68)
-** [ ] The reward form carries name, emoji (defaulting to =🎁=), price, repeatable, and an optional kid — "Anyone" or a specific child — and creating or editing a reward through it persists exactly those choices. (SC-1, D58, D68)
-** [ ] ▲/▼ controls reorder the catalog through ~move_reward/2~: the reward swaps with its neighbor, the move is a silent no-op at either end of the list, and the new order is what the kiosk and this screen both read. (SC-1, D68)
-** [ ] The only removal affordance is archive: archiving a reward removes it from this catalog and, per Story 05 and Story 07, from the kiosk shop and the direct-redeem picker — while the reward row and every redemption of it survive. (SC-7, D68)
-** [ ] A per-reward direct-redeem action opens a kid picker showing each kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D68)
-** [ ] Direct-redeem is ~data-confirm~ guarded before the spend lands. (SC-2, D53, D68)
-** [ ] A direct-redeem is bound by exactly the same affordability and availability rules as a child's request, with no parent override: it is refused for a kid who cannot afford the reward or has already claimed it under its repeatability rule, and the refusal names which check failed. (SC-4, SC-5, D63, D68)
-** [ ] A successful direct-redeem lowers that kid's balance by the reward's price and the drop is visible on the connected kiosk without a reload. (SC-2, SC-3, D71)
-** [ ] LiveView integration tests cover the catalog list, create/edit through the form, reordering including the list-edge no-op, archive hiding the reward from the catalog, and direct-redeem in both its success and its refused-by-re-check forms. (repo convention, design §Testing)
+** [X] ~/admin/rewards~ is a route reachable from a fifth bottom-nav entry beside Today, Chores, Kids, and Calendars, and it lists the catalog in ~position~ order showing each reward's icon, name, price, whether it is repeatable, and who it is offered to. (SC-1, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~lib/bear_cub_web/router.ex~ routes ~/rewards~, ~/rewards/new~, ~/rewards/:id/edit~ under the ~/admin~ scope; ~Layouts.admin/1~ (~lib/bear_cub_web/components/layouts.ex~) extends its ~:active~ values with ~:rewards~ and adds a fifth tab (grid widened to 5 columns) beside Today/Chores/Kids/Calendars. ~test/bear_cub_web/live/admin/reward_live_test.exs~ ("lists the catalog in position order with icon, name, price, repeatable, and audience") asserts DOM order via ~ordered_ids/2~ and checks icon, name, points, audience label, and repeatable text are all present. Verified green by the story-verifier subagent.
+:END:
+** [X] The reward form carries name, emoji (defaulting to =🎁=), price, repeatable, and an optional kid — "Anyone" or a specific child — and creating or editing a reward through it persists exactly those choices. (SC-1, D58, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~BearCub.Rewards.Reward~ schema carries the emoji default (~field :icon, :string, default: "🎁"~); ~kid_id~ is never in ~Reward.changeset/2~'s cast list — ~RewardLive.Form~ resolves the form's kid selection to a ~%Kid{}~ or ~nil~ and passes it as the explicit ~kid_or_nil~ argument to ~Rewards.create_reward/2~/~update_reward/3~ (D58). Four form tests cover this: the emoji-default + Anyone case, a specific-kid case, an edit case, and (added during close-out on the verifier's evidence-gap note) a case submitting ~repeatable: "false"~ and a custom icon through the actual form, asserting both persist. All green.
+:END:
+** [X] ▲/▼ controls reorder the catalog through ~move_reward/2~: the reward swaps with its neighbor, the move is a silent no-op at either end of the list, and the new order is what the kiosk and this screen both read. (SC-1, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~move_reward/2~ (~lib/bear_cub/rewards.ex~), written from ~Chores.move_chore/2~ as its template: neighbor swap inside ~Repo.transaction~, silent no-op at either edge, broadcasts ~:rewards_changed~. Five unit tests in ~test/bear_cub/rewards_test.exs~ ("ordering (SC-1, D68)") cover down-swap, up-swap, top no-op, bottom no-op, and the broadcast; two LiveView tests exercise the same through ~#move-reward-{up,down}-{id}~ clicks, asserting both ~Rewards.list_all_rewards/0~ order and rendered DOM order. Closing an evidence gap the story-verifier flagged (no test had directly re-queried the kiosk-facing read after a move), a sixth unit test now calls ~Rewards.list_rewards/2~ — the function the kiosk catalog reads (Story 05) — after a ~move_reward/2~ call and asserts the new order is visible there too; both functions share the same ~rewards~ table and ~order_by: [asc: r.position, asc: r.id]~ with no caching layer between them.
+:END:
+** [X] The only removal affordance is archive: archiving a reward removes it from this catalog and, per Story 05 and Story 07, from the kiosk shop and the direct-redeem picker — while the reward row and every redemption of it survive. (SC-7, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  No delete control exists in ~RewardLive.Index~ — only Edit, Archive, and direct-redeem. ~archive_reward/2~ only stamps ~retired_at~; ~list_all_rewards/0~ filters ~is_nil(retired_at)~. Test "archive hides the reward from the catalog while the row and its redemptions survive" creates a reward, direct-redeems it (a real ~Redemption~ row), archives it, then asserts the row is gone from the rendered catalog, ~Rewards.get_reward!/1~ still returns it with ~retired_at~ set, and — the specific thing this AC calls out — ~Rewards.get_redemption!/1~ still returns the redemption row unchanged. The archive-does-not-hide-from-history half is Story 07's screen per the story's own Technical Notes; not asserted here.
+:END:
+** [X] A per-reward direct-redeem action opens a kid picker showing each kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~RewardLive.Index~ computes ~balances: Points.balances(today)~ (raw signed, never ~Points.total~/~totals~) and renders it per kid inside ~#redeem-picker-{id}~, opened by ~#redeem-reward-{id}~. Test "opens a kid picker showing each kid's true signed balance, negative included" drives a kid to a genuinely negative balance (complete then fail an extra chore), asserts ~balance < 0~ via ~Points.balance/2~, then asserts that exact negative integer string renders in the open picker.
+:END:
+** [X] Direct-redeem is ~data-confirm~ guarded before the spend lands. (SC-2, D53, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~#confirm-redeem-{reward_id}-{kid_id}~ carries ~data-confirm~ naming the reward, kid, and price, matching the D53 precedent (~data-confirm~ on the admin fail control). Test "is data-confirm guarded before the spend lands" asserts the attribute is present on the rendered element before any click fires.
+:END:
+** [X] A direct-redeem is bound by exactly the same affordability and availability rules as a child's request, with no parent override: it is refused for a kid who cannot afford the reward or has already claimed it under its repeatability rule, and the refusal names which check failed. (SC-4, SC-5, D63, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  ~Rewards.direct_redeem/4~ runs the same private ~check_availability/3~ and ~check_affordability/2~ ~approve_redemption/3~ (the kid leg's second check) uses — no override branch exists. ~RewardLive.Index~'s "redeem" handler maps ~{:error, :unaffordable}~ to a flash containing "afford" and ~{:error, :unavailable}~ to a flash containing "claimed" — two distinct, differently-worded refusals. Two tests exercise them independently: an unaffordably-priced reward, and a pre-consumed one-time reward (consumed via a direct context call before the UI attempt), each asserting its own flash substring.
+:END:
+** [X] A successful direct-redeem lowers that kid's balance by the reward's price and the drop is visible on the connected kiosk without a reload. (SC-2, SC-3, D71)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  Gap discovered mid-story: ~KioskLive~ did not yet subscribe to the ~"rewards"~ PubSub topic D71 already specifies, so a redemption's balance change had no live path to the kiosk. Fixed as a minimal, D71-shaped addition: ~KioskLive~ now calls ~Rewards.subscribe()~ alongside ~Chores.subscribe()~/~Calendars.subscribe()~ and handles ~:rewards_changed~ with the same reload the other two topics use — one clause, no new state, matching D71's own "costs one clause per subscriber" framing. (The reward view / banner button / card states D71 also describes are Story 05's job; only the badge-refresh side effect landed here.) Proven by two tests: one in ~reward_live_test.exs~ that drives the full admin UI flow against a second, genuinely connected kiosk LiveView process and asserts its points badge drops with no manual reload; a second, narrower test in ~kiosk_live_test.exs~ that calls ~Rewards.direct_redeem/4~ directly and asserts the same badge update, isolating ~KioskLive~'s PubSub handling on its own.
+:END:
+** [X] LiveView integration tests cover the catalog list, create/edit through the form, reordering including the list-edge no-op, archive hiding the reward from the catalog, and direct-redeem in both its success and its refused-by-re-check forms. (repo convention, design §Testing)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:01] \\
+  All named areas present in ~test/bear_cub_web/live/admin/reward_live_test.exs~: catalog list; create/edit/validation-errors through the form; reordering including both the top and bottom no-op edges; archive hiding the reward from the catalog while its redemption survives; direct-redeem success against a connected kiosk; direct-redeem refused in both its unaffordable and unavailable forms, asserted as distinct flash messages. Independently audited by the ~story-verifier~ subagent against the actual test file line-by-line; ~mix test~ across all four touched test files green (202 passed at audit time, 372 across the full suite after the two coverage additions below).
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:06] \\
+  All 9 items in the Acceptance Criteria section above are marked ~[X]~ with dated LOGBOOK evidence; none left ~[ ]~ or unexplained. Confirmed by the DoD-verification subagent reading the story file directly.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:06] \\
+  ~mix test test/bear_cub_web/live/admin/reward_live_test.exs test/bear_cub/rewards_test.exs test/bear_cub_web/live/kiosk_live_test.exs test/bear_cub/chores_test.exs~ — 204 passed, 0 failures. Full suite ~mix test~ — 372 passed, 0 failures (up from the 346 baseline Story 03 left, +26 across the four touched files, matching the sum of tests added this story including the two coverage additions the AC-3/AC-2 evidence gaps prompted). Verified independently by the DoD-verification subagent, which traced every LOGBOOK-cited test by name and reran the pair with ~--trace~. The one recurring ~Exqlite.Connection ... disconnected~ log line is confirmed pre-existing (reproduces on a ~git stash~ of ~main~) — accepted noise per repo convention, not a failure.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:06] \\
+  Spot-checked against CLAUDE.md's Phoenix v1.8/LiveView/Ecto/HEEx guidelines and the repo's design invariants: ~<.link navigate>~ never ~live_redirect~, ~<.icon>~ never a ~Heroicons~ module, ~<.form for={@form}>~/~@form[:field]~ throughout, stable DOM ids on every interactive control per the story's own Technical Notes, ~data-confirm~ on both archive and direct-redeem matching D53, no ~DateTime.utc_now()~/wall-clock reads in any touched file (~grep~-confirmed), ~kid_id~ never in ~Reward.changeset/2~'s cast list and set programmatically matching D58, no ~/admin~ links leaking into the kiosk. One nit the DoD-verification subagent flagged — ~{if @reward.repeatable, do: ..., else: ...}~ inside a tag body in ~reward_live/index.ex~ used ~{...}~ where CLAUDE.md's HEEx section asks for ~<%= ... %>~ on block constructs in tag bodies — fixed on the spot to ~<%= if ... %>~; ~mix precommit~ reconfirmed green (372 passed) afterward.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 14:06] \\
+  CLAUDE.md declares ~Verify command: mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~). Ran directly: exit 0, 372 passed, 0 failures, no compiler warnings, no unused deps, no formatting diff. Reconfirmed a second time after the tag-body style fix above, same result.
+:END:
 
 * Technical Notes
 
@@ -73,3 +125,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - Give every control a stable DOM id (~#reward-{id}~, ~#move-reward-up-{id}~, ~#archive-reward-{id}~, ~#redeem-reward-{id}~) so the integration tests select elements rather than raw HTML.
 - Balances shown here are ~Points.balance/2~, not ~Points.total/2~ — the true signed figure, negative included.
 - The archive-does-not-hide-from-history half of the design's integration test is completed by Story 07, which builds the history view; assert here what this screen owns (gone from the catalog, row still present).
+- Deferred discovery: the direct-redeem kid picker lists every kid regardless of a kid-specific reward's ~kid_id~ audience — a parent can direct-redeem a reward scoped to one kid on behalf of the other. Neither the Design excerpt above nor D68 restricts this, and ~Rewards.direct_redeem/4~ performs no audience check, so ~kid_id~'s "who it's offered to" framing (D58) may simply not apply to the parent's own direct hand-over the way it applies to the kiosk's self-serve catalog — but this reading is untested and unruled either way. Surfaced by the story-verifier subagent during close-out; not fixed inline (no AC calls for it, and the correct behavior is a design question, not a bug).
