@@ -176,34 +176,137 @@ As a parent, I need the rules of the reward economy — what exists, who may cla
 
 * Acceptance Criteria
 
-** [ ] A migration creates ~rewards~ (~kid_id~ nullable FK, ~name~, ~icon~, ~points~, ~repeatable~ default ~true~, ~position~, ~retired_at~) and ~redemptions~ (~kid_id~, ~reward_id~, ~points~, ~local_date~, ~requested_at~, ~approved_at~, ~declined_at~, ~reversed_at~, ~source~) with the column types and nullability of the Data Model tables; ~chores~ and ~completions~ are untouched. (SC-1, SC-7, D58, D59)
-** [ ] The partial unique index ~redemptions (kid_id, local_date) WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL~ exists, alongside supporting indexes on ~redemptions (reward_id)~ and ~(kid_id, local_date)~. (SC-6, D61)
-** [ ] A kid may hold only one open request per local day: a second request the same day returns ~{:error, changeset}~ which callers treat as already-asked, while a request made the following local date succeeds with yesterday's unanswered row untouched. (SC-6, D61)
-** [ ] ~BearCub.Rewards~ creates and updates rewards with ~kid_id~ set programmatically from the caller's kid selection and never cast from attrs; ~list_rewards(kid, local_date)~ returns non-retired rewards where ~kid_id~ is NULL or matches that kid, ordered by ~position~. (SC-1, D58)
-** [ ] Archiving a reward stamps ~retired_at~ and removes it from ~list_rewards/2~; the reward row and its redemptions are never deleted. (SC-7, D68)
-** [ ] The write paths exist and are the only way to move a redemption's state: request (kid leg), approve, decline, direct-redeem (parent leg, no request), and reverse — each stamping its marker and never mutating or deleting a prior one. (SC-2, SC-7, SC-8, D59)
-** [ ] Redemption state is derived from the markers, with no status column: pending (requested, unanswered, dated today), lapsed (requested, unanswered, dated earlier), approved (approved, unreversed), reversed (approved and reversed), declined. (SC-6, SC-7, D59)
-** [ ] A redemption's contribution is marker-first — reversed → 0, approved → ~−points~, otherwise → 0 — so pending, declined, and lapsed rows all contribute nothing. (SC-3, D59)
-** [ ] ~Points.balance/2~ includes the redemptions leg: an approved unreversed redemption lowers the balance by its snapshot price and it stays down, and reversing it restores the balance. (SC-3, SC-8, D57, D72)
-** [ ] The Story-01 pinning suite passes UNMODIFIED with the redemptions leg added and the table empty — zero redemption rows contribute zero to every balance. (SC-9, D72)
-** [ ] ~redemptions.points~ is a snapshot taken at row creation — at request time on the kid leg and at redeem time on the parent-direct leg; changing a reward's price afterward does not move any existing redemption's contribution or any past balance. (SC-7, D60)
-** [ ] No reward-name snapshot is stored: renaming a reward changes how its past redemptions read, and archiving one leaves its redemptions joinable. (SC-7, D60)
-** [ ] One-time availability is per-kid: a kid holding any unreversed approval for a one-time reward has consumed it on every later day, while the sibling's availability for that same reward is untouched. (SC-5, D62)
-** [ ] Repeatable availability is per-kid and one local day long: a kid with an unreversed approval dated today is on cooldown, and the same predicate evaluated for the next local date reports available — no job, nothing stored. (SC-5, D62)
-** [ ] Reversing a redemption restores availability with no extra code path: a one-time reward returns to that kid's catalog, and a repeatable reward's cooldown clears. (SC-5, SC-8, D62)
-** [ ] A pending request consumes nothing and contributes nothing: it leaves both availability predicates and the balance unchanged, and two kids may hold pending requests for the same reward independently. (SC-4, SC-5, D62, D63)
-** [ ] Affordability is one function used by both legs — ~Points.balance(kid, today) >= reward.points~ against the raw signed balance, never the floored figure — so a kid whose true balance is negative can afford nothing, and a parent's direct-redeem is refused on exactly the same terms with no override. (SC-4, D63, D64)
-** [ ] Approval re-validates affordability *and* availability before stamping ~approved_at~ and, on failure, returns which check failed rather than silently no-opping — including the same-kid interleaving where a direct-redeem of the same reward lands between the ask and the answer. (SC-4, SC-5, D62, D63)
-** [ ] Every successful ~Rewards~ write broadcasts a payload-free ~:rewards_changed~ on topic ="rewards"=, with a ~subscribe/0~ mirroring the shipped ~Calendars.subscribe/0~ shape; no message carries a payload subscribers could patch from. (SC-2, D71)
-** [ ] This story ships no UI: no route, no LiveView, and no template change. (batch scope)
-** [ ] Every test pins ~:routine_windows~, and day-rollover behavior (lapse, cooldown reset) is exercised by passing a different local date, never by mocking a clock. (design §Testing, ~docs/learnings.org~ [2026-07-17])
+** [X] A migration creates ~rewards~ (~kid_id~ nullable FK, ~name~, ~icon~, ~points~, ~repeatable~ default ~true~, ~position~, ~retired_at~) and ~redemptions~ (~kid_id~, ~reward_id~, ~points~, ~local_date~, ~requested_at~, ~approved_at~, ~declined_at~, ~reversed_at~, ~source~) with the column types and nullability of the Data Model tables; ~chores~ and ~completions~ are untouched. (SC-1, SC-7, D58, D59)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~priv/repo/migrations/20260725194622_create_rewards_and_redemptions.exs~ creates both tables. Verified against the live DDL (~sqlite3 ... ".schema rewards" / ".schema redemptions"~) by the verifying subagent: ~rewards.kid_id~ nullable, ~name~/~icon~/~points~/~repeatable~ (default ~true~)/~position~ ~NOT NULL~, ~retired_at~ nullable; ~redemptions.kid_id~/~reward_id~/~points~/~local_date~/~source~ ~NOT NULL~, the four markers nullable — an exact match to the Data Model tables. ~git status --short~ confirms no existing ~chores~/~completions~ migration or schema file was touched.
+:END:
+** [X] The partial unique index ~redemptions (kid_id, local_date) WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL~ exists, alongside supporting indexes on ~redemptions (reward_id)~ and ~(kid_id, local_date)~. (SC-6, D61)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  Live DDL confirmed by the verifying subagent: ~CREATE UNIQUE INDEX "redemptions_one_pending_per_kid" ON "redemptions" ("kid_id","local_date") WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL~, plus ~redemptions_reward_id_index~ and ~redemptions_kid_id_local_date_index~ — an exact match to the design's SQL.
+:END:
+** [X] A kid may hold only one open request per local day: a second request the same day returns ~{:error, changeset}~ which callers treat as already-asked, while a request made the following local date succeeds with yesterday's unanswered row untouched. (SC-6, D61)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~test/bear_cub/rewards_test.exs~, describe ="one open request per kid per local day (D61)"=, test ="a second request the same day errors; the next local day succeeds with yesterday's row untouched"=: asserts ~{:error, %Ecto.Changeset{}}~ on same-day racing duplicate (different reward, same kid), a next-day request succeeds, and re-fetching the first row shows ~requested_at~ unchanged with ~approved_at~/~declined_at~ still ~nil~. Passing. \\
+  Adapter note recorded for future readers: SQLite's own UNIQUE-violation message carries only the column list, never the real index name, so ~ecto_sqlite3~'s ~to_constraints/2~ always resynthesizes the ecto naming-convention name (~redemptions_kid_id_local_date_index~) to match against — ~Redemption.changeset/2~'s ~unique_constraint/2~ therefore names that synthesized convention, not the migration's DDL name (~redemptions_one_pending_per_kid~), the same shape the shipped ~Completion~ constraint already relies on. See ~lib/bear_cub/rewards/redemption.ex~.
+:END:
+** [X] ~BearCub.Rewards~ creates and updates rewards with ~kid_id~ set programmatically from the caller's kid selection and never cast from attrs; ~list_rewards(kid, local_date)~ returns non-retired rewards where ~kid_id~ is NULL or matches that kid, ordered by ~position~. (SC-1, D58)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~create_reward/2~ and ~update_reward/3~ (~lib/bear_cub/rewards.ex~) take a ~kid_or_nil~ argument and set ~kid_id~ via struct pre-population / ~put_change~; ~Reward.changeset/2~'s ~cast/2~ list excludes ~kid_id~ entirely. Tests pass attrs containing a conflicting ~kid_id~ and assert it is ignored in both the create and update case. ~list_rewards/2~'s audience/position/retired filter and ordering covered by a dedicated test comparing the returned list against family + own + sibling rewards.
+:END:
+** [X] Archiving a reward stamps ~retired_at~ and removes it from ~list_rewards/2~; the reward row and its redemptions are never deleted. (SC-7, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~archive_reward/2~ stamps ~retired_at~ via ~Ecto.Changeset.change/2~ (no ~Repo.delete~ anywhere in the write paths). Test asserts ~retired_at~ set, the reward absent from ~list_rewards/2~, and ~get_reward!/1~ still finds the row by id.
+:END:
+** [X] The write paths exist and are the only way to move a redemption's state: request (kid leg), approve, decline, direct-redeem (parent leg, no request), and reverse — each stamping its marker and never mutating or deleting a prior one. (SC-2, SC-7, SC-8, D59)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~lib/bear_cub/rewards.ex~ exposes exactly ~request_redemption/3~, ~direct_redeem/4~, ~approve_redemption/3~, ~decline_redemption/2~, ~reverse_redemption/2~; each touches exactly one marker field via a fresh struct or ~Ecto.Changeset.change/2~, and no function deletes a redemption row. Each covered individually in the ="write paths — each stamps its own marker (D59)"= describe block. \\
+  Tightened during closeout on the verifying subagent's finding: the initial versions of ~approve_redemption/3~, ~decline_redemption/2~, and ~reverse_redemption/2~ had no guard against acting on a redemption already in a different state — approving an already-declined row (or declining an already-approved one, or reversing a never-approved one) would have stamped a second marker onto it, producing a state ~approved?/1~/~declined?/1~ don't anticipate co-existing. Added a date-independent ~check_open/1~ (requested, no verdict yet — deliberately not scoped to today, since a lapsed request per D61 is still answerable) and ~check_approved/1~ (approved and not yet reversed) guard to all three, returning ~{:error, :not_open}~/~{:error, :not_approved}~ rather than silently double-stamping. Four new tests in ="write paths refuse to act on the wrong state (AC-6 integrity)"=. ~mix precommit~ re-run clean, 344 passed.
+:END:
+** [X] Redemption state is derived from the markers, with no status column: pending (requested, unanswered, dated today), lapsed (requested, unanswered, dated earlier), approved (approved, unreversed), reversed (approved and reversed), declined. (SC-6, SC-7, D59)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~pending?/2~, ~lapsed?/2~, ~approved?/1~, ~reversed?/1~, ~declined?/1~ (~lib/bear_cub/rewards.ex~) implement exactly the five predicates over the four nullable markers; ~Redemption~ (~lib/bear_cub/rewards/redemption.ex~) has no status field. All five covered by passing tests in the ="derived state — no status column (D59)"= describe block, including the day-boundary distinction between pending and lapsed via distinct ~local_date~ arguments.
+:END:
+** [X] A redemption's contribution is marker-first — reversed → 0, approved → ~−points~, otherwise → 0 — so pending, declined, and lapsed rows all contribute nothing. (SC-3, D59)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~redemption_contribution/1~ mirrors ~Chores.extra_contribution/2~'s ~cond~ exactly. Test ="reversed -> 0, approved -> -points, pending/declined/lapsed -> 0"= exercises all five states against one reward's redemption lineage, passing.
+:END:
+** [X] ~Points.balance/2~ includes the redemptions leg: an approved unreversed redemption lowers the balance by its snapshot price and it stays down, and reversing it restores the balance. (SC-3, SC-8, D57, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~lib/bear_cub/points.ex~'s ~balances/1~ now composes ~Rewards.spend_totals_by_kid/1~ alongside ~Chores.earnings_by_kid/1~; ~balance/2~ delegates unchanged. ~test/bear_cub/points_redemptions_test.exs~, test ="an approved unreversed redemption lowers the balance by its snapshot price and it stays down (SC-3, D57)"=: 20 earned → 12 after an 8-point direct-redeem → 20 again after reversal, on both ~Points.balance/2~ and ~Points.balances/1~. Passing.
+:END:
+** [X] The Story-01 pinning suite passes UNMODIFIED with the redemptions leg added and the table empty — zero redemption rows contribute zero to every balance. (SC-9, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~git diff --stat -- test/bear_cub/points_test.exs~ produces no output — byte-unmodified. ~mix test test/bear_cub/points_test.exs~ → 27 passed. ~test/bear_cub/points_redemptions_test.exs~'s first test additionally asserts ~Rewards.spend_totals_by_kid(...) == %{}~ and unchanged ~Points.balance/2~/~Points.balances/1~ figures against the empty table directly, alongside the pinning suite rather than inside it.
+:END:
+** [X] ~redemptions.points~ is a snapshot taken at row creation — at request time on the kid leg and at redeem time on the parent-direct leg; changing a reward's price afterward does not move any existing redemption's contribution or any past balance. (SC-7, D60)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~request_redemption/3~ and ~direct_redeem/4~ both pass ~points: reward.points~ into the changeset at creation time; nothing re-reads ~rewards.points~ afterward. Two tests in the ="price snapshot (D60)"= describe block change a reward's price after request/approval and after direct-redeem respectively, and assert the stored ~redemptions.points~ and ~redemption_contribution/1~ are both unchanged.
+:END:
+** [X] No reward-name snapshot is stored: renaming a reward changes how its past redemptions read, and archiving one leaves its redemptions joinable. (SC-7, D60)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~Redemption~ has no name field at all (~lib/bear_cub/rewards/redemption.ex~). Test renames a reward after a redemption exists and asserts ~get_reward!(redemption.reward_id).name~ reflects the new name; then archives the reward and asserts the row is still fetchable by id with ~retired_at~ set.
+:END:
+** [X] One-time availability is per-kid: a kid holding any unreversed approval for a one-time reward has consumed it on every later day, while the sibling's availability for that same reward is untouched. (SC-5, D62)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~available?/3~'s ~repeatable: false~ clause checks ~consumed?/2~ (any unreversed approval, any day), scoped by both ~reward_id~ and ~kid_id~. Test direct-redeems a family-wide one-time reward for one kid and asserts ~available?~ false for that kid on the redeem day and a month later, while the sibling reads ~available?~ true throughout.
+:END:
+** [X] Repeatable availability is per-kid and one local day long: a kid with an unreversed approval dated today is on cooldown, and the same predicate evaluated for the next local date reports available — no job, nothing stored. (SC-5, D62)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~available?/3~'s ~repeatable: true~ clause checks ~on_cooldown?/3~ (unreversed approval dated ~local_date~). Test direct-redeems a repeatable reward and asserts ~available?~ false the same day, true the next local date — no clock mock, a different ~~D[...]~~ argument.
+:END:
+** [X] Reversing a redemption restores availability with no extra code path: a one-time reward returns to that kid's catalog, and a repeatable reward's cooldown clears. (SC-5, SC-8, D62)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~spends_query/2~ (the shared base of both ~consumed?/2~ and ~on_cooldown?/3~) filters ~is_nil(r.reversed_at)~ — reversal restoration falls out of that one shared predicate, with no reversal-specific branch anywhere in ~available?/3~. Two tests (one-time and repeatable) each direct-redeem, confirm unavailable, reverse, and confirm available again.
+:END:
+** [X] A pending request consumes nothing and contributes nothing: it leaves both availability predicates and the balance unchanged, and two kids may hold pending requests for the same reward independently. (SC-4, SC-5, D62, D63)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~spends_query/2~ requires ~not is_nil(r.approved_at)~, so a pending row (no ~approved_at~) is invisible to both availability predicates and to ~spend_totals_by_kid/1~ (which requires the same condition). Test has both a kid and a sibling hold simultaneous pending requests for one family-wide one-time reward and asserts both remain ~available?~ true and ~spend_totals_by_kid/1~ is ~%{}~.
+:END:
+** [X] Affordability is one function used by both legs — ~Points.balance(kid, today) >= reward.points~ against the raw signed balance, never the floored figure — so a kid whose true balance is negative can afford nothing, and a parent's direct-redeem is refused on exactly the same terms with no override. (SC-4, D63, D64)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  Private ~check_affordability/2~ (~balance >= price~) is the single function called from both ~direct_redeem/4~ and ~approve_redemption/3~ — grepped to confirm no second affordability check exists anywhere in the module. ~balance~ is always the caller-supplied raw signed figure (never floored) per the boundary shape below. Tests cover refusal at balance 49 vs price 50, refusal against a negative balance (-20 vs price 1, i.e. a kid in debt can afford nothing), and success at exactly the price. \\
+  Dependency-direction shape settled at implementation, per the Technical Notes' instruction to record it here: ~BearCub.Rewards~ never aliases or calls ~BearCub.Chores~ or ~BearCub.Points~ (confirmed by grep — the only cross-context reference is the schema-level ~belongs_to :kid, BearCub.Chores.Kid~, the same struct-reference-only shape already shipped in ~BearCub.Calendars.Calendar~). ~direct_redeem/4~ and ~approve_redemption/3~ take the kid's current raw signed ~balance~ as a plain integer argument, computed by the caller through ~BearCub.Points~ at the boundary — ~Points.balances/1~ is that boundary today, composing ~Chores.earnings_by_kid/1~ and the new ~Rewards.spend_totals_by_kid/1~. Rewards owns availability entirely (it needs no earnings data for that), so only the affordability leg needed the boundary-supplied-balance shape.
+:END:
+** [X] Approval re-validates affordability *and* availability before stamping ~approved_at~ and, on failure, returns which check failed rather than silently no-opping — including the same-kid interleaving where a direct-redeem of the same reward lands between the ask and the answer. (SC-4, SC-5, D62, D63)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~approve_redemption/3~'s ~with~ chain checks (in order) that the request is still open, then availability, then affordability, returning ~{:error, :not_open}~, ~{:error, :unavailable}~, or ~{:error, :unaffordable}~ distinctly rather than a generic failure. Three tests: affordability-only failure (leaves the request still pending), the exact same-kid interleaving (kid requests, parent direct-redeems the same one-time reward for the same kid, approval then fails ~:unavailable~), and the success path.
+:END:
+** [X] Every successful ~Rewards~ write broadcasts a payload-free ~:rewards_changed~ on topic ="rewards"=, with a ~subscribe/0~ mirroring the shipped ~Calendars.subscribe/0~ shape; no message carries a payload subscribers could patch from. (SC-2, D71)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~lib/bear_cub/rewards.ex~'s ~@topic~/~subscribe/0~/private ~broadcast_change/1~ clauses are structurally identical to ~BearCub.Calendars~' (~lib/bear_cub/calendars.ex~). One test exercises all eight write paths in sequence (~create_reward~, ~update_reward~, ~request_redemption~, ~approve_redemption~, ~reverse_redemption~, ~decline_redemption~ on a second request, ~direct_redeem~, ~archive_reward~) and asserts a bare ~assert_receive :rewards_changed~ after each — a payload-carrying message would not match that pattern and the test would time out.
+:END:
+** [X] This story ships no UI: no route, no LiveView, and no template change. (batch scope)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  ~git status --short~ / ~git diff --stat~ show no files under ~lib/bear_cub_web/~; ~grep~ for ~Reward~/~Redemption~ in the router returns nothing.
+:END:
+** [X] Every test pins ~:routine_windows~, and day-rollover behavior (lapse, cooldown reset) is exercised by passing a different local date, never by mocking a clock. (design §Testing, ~docs/learnings.org~ [2026-07-17])
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:10] \\
+  Both ~test/bear_cub/rewards_test.exs~ and ~test/bear_cub/points_redemptions_test.exs~ carry the same pinning ~setup~ block as ~points_test.exs~ (save/restore ~:routine_windows~), even though none of this story's derivations read that config — a defensive pin against future drift rather than a functional dependency. Lapse, cooldown, and reversal-restoration are each exercised by passing a distinct ~~D[...]~~ argument; no ~Process.sleep~ or clock mock appears in either file.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:15] \\
+  All 21 items in ==Acceptance Criteria== are ~[X]~ with a LOGBOOK note each, verified by the DoD-verification subagent via ~grep -n "^\*\* \["~ against the story file. One deferral is recorded in Technical Notes (a multi-day request-then-approve retroactive-balance-read characteristic, mirroring the D72 roster-drift precedent) and confirmed not to overlap or weaken any of the 21 items.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:15] \\
+  ~mix test test/bear_cub/rewards_test.exs test/bear_cub/points_redemptions_test.exs test/bear_cub/points_test.exs~ → 64 passed, 0 failures (35 + 2 + 27), independently re-run by the DoD-verification subagent. ~git diff --stat -- test/bear_cub/points_test.exs~ confirmed empty — the Story-01 pinning suite is byte-unmodified.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:15] \\
+  Spot-checked by the DoD-verification subagent: ~Reward.changeset/2~ and ~Redemption.changeset/2~'s ~cast/2~ lists exclude ~kid_id~/~reward_id~/every marker set programmatically, directly mirroring the shipped ~Completion.changeset/2~ shape; no struct map-access syntax found via grep; the migration filename follows the ~mix ecto.gen.migration~ timestamp convention; ~BearCub.Rewards~ has no functional call into ~BearCub.Chores~ or ~BearCub.Points~ (only the schema-level ~belongs_to :kid, BearCub.Chores.Kid~ struct reference, the same shape already shipped in ~BearCub.Calendars.Calendar~). ~mix format --check-formatted~ and ~mix compile --warnings-as-errors --force~ both clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 13:15] \\
+  ~mix precommit~ run three times by the DoD-verification subagent, each: exit 0, =Result: 344 passed=, zero failures. The only ~[error]~-level log line in every run is the pre-existing, accepted ~Exqlite.Connection ... disconnected~ sandbox-teardown noise (~docs/backlog.org~). ~git diff --stat -- mix.lock~ empty, confirming ~deps.unlock --unused~ found nothing stale.
+:END:
 
 * Technical Notes
 
@@ -219,3 +322,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - Test the sibling case explicitly — a sibling's approved redemption of a shared reward must leave this kid's availability untouched — and the reversal-restores-availability path for both ~repeatable~ values.
 - The design's "checked twice" is one function called from two places; do not write a second affordability rule for the parent leg.
 - No UI in this story. The catalog screen is Story 04, the kiosk shop Story 05, the approval queue and reversal Story 06, and history Story 07 — but the write paths they all call land here, fully tested, first.
+- Deferred discovery (found by the verifying subagent during closeout): a redemption approved several days after its request retroactively changes an earlier historical balance read. Concretely — a kid requests on day 1 (~local_date~ = day 1, unapproved); ~Points.balance(kid, day2)~ read before approval returns one figure; the parent approves on day 3; the same ~Points.balance(kid, day2)~ read again afterward returns a lower figure, because ~Rewards.spend_totals_by_kid/1~ filters on the row's ~local_date~ (request time) combined with its *current* ~approved_at~ state, not the state as of the date being queried. This is the same class of characteristic as the roster-drift defect ([[file:../../decisions.org::#d72][D72]]) — every derivation in this codebase recomputes from currently-stored facts filtered to a date, never a frozen historical snapshot (D10) — so a marker stamped after the fact changes what an earlier "as of" read reports, exactly as a late ~fail_chore/2~ already does to routine-day contributions. Not a violation of any AC above (none of the 21 items exercise a multi-day request-then-approve gap against an intermediate-date balance query) and not fixed inline, per the same reasoning D72 already accepted. Swept to ~docs/backlog.org~ at initiative close alongside the roster-drift entry.

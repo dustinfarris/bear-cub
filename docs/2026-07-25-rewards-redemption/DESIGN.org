@@ -182,6 +182,8 @@ Each pending request shows the reward's icon and name, its snapshot price, and t
 
 Lapsed rows *never surface in the queue*. The queue reads pending rows only — ~requested_at~ set, no verdict, and ~local_date == today~. Yesterday's unanswered ask is invisible here by the same predicate that makes it invisible on the kiosk, with nothing to clean up (SC-6).
 
+Lapse is *terminal*, not merely display-hidden (D73): ~approve_redemption/3~ and ~decline_redemption/2~ refuse a lapsed row exactly as they refuse an already-answered one, both returning ~{:error, :not_open}~ — a lapsed request cannot be revived by a write path called directly, only by the queue simply never offering it.
+
 Reverse lives on the same screen beside the day's redemptions, ~data-confirm~ guarded, and is *day-scoped* — offered only on redemptions with ~local_date == today~, following the D55 pattern (SC-8). Today is the correction surface, and a mis-tap gets caught the same day or not at all; a reversal reachable from arbitrary history would be an editing affordance over the permanent record rather than a same-day correction. A reversal's *effect* remains legible indefinitely in the history view, which is where the durable record belongs.
 
 ** ~/admin/rewards/history~ — the redemption record
@@ -360,4 +362,8 @@ Entries for this initiative live in [[file:../decisions.org]] (D57 onward).
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
 
-# (none — design not yet canon)
+** [2026-07-25 Sat 13:37] §~Admin.TodayLive~ approval queue and reversal — lapse is now terminal at the write layer (D73)
+
+/Sections affected: §~Admin.TodayLive~ — the approval queue and reversal/
+
+The initial Story 03 close shipped ~approve_redemption/3~ and ~decline_redemption/2~ guarded by a date-independent ~check_open/1~: any redemption with no verdict yet — pending *or lapsed* — was answerable, on the reading that D61's lapse only frees the one-open-request slot and does not make the row inert. If you're reading old excerpts, story fixtures, or code referencing that shape, they're stale — a lapsed row (no verdict, dated before today) is now refused by both write paths with ~{:error, :not_open}~, the same signal an already-answered row returns. Rationale: [[file:../decisions.org::#d73][D73]].
