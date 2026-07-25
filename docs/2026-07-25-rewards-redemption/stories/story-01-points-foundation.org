@@ -1,0 +1,91 @@
+#+title: Story 01 — Points foundation: ~BearCub.Points~, ~Chores.earnings/2~, and the pinning suite
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Contexts and dependency direction
+
+Two new modules.
+
+~BearCub.Rewards~ — a context owning the ~rewards~ and ~redemptions~ tables, the request / approve / decline / direct-redeem / reverse write paths, the availability derivation, and its own PubSub topic. It knows nothing about chores or completions.
+
+~BearCub.Points~ — a composition module, the only place in the app that knows both earnings and spends:
+
+#+begin_src elixir
+Points.balance(kid, local_date)   # raw signed integer; may be negative
+Points.total(kid, local_date)     # max(0, balance) — the D41 display figure
+Points.balances(local_date)       # %{kid_id => signed} for a whole render
+Points.totals(local_date)         # %{kid_id => floored} for a whole render
+#+end_src
+
+~Chores.points_total/2~ becomes ~Chores.earnings/2~ and returns the *raw signed* earnings, unfloored — the floor moves up to ~Points~, where the complete summation lives. ~Chores~ never learns that ~Rewards~ exists.
+
+#+begin_src
+Points.balance = Chores.earnings + Rewards.spend_total
+                 └─ D42's completions_earnings   └─ D42's other_signed_inputs
+#+end_src
+
+Cost to shipped code, stated plainly: the kiosk's ~points: Chores.points_total(kid, today)~ call, admin balance reads, and the existing points-derivation tests all move to ~Points~. This is a rename plus a re-point, not a rewrite, and the aggregate rewrite touches the same function anyway.
+
+** From the Overview
+
+Redemption also makes the points total load-bearing: it is read on every reward-card render, on every tap that checks affordability, and on every admin balance display. The shipped ~points_total/2~ issues on the order of one query per routine-day of history, which is why PRD SC-9 requires the check be cheap and /stay/ cheap as months accumulate. The deferred aggregate rewrite is therefore claimed here as a batch member and lands early, before affordability depends on it — as a pure performance refactor with semantics provably unchanged.
+
+** From the points aggregate rewrite — the pinning requirement
+
+Discovered property — *roster drift*, surfaced but not fixed: ~routine_day_contribution/3~ loads the kid's *current* chore roster for the routine and requires every one of those chores to have a live completion on the evaluated date. Historical routine-days are therefore evaluated against today's roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping all historical ~+R~; deleting one can retroactively complete past days and grant points that were never earned. This ships today, and the badge already moves when a parent edits chores. Redemption raises the stakes: a roster edit can move a balance *after* a spend, potentially into debt with no fail involved.
+
+Semantics stay *unchanged* in the rewrite — it is a pure performance refactor, proven behavior-preserving by tests — and roster drift is captured as its own backlog entry at initiative close. The claimed item is the query shape, not the derivation's semantics.
+
+The pinning tests *must include a roster-drift case* — a routine-day evaluated after the roster changed — so behavior preservation is proven on the weird path and not merely the happy one. A refactor that silently "fixed" drift would be an unruled semantic change smuggled in under a performance story.
+
+** Testing and the on-device gate (excerpt)
+
+Per repo convention, LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
+
+- *Unit* — ... and the ~Points.balances~ aggregate *pinned against the current per-kid implementation*, including the roster-drift case.
+
+- *Time* — every test pins ~:routine_windows~ per ~docs/learnings.org~ [2026-07-17] rather than inheriting the wall clock, and all new derivations take a local-date argument. Day-rollover behavior (lapse, cooldown reset, verdict-state expiry) is tested by *passing a different local date*, never by mocking a clock.
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d57][D57]] (2026-07-25) — Rewards live in a new ~BearCub.Rewards~ context; ~BearCub.Points~ composes earnings and spends; ~Chores.points_total/2~ becomes ~Chores.earnings/2~ (raw signed):* Redemption gets two new modules rather than an extension of ~Chores~. ~BearCub.Rewards~ owns the ~rewards~ / ~redemptions~ tables, every write path, the availability derivation, and its own PubSub topic, and knows nothing about chores or completions. ~BearCub.Points~ is a composition module — the only place in the app that knows both sides — exposing ~balance/2~ (raw signed), ~total/2~ (the D41 floored display figure), and their whole-render map forms. ~Chores.points_total/2~ is renamed ~Chores.earnings/2~ and returns the raw signed earnings unfloored; the floor moves up to ~Points~, where the complete summation lives, and ~Chores~ never learns ~Rewards~ exists. Rejected — putting ~redemptions~ inside ~BearCub.Chores~: a naming lie (a redemption is not a chore), and ~chores.ex~ already carries kids, chores, extras, completions, fails, and the points derivation in ~450 lines. Rejected — letting the points derivation read the ~redemptions~ table directly from ~Chores~: inverts the dependency direction the repo already treats as an invariant for ~Chores~ → ~Calendars~; the moment ~Chores~ imports ~Rewards~, a rewards failure can reach the chore path. Rejected — threading the spend in as an argument (~points_total(kid, date, other_signed_inputs \\ 0)~): keeps the contexts clean but pushes the summation into every LiveView, so a missed caller is a silently wrong balance. Settles rewards/SC-3 and rewards/SC-4 placement. → rewards/Key Behaviors (contexts and dependency direction), rewards/Overview.
+
+- *[[file:../../decisions.org::#d72][D72]] (2026-07-25) — The points aggregate rewrite is claimed and lands early, as a pure performance refactor; roster drift is surfaced, not fixed* (pinning half): Semantics stay *unchanged*: the claimed item is the query shape, not the derivation's meaning. This preserves a discovered defect — ~routine_day_contribution/3~ evaluates historical routine-days against the kid's *current* roster, so adding a morning chore today retroactively wipes past ~+R~ and deleting one can grant points never earned; redemption raises the stakes, since a roster edit can move a balance after a spend, potentially into debt with no fail involved. Roster drift is captured as its own backlog entry at initiative close: a fix needs its own ruling, and a ~chores.inserted_at~-bounded roster would handle additions but not deletions, so the honest fix is not obviously cheap. The pinning tests must include a roster-drift case — a routine-day evaluated after the roster changed — so behavior preservation is proven on the weird path; a refactor that silently "fixed" drift would be an unruled semantic change smuggled in under a performance story. Rejected — fixing drift inside the rewrite: a semantic change disguised as a refactor, and unruled. Settles rewards/SC-9.
+
+* User Story
+
+As the parent maintaining this app, I need the points total to live behind one composition module with its current behavior captured as tests, so that the affordability rule about to be built on top of it reads from a single honest source, and the performance rewrite that follows can be proven to have changed nothing.
+
+* Acceptance Criteria
+
+** [ ] ~BearCub.Points~ exists and exposes ~balance/2~ (raw signed, may be negative), ~total/2~ (~max(0, balance)~), ~balances/1~ (~%{kid_id => signed}~), and ~totals/1~ (~%{kid_id => floored}~), each taking a local date. (SC-3, SC-4, D57)
+** [ ] ~Chores.points_total/2~ is renamed ~Chores.earnings/2~ and returns the raw signed earnings, unfloored; the ~max(0, …)~ floor is applied only in ~Points~. (SC-3, D57, D41)
+** [ ] Every shipped call site of the old name reads through ~Points~ instead — the kiosk column's ~points:~ assign and the admin balance reads — and the existing points-derivation tests are re-pointed at ~Chores.earnings/2~ / ~Points~ with their expected values unchanged. (D57)
+** [ ] ~BearCub.Chores~ contains no reference to ~BearCub.Rewards~ or to redemptions; the spend term of ~Points.balance~ is empty in this story and is filled by Story 03. (D57)
+** [ ] The kiosk points badge and every admin balance display show exactly what they showed before this story — no behavior change anywhere. (SC-3, D41, D57)
+** [ ] A pinning suite captures the current per-kid derivation's outputs as tests: extras contributions (live / undone / failed), routine-day ~+R~ / ~−R~ with the penalty capped, cumulative-all-time accumulation across dates, and the aggregate floor at zero. (SC-9, D72)
+** [ ] The pinning suite includes a roster-drift case — a routine-day evaluated after the kid's chore roster changed — pinning the shipped behavior as it is, not as it ought to be. (D72)
+** [ ] Every test in the pinning suite pins ~:routine_windows~ rather than inheriting the wall clock, and any day-dependent expectation is exercised by passing a different local date, never by mocking a clock. (design §Testing, ~docs/learnings.org~ [2026-07-17])
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- No dependencies on earlier stories in this batch — this is the batch's first story. Story 02 depends on it: the pinning suite is the baseline proof that the aggregate rewrite preserves behavior, so it must exist first.
+- The pinning suite is *this story's primary deliverable*. It is not incidental test coverage: Story 02's rewrite is accepted or rejected against it, and per D72 it must pass unmodified there.
+- ~Points.balances/1~ and ~totals/1~ may be implemented in this story as a straightforward per-kid loop over the existing derivation — the point of this story is the module boundary, the rename, and the pins. The grouped-query rewrite behind the same signatures is Story 02.
+- The rename is a rename plus a re-point, not a rewrite: ~Chores.earnings/2~ keeps the shipped derivation body, minus the ~max(0, …)~ wrapper which moves up to ~Points.total/2~.
+- Roster drift is *pinned, not fixed*. If the pinning test's expected value looks wrong, that is the point — write the value the shipped code actually produces and leave a comment naming it as the D72 roster-drift case. Do not repair it here or in Story 02; it is a backlog entry at initiative close.
+- LiveView surfaces are touched only insofar as they call the renamed function; no user-visible flow changes, so no new integration tests are owed beyond keeping the shipped ones green.

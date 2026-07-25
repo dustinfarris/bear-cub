@@ -1,0 +1,128 @@
+#+title: Story 05 — Kiosk shop: the ~:rewards~ column state, banner button, and card precedence
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** Kiosk — the reward view
+
+A new per-column state ~:rewards~, beside the shipped ~:rows~ and ~:band~. The column *body* — the events strip, the routine card region, and extras — swaps to the reward catalog; the kid-color banner stays, so the points badge is visible while shopping and the column remains identifiable by color at a distance. The sibling's column is untouched and fully usable.
+
+Because ~:rewards~ replaces the routine region rather than sitting beside it, *the 5-chore no-scroll budget is untouched*. The only permanent addition to the column is the banner button, which is horizontal.
+
+** Kiosk — the banner button
+
+The banner becomes ~[completion icon] NAME [★ points] [🎁]~ — the gift button grouped with the points badge on the right, because the badge and the shop are the same economy and read as one unit.
+
+The button has exactly *two* states: =🎁= idle, and =⏳= while this kid has a pending request today. A verdict returns it to =🎁=.
+
+Decline visibility is *in-shop only*: the declined glyph rides the card (precedence row 4) and is there whenever the child next looks, while the banner returns to =🎁=. An approval needs no banner state either — it drops the always-visible points badge by the reward's price, the most legible ambient signal the kiosk has.
+
+The points badge's own tap gesture stays *unbound* — the gift button is a distinct gesture, so the deferred points-stats affordance is not precluded.
+
+** Kiosk — card states, one precedence table
+
+Verdict states and availability states are the same kind of thing — derived from redemption markers plus ~local_date == today~ — so they resolve in one ordered table rather than two overlapping systems. Evaluated top-down, first match wins:
+
+| # | condition                                                        | rendering               | tappable |
+|---+------------------------------------------------------------------+-------------------------+----------|
+| 1 | ~retired_at~ set                                                 | absent                  | —        |
+| 2 | one-time, this kid consumed it, and that redemption is not today | absent                  | —        |
+| 3 | this kid has a pending request for this reward today             | =⏳= pending treatment  | no       |
+| 4 | this kid was declined for this reward today                      | dim + declined glyph    | no       |
+| 5 | this kid claimed this reward today                               | dim + check glyph       | no       |
+| 6 | ~Points.balance(kid, today) < reward.points~                     | dim + lock glyph        | no       |
+| 7 | otherwise                                                        | full-color card         | *yes*    |
+
+Notes on the ordering and the choices:
+
+- *Claimed (5) outranks unaffordable (6)* — after a spend the balance is usually below the price again, and "you got this today" is strictly more informative than "you can't afford this".
+- *Rows 4–6 share one dim treatment and differ only by glyph* — declined, check (claimed today), lock (can't afford). A pre-reader learns three glyphs against *one* layout rather than three layouts, and the pending row's =⏳= is the same glyph already carried by the banner button. Extending the existing "not now" vocabulary costs no new visual grammar (SC-6).
+- *Consumed one-time rewards show as claimed for the rest of the local day, then disappear.* A child who saved 500 for the ATM toy should not watch it vanish the instant it is granted — that reads as a bug rather than a triumph. Showing "claimed" permanently is the other failure: dead cards would accumulate forever in a catalog a pre-reader scans by glance.
+- *Repeatable rewards on cooldown are dimmed, not hidden* — a catalog that changes shape day to day with no visible reason is the least explicable thing a shelf can do.
+- *Row 4 doubles as the re-ask block.* A declined row does not occupy the one-open-request index slot (it has ~declined_at~ set), so without this rendering rule a child could re-tap the same reward immediately and re-queue it indefinitely. Deriving "declined for this reward today" and rendering it untappable closes the loop with no new storage — the D55 day-scope pattern.
+
+** Kiosk — night (D56)
+
+D56 outranks ~:rewards~ *absolutely*. Between 23:00 and 05:00 the kiosk renders one dark screen with one moon and nothing else — no columns, therefore no banner, no gift button, no reward view, and nothing rewards-related that could be tapped. Because columns simply do not render at night, this needs no special case: the state is unreachable rather than suppressed. An idle timer that happens to fire at night is a harmless no-op re-render.
+
+** Kiosk — design-language recordings
+
+The reward card surface, the dim+glyph vocabulary for the three unavailable reasons, and the =🎁= / =⏳= banner button are all *new kids'-view indicators*. Per the D48 / D54 pattern they are *pending design-language recordings* — written into ~docs/design-language.org~ by the story that lands them, not at design time. The existing "do not add further indicators without a ruling" clause on the completion badge makes this mandatory, not optional.
+
+** Kiosk interaction
+
+One tap to ask — *no modal, no confirmation*, with ~phx-throttle~ matching the shipped chore row. This is the deliberate contrast to D53: D53 guards actions that are *irreversible* and punitive, and a request is neither — the parent gate *is* the protection, and a mistaken ask costs a decline. A confirmation dialog is also the wrong instrument on this surface, since a pre-reader cannot read it.
+
+No kid-side withdraw. The escapes are the parent's decline and the overnight lapse.
+
+Dismiss and idle auto-return: an explicit ✕ closes the view. In addition, an idle timer returns the column to its normal state if the child wanders off — a ~Process.send_after~ armed on open, reset on each tap inside the view, and cancelled on dismiss. The duration is a module constant tuned at the on-device gate, exactly as ~@collapse_delay_ms~ (currently 400ms) is; this design deliberately does not pin a number, though ~30s is the starting guess.
+
+After a successful request the view returns to the normal column immediately and the banner button flips to =⏳=, so the pending state lives where the child can see it without standing in the shop.
+
+State is *ephemeral*: ~:rewards~ membership is a socket-level ~MapSet~ of kid ids, exactly like the shipped ~@expanded~ — never persisted, cleared by the timer, and cleared on the routine boundary re-render.
+
+** From hidden debt
+
+- *Kiosk keeps the floor* (D41, D43). The *lock glyph on an unaffordable card is the pre-reader-legible explanation* — a child who cannot read a negative number can read a lock. No number is needed for the child to act correctly (SC-3, SC-6).
+
+** Testing (excerpt)
+
+- *LiveView integration* — kiosk: open, dismiss, idle auto-return, request, and each of the seven card states ...
+
+- *Time* — every test pins ~:routine_windows~ per ~docs/learnings.org~ [2026-07-17] rather than inheriting the wall clock, and all new derivations take a local-date argument. Day-rollover behavior (lapse, cooldown reset, verdict-state expiry) is tested by *passing a different local date*, never by mocking a clock.
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d65][D65]] (2026-07-25) — The kiosk shop is a per-column ~:rewards~ state opened by a gift button in the banner; one tap to ask, dismiss plus idle auto-return:* A new per-column state ~:rewards~ joins the shipped ~:rows~ and ~:band~: the column *body* (events strip, routine card region, extras) swaps to the reward catalog while the kid-color banner stays, so the points badge is visible while shopping and the column stays identifiable by color at a distance. The sibling's column is untouched. Because the view replaces the routine region rather than sitting beside it, the 5-chore no-scroll budget is untouched; the only permanent addition is the horizontal banner button. The banner becomes ~[completion icon] NAME [★ points] [🎁]~ with the gift button grouped beside the badge, and the button has exactly two states, =🎁= idle and =⏳= while this kid has a pending request today. Asking is *one tap, no modal, no confirmation*, with ~phx-throttle~ matching the shipped chore row: the deliberate contrast to D53, which guards actions that are irreversible and punitive, where a request is neither. There is no kid-side withdraw; the escapes are the parent's decline and the overnight lapse. An explicit ✕ dismisses, and an idle timer (~Process.send_after~, reset on each tap inside the view, cancelled on dismiss) returns the column to normal if the child wanders off; its duration is a module constant tuned at the on-device gate, as ~@collapse_delay_ms~ was. ~:rewards~ membership is a socket-level ~MapSet~ of kid ids like the shipped ~@expanded~ — never persisted. [[file:../../decisions.org::#d56][D56]] outranks it absolutely: at night no columns render, so the state is unreachable rather than suppressed. Rejected — a full-screen takeover (locks a sibling out of their own chores on a shared fridge tablet); an always-visible shelf as a fifth grid track (spends vertical space against the no-scroll budget); using the points badge's own tap as the opener (would preclude the deferred points-stats affordance). Settles rewards/SC-2 kiosk leg. → rewards/Screens (kiosk reward view, banner button, night), rewards/Key Behaviors (kiosk interaction).
+
+- *[[file:../../decisions.org::#d66][D66]] (2026-07-25) — Reward cards resolve in one seven-row precedence table, with one dim treatment and three glyphs:* Verdict states and availability states resolve in one ordered table, first match wins: retired → absent; one-time consumed on an earlier day → absent; pending today → =⏳=; declined today → dim + declined glyph; claimed today → dim + check glyph; unaffordable → dim + lock glyph; otherwise a full-color, tappable card. Claimed outranks unaffordable because after a spend the balance is usually below the price again and "you got this today" is strictly more informative. The three dim states share one layout and differ only by glyph, so a pre-reader learns three glyphs against one layout rather than three layouts. The declined row doubles as the *re-ask block*: a declined row does not occupy the one-open-request index slot (D61), so without this rendering rule a child could re-tap and re-queue indefinitely. The reward card surface, the dim+glyph vocabulary, and the =🎁= / =⏳= button are new kids'-view indicators and are *pending design-language recordings*, written into ~docs/design-language.org~ by the story that lands them per the D48 / D54 pattern — the existing "do not add further indicators without a ruling" clause makes this mandatory. Rejected — hiding a consumed one-time reward immediately on approval (a child who saved 500 for the ATM toy would watch it vanish the instant it was granted); showing consumed rewards as claimed permanently (dead cards accumulate forever); hiding repeatable rewards while on cooldown (the catalog would change shape day to day with no visible reason). Settles rewards/SC-6. → rewards/Screens (kiosk card states, design-language recordings).
+
+- *[[file:../../decisions.org::#d67][D67]] (2026-07-25) — Decline visibility is in-shop only: the card carries the glyph, the banner has no third state:* The banner gift button has two states only (D65); a verdict returns it to =🎁=. A decline is surfaced by the declined glyph on the card (D66), which is there whenever the child next looks; an approval needs no banner state at all, because it drops the always-visible points badge by the reward's price — the most legible ambient signal the kiosk has. Human-ruled on family texture, not on engineering cost: a day-scoped third banner state would have been *free*, but at family scale the "no" is delivered out loud by a parent, and an all-day ambient "no" pinned to the child's own banner would rub it in rather than inform. Rejected — a third banner state after a verdict lands, for exactly that reason. rewards/SC-6's "can see the day's answer to a request they made" is discharged by the card glyph. Settles rewards/SC-6 verdict placement. → rewards/Screens (kiosk banner button, card states).
+
+* User Story
+
+As a kid at the fridge, I need to open a shop from my own banner, see at a glance which rewards I can have right now and which I cannot, and ask for one with a single tap — so that I can spend what I have saved without reading a word or waiting for anyone to hand me the tablet.
+
+* Acceptance Criteria
+
+** [ ] The kid-color banner renders as ~[completion icon] NAME [★ points] [🎁]~, with the gift button grouped beside the points badge, and the points badge's own tap gesture stays unbound. (SC-2, SC-6, D65)
+** [ ] Tapping the gift button puts that column into a ~:rewards~ state: the column body — events strip, routine card region, and extras — swaps to the reward catalog while the kid-color banner and its points badge stay. (SC-2, SC-6, D65)
+** [ ] The sibling's column is untouched and fully usable while one column is shopping, and a card's state is always evaluated for the kid whose column it is. (SC-5, D62, D65)
+** [ ] The gift button has exactly two states — =🎁= idle and =⏳= while this kid has a pending request today — and any verdict, approve or decline, returns it to =🎁=. (SC-6, D65, D67)
+** [ ] Reward cards resolve through the seven-row precedence table, top-down, first match wins: retired absent; one-time consumed on an earlier day absent; pending today =⏳= and untappable; declined today dim + declined glyph, untappable; claimed today dim + check glyph, untappable; unaffordable dim + lock glyph, untappable; otherwise full-color and tappable. (SC-5, SC-6, D66)
+** [ ] Claimed-today outranks unaffordable, so a reward just claimed shows the check glyph rather than the lock even though the balance has since dropped below its price. (SC-6, D66)
+** [ ] A one-time reward claimed today still shows on that kid's shelf as claimed and disappears from the next local day onward; a repeatable reward on cooldown is dimmed, never hidden. (SC-5, SC-6, D66)
+** [ ] A declined card is untappable for the rest of that local day, so a child cannot immediately re-ask for the reward they were just declined. (SC-6, D66, D61)
+** [ ] Affordability on the kiosk is a rendering rule: the lock glyph is the whole explanation, and no negative number is ever shown to the child. (SC-3, SC-4, SC-6, D63, D64)
+** [ ] Tapping an available card asks for it in one tap — no modal, no confirmation — with ~phx-throttle~ matching the shipped chore row; the view returns to the normal column immediately and the banner button flips to =⏳=. (SC-2, SC-6, D65)
+** [ ] There is no kid-side withdraw control anywhere in the view. (SC-6, D65)
+** [ ] An explicit ✕ dismisses the view, and an idle timer returns the column to its normal state on its own; the timer is armed on open, reset on each tap inside the view, cancelled on dismiss, and its duration is a module constant. (SC-6, D65)
+** [ ] ~:rewards~ membership is a socket-level ~MapSet~ of kid ids, never persisted, and is cleared by the timer and on the routine boundary re-render. (D65)
+** [ ] At night the reward view is unreachable rather than suppressed: no columns render between 23:00 and 05:00, so there is no banner, no gift button, and nothing rewards-related to tap; an idle timer firing then is a harmless no-op. (D56, D65)
+** [ ] The reward view contains no link or navigation to ~/admin~. (CLAUDE.md kiosk/admin fence)
+** [ ] ~docs/design-language.org~ records this story's three new kids'-view indicators as Rulings: the reward card surface, the dim+glyph vocabulary for the three unavailable reasons, and the =🎁= / =⏳= banner button. (SC-6, D66, D48/D54 pattern)
+** [ ] LiveView integration tests cover open, dismiss, idle auto-return, a successful request, and each of the seven card states, with ~:routine_windows~ pinned and day-dependent states exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 03 (the request write path, the availability and affordability derivations, and the ="rewards"= topic) and on Story 04 (a real catalog to render, so this view can be exercised against data a parent actually created). Balances come from ~Points~ (Stories 01–02).
+- *Read ~docs/design-language.org~ before touching styling* — its invariants and rulings are binding, and this story adds three Rulings to it. The recordings are ACs, not follow-up work.
+- ~:rewards~ joins the shipped per-column state machine beside ~:rows~ and ~:band~; the ~MapSet~ assign parallels the shipped ~@expanded~ / ~@pending_collapse~ pattern in ~lib/bear_cub_web/live/kiosk_live.ex~.
+- The idle timer follows the shipped ~@collapse_delay_ms~ precedent: a module constant, ~Process.send_after~, and a ~handle_info/2~ clause. The design deliberately does not pin the duration (~30s is the starting guess) — it is tuned at the on-device gate that closes this batch.
+- ~KioskLive~ subscribes to ="rewards"= in addition to ="chores"= — one extra ~handle_info/2~ clause, re-fetching rather than patching from a payload (D71).
+- The card precedence table is one ordered resolution, not two systems: implement it as a single first-match function returning the card's state atom, so the seven integration tests each pin one row of the table.
+- Stable DOM ids for the tests: ~#gift-button-{kid.id}~, ~#reward-card-{reward.id}-{kid.id}~ (or equivalent), and a dismiss control id. Test against elements, never raw HTML.
+- The 5-chore no-scroll budget is untouched by construction — the view replaces the routine region. The banner button is the only permanent addition, and confirming the budget still holds with it present is part of the on-device gate at batch close.

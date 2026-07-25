@@ -1,0 +1,30 @@
+#+title: PLAN — Bear Cub: Rewards / Redemption
+#+date: 2026-07-25
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+Ordering rationale (human-set, load-bearing): 01 → 02 is forced by the design's own sequencing — the aggregate rewrite lands before affordability depends on it ([[file:../decisions.org::#d72][D72]]), and the pinning suite is the proof of behavior preservation, so it must exist first. 03 lands the whole rewards domain headless, so every write path and derivation is unit-proven before any surface calls it. 04 → 05 → 06 is chosen so each UI story can be exercised against real data from the one before it: the catalog gives the kiosk shop something to render, and the kiosk gives the approval queue real requests to answer. 07 reads the record the previous three created.
+
+Batch close — the on-device gate checklist from the design's §Testing (a manual human checklist per repo convention: never CI'd, never skipped): the reward view rendering in Fully Kiosk's Android WebView; the gift button's tap target at fridge distance and at a child's height; the dim+glyph states distinguishable at a glance across the kitchen; the idle-timer duration tuned there, not at a desk; and explicit confirmation that ~:rows~ still meets the 5-chore no-scroll budget with the banner button present.
+
+** TODO [[file:stories/story-01-points-foundation.org][Story 01 — Points foundation: ~BearCub.Points~, ~Chores.earnings/2~, and the pinning suite]]
+** TODO [[file:stories/story-02-aggregate-rewrite.org][Story 02 — Aggregate rewrite: ~Points.balances/1~ in grouped queries]]
+** TODO [[file:stories/story-03-rewards-domain.org][Story 03 — Rewards domain, headless: schema, write paths, derivations, PubSub]]
+** TODO [[file:stories/story-04-admin-catalog.org][Story 04 — Admin catalog: ~/admin/rewards~, form, ordering, archive, direct-redeem]]
+** TODO [[file:stories/story-05-kiosk-shop.org][Story 05 — Kiosk shop: the ~:rewards~ column state, banner button, and card precedence]]
+** TODO [[file:stories/story-06-approval-queue.org][Story 06 — Approval queue and reversal on ~Admin.TodayLive~]]
+** TODO [[file:stories/story-07-history-view.org][Story 07 — Redemption history: ~/admin/rewards/history~]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.
+
+- Roster drift ([[file:../decisions.org::#d72][D72]]) — ~routine_day_contribution/3~ evaluates historical routine-days against the kid's *current* chore roster, so a roster edit retroactively moves past ~+R~ and can move a balance after a spend. Pinned as-is by Story 01 and preserved unchanged by Story 02, per D72. Swept to ~docs/backlog.org~ at initiative close.
+- Fulfillment marker on redemptions (design §Out of Scope) — "act if double-buy or forgot-to-buy occurs in family use". Swept to ~docs/backlog.org~ at initiative close as an untriaged entry.
+- History pagination (D70) — the list is bounded at 50 with the bound stated on screen; pagination is a backlog seed if it ever bites.

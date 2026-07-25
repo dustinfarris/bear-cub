@@ -1,0 +1,70 @@
+#+title: Story 07 — Redemption history: ~/admin/rewards/history~
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** ~/admin/rewards/history~ — the redemption record
+
+A parent must be able to answer "did this child redeem this reward?" days later (SC-7). The storage already supports it — append-only rows, price snapshot, ~reversed_at~ marker — so this is purely a read surface.
+
+It is *one flat reverse-chronological list*, its own route, linked from ~/admin/rewards~. Each row: date, kid (name + color chip), reward icon + name, snapshot price, and state (approved / reversed / declined). A reversed row renders its price struck through with a "reversed" marker and the reversal's date — this is where a reversal stays legible days later.
+
+- At family scale — two kids, a handful of rewards, a few redemptions a week — one list beats per-kid or per-reward views: no navigation, no filter UI, and the whole record fits on a phone screen. Per-kid grouping can be added later if the list ever gets long enough to need it.
+- *Shows approved, reversed, and declined; omits lapsed.* A never-answered ask is an abandoned intention, not history, and including it would bury real redemptions in noise.
+- *Archived rewards still appear* with their name and icon — the row is retained, and only the catalog and picker filter on ~retired_at~.
+- *Bounded, visibly.* The list shows the 50 most recent entries with no pagination, and *says so on screen* — a silent truncation would read as "this is everything" when it is not. At the stated family volume 50 entries spans months, comfortably covering SC-7's "days afterward" horizon; pagination is a backlog seed if it ever bites.
+
+** Balances in admin
+
+Every admin surface that shows a balance shows the *true signed* figure, negative included (see Key Behaviors → hidden debt).
+
+** From the Data Model — what makes this a pure read surface
+
+A ~reward_name~ snapshot is deliberately *not* taken: reward rows are kept forever (archive, never delete), so the join is always available and the name stays a single source of truth. A rename is correctly reflected in history — a parent renaming a reward is clarifying what it is, not creating a different one.
+
+** Testing (excerpt)
+
+- *LiveView integration* — ... admin: ... archive-hides-from-catalog-but-not-history ...
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d70][D70]] (2026-07-25) — Redemption history is one flat reverse-chronological list, bounded at 50 with the bound stated on screen:* ~/admin/rewards/history~ is a pure read surface over storage that already supports it (append-only rows, price snapshot, ~reversed_at~ marker): one flat reverse-chronological list on its own route, linked from the catalog, each row showing date, kid (name + color chip), reward icon and name, snapshot price, and state — approved / reversed / declined. A reversed row renders its price struck through with a "reversed" marker and the reversal's date, which is where a reversal stays legible days later. Lapsed rows are omitted: a never-answered ask is an abandoned intention, not history, and including it would bury real redemptions in noise. Archived rewards still appear with their name and icon — only the catalog and the direct-redeem picker filter on ~retired_at~. The list is bounded at the 50 most recent entries with no pagination and *says so on screen*, because a silent truncation would read as "this is everything" when it is not; at the stated family volume that spans months, comfortably covering rewards/SC-7's "days afterward" horizon, and pagination is a backlog seed if it ever bites. Rejected — per-kid or per-reward grouped views: at two kids and a few redemptions a week, one list beats navigation and filter UI, and the whole record fits on a phone screen. Settles rewards/SC-7. → rewards/Screens (admin history).
+
+- *[[file:../../decisions.org::#d60][D60]] (2026-07-25) — The redemption price is snapshotted on the row; the reward name is not* (history half): A ~reward_name~ snapshot is deliberately *not* taken — reward rows are archived, never deleted (D68), so the join is always available and the name stays a single source of truth; a rename is correctly reflected in history, because a parent renaming a reward is clarifying what it is, not creating a different one. Settles rewards/SC-7.
+
+* User Story
+
+As a parent, I need a single screen that answers "did this child redeem this reward?" days after the fact — including whether I later reversed it — so that the record of what was spent survives the day it happened without becoming something I can edit.
+
+* Acceptance Criteria
+
+** [ ] ~/admin/rewards/history~ is its own route, linked from ~/admin/rewards~, and renders one flat reverse-chronological list. (SC-7, D70)
+** [ ] Each row shows the date, the kid's name with their color chip, the reward's icon and name, the snapshot price, and the state — approved, reversed, or declined. (SC-7, D70)
+** [ ] A reversed row renders its price struck through with a "reversed" marker and the reversal's date. (SC-7, SC-8, D70)
+** [ ] Approved, reversed, and declined rows all appear; lapsed rows — requested, never answered — are omitted. (SC-6, SC-7, D70)
+** [ ] A redemption of a reward that has since been archived still appears, with that reward's name and icon; a reward renamed since the redemption shows under its current name. (SC-7, D60, D68, D70)
+** [ ] The list shows the 50 most recent entries with no pagination, and says so on screen. (SC-7, D70)
+** [ ] The history screen offers no way to edit, delete, or reverse a redemption — reversal is Today's day-scoped control only. (SC-7, SC-8, D69, D70)
+** [ ] LiveView integration tests cover the row content for each state, the reversed row's struck-through price and reversal date, lapsed omission, an archived reward's redemption still listed, and the stated 50-entry bound. (repo convention, design §Testing)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 03 (the rows and their markers), Story 04 (the catalog this route is linked from, and the archive control the archived-still-shows test needs), and Story 06 (reversals to render).
+- Purely a read surface: one query with the reward and kid preloaded, ordered newest first, limited to 50. No writes, no controls beyond navigation.
+- Preload the reward and kid associations in the query — the rows reference them in the template (CLAUDE.md Ecto guideline).
+- The bound is stated in the UI, not just enforced in the query; a test asserts the on-screen statement, not only the row count.
+- The kid color chip reuses the shipped kid-color treatment; this is an admin surface, so ~docs/design-language.org~ (kids' view) does not govern it and no new Ruling is owed.
+- This story completes the design's ~archive-hides-from-catalog-but-not-history~ integration test, whose catalog half landed in Story 04.

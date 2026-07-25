@@ -1,0 +1,87 @@
+#+title: Story 06 — Approval queue and reversal on ~Admin.TodayLive~
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** ~Admin.TodayLive~ — the approval queue and reversal
+
+A per-kid *Requests* section alongside the existing Extras section, in today's stacked layout. Today is where a parent already looks, and a request is a day-shaped object — the same shape as everything else on that screen.
+
+Each pending request shows the reward's icon and name, its snapshot price, and the kid's true signed balance, with:
+
+- *Approve* — ~data-confirm~ guarded (D53: points-affecting, and permanent from tomorrow onward, since the reversal control is day-scoped). Re-validates affordability *and* availability before stamping ~approved_at~; a failed re-check tells the parent which check failed rather than silently no-opping.
+- *Decline* — no confirmation. It costs nothing, contributes 0, and its own day-scoping is the undo.
+
+Lapsed rows *never surface in the queue*. The queue reads pending rows only — ~requested_at~ set, no verdict, and ~local_date == today~. Yesterday's unanswered ask is invisible here by the same predicate that makes it invisible on the kiosk, with nothing to clean up (SC-6).
+
+Reverse lives on the same screen beside the day's redemptions, ~data-confirm~ guarded, and is *day-scoped* — offered only on redemptions with ~local_date == today~, following the D55 pattern (SC-8). Today is the correction surface, and a mis-tap gets caught the same day or not at all; a reversal reachable from arbitrary history would be an editing affordance over the permanent record rather than a same-day correction. A reversal's *effect* remains legible indefinitely in the history view, which is where the durable record belongs.
+
+** Balances in admin
+
+Every admin surface that shows a balance shows the *true signed* figure, negative included (see Key Behaviors → hidden debt).
+
+** From availability and repeatability — the same-kid interleaving
+
+A *same-kid* interleaving does remain possible, and it is why the approval-time re-check validates availability as well as affordability: a child asks for a reward on the kiosk, the parent direct-redeems that same reward for that same child from admin, and then approves the still-open request — which would claim a one-time reward twice, or a repeatable one twice in a day. The re-check catches it and tells the parent which check failed.
+
+A reversal *restores availability for free*. Both predicates exclude reversed rows, so a parent reversing a redemption returns a one-time reward to that child's catalog and clears a repeatable reward's cooldown, with no extra code path (SC-8).
+
+** From affordability — checked twice
+
+2. *At approval time* (admin) — affordability *and* availability are re-validated, because the balance and the catalog both move between ask and answer.
+
+** Live updates
+
+~BearCub.Rewards~ owns PubSub topic ="rewards"= and broadcasts a payload-free ~:rewards_changed~ on every successful write. ~KioskLive~ and ~Admin.TodayLive~ subscribe to it *in addition to* ="chores"=, and re-fetch — never patching from a payload.
+
+** Testing (excerpt)
+
+- *LiveView integration* — ... admin: approve, decline, ..., reverse, ..., and the approval-time re-check failing on both affordability and availability; cross-surface PubSub: a kiosk request appearing in the admin queue, and an approval moving the kiosk badge.
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d69][D69]] (2026-07-25) — Requests and reversal live on ~Admin.TodayLive~; approve is confirmation-guarded and reversal is day-scoped:* A per-kid *Requests* section joins the existing Extras section in today's stacked layout — Today is where a parent already looks, and a request is a day-shaped object like everything else on that screen. Each pending request shows the reward's icon and name, its snapshot price, and the kid's true signed balance. Approve is ~data-confirm~ guarded per D53 (points-affecting, and permanent from tomorrow onward since the reversal control is day-scoped) and re-validates affordability *and* availability before stamping ~approved_at~, naming which check failed on a failure; decline carries no confirmation, because it costs nothing, contributes 0, and its own day-scoping is the undo. Lapsed rows never surface: the queue reads ~requested_at~ set, no verdict, ~local_date == today~ — yesterday's unanswered ask is invisible here by the same predicate that hides it on the kiosk, with nothing to clean up. Reversal lives on the same screen beside the day's redemptions, ~data-confirm~ guarded, and is offered only on redemptions with ~local_date == today~ (D55 day-scoping): today is the correction surface, and a mis-tap gets caught the same day or not at all. Rejected — a reversal reachable from arbitrary history: an editing affordance over the permanent record rather than a same-day correction; the reversal's *effect* stays legible indefinitely in the history view ([[file:../../decisions.org::#d70][D70]]). Rejected — a dedicated approvals route separate from Today: splits the parent's one daily surface for a handful of rows a day. Settles rewards/SC-2 parent leg, rewards/SC-8. → rewards/Screens (admin approval queue and reversal).
+
+- *[[file:../../decisions.org::#d63][D63]] (2026-07-25) — Affordability is strict on both legs against the raw signed balance; no override, no reserve* (approval-time half): It is checked twice: at request time on the kiosk, where an unaffordable reward renders visibly locked and is not tappable, and at approval time in admin, where affordability *and* availability are re-validated because both the balance and the catalog move between ask and answer; a failed re-check tells the parent which check failed rather than silently no-opping. Rejected — a parent override redeeming into visible debt; checking against the floored total; a reserve/hold model. Settles rewards/SC-4.
+
+* User Story
+
+As a parent, I need the day's reward requests waiting on the screen I already check each day, with enough context to answer them — what was asked, what it costs, what the child actually has — and a way to undo a redemption I got wrong the same day, so that answering a child's ask is a two-tap job from my phone.
+
+* Acceptance Criteria
+
+** [ ] ~Admin.TodayLive~ carries a per-kid Requests section alongside the existing Extras section in today's stacked layout. (SC-2, D69)
+** [ ] Each pending request shows the reward's icon and name, its snapshot price, and that kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D69)
+** [ ] The queue shows pending rows only — ~requested_at~ set, no verdict, ~local_date == today~ — so a request left unanswered yesterday never appears and nothing has to be cleaned up. (SC-6, D61, D69)
+** [ ] Approve is ~data-confirm~ guarded and, on confirmation, re-validates affordability *and* availability before the redemption is approved. (SC-2, SC-4, D53, D63, D69)
+** [ ] A failed re-check tells the parent which check failed — affordability or availability — rather than silently no-opping, and leaves the request pending. (SC-4, SC-5, D63, D69)
+** [ ] Approving a request lowers that kid's balance by the snapshot price and it stays down. (SC-3, SC-7, D59, D60)
+** [ ] Decline carries no confirmation, costs nothing, and removes the request from the queue. (SC-6, D69)
+** [ ] A reverse control sits beside the day's redemptions on the same screen, is ~data-confirm~ guarded, and is offered only on redemptions with ~local_date == today~ — never on an earlier day's. (SC-8, D55, D69)
+** [ ] Reversing a redemption returns the points and restores that kid's availability: a one-time reward is claimable again and a repeatable reward's cooldown is cleared. (SC-5, SC-8, D62)
+** [ ] The same-kid interleaving is caught: with a request open, a direct-redeem of that same reward for that same kid makes the subsequent approve fail the availability check and say so. (SC-5, D62, D63)
+** [ ] Cross-surface liveness holds without a reload: a request made on the kiosk appears in this queue, and approving it moves the kiosk's points badge. (SC-2, D71)
+** [ ] LiveView integration tests cover approve, decline, reverse, the re-check failing on affordability and on availability, the same-kid interleaving, and both cross-surface PubSub directions, with ~:routine_windows~ pinned and day-scoping exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 03 (approve / decline / reverse and the re-check live in ~BearCub.Rewards~), Story 04 (the direct-redeem path the interleaving test drives, plus a real catalog), and Story 05 (kiosk requests to answer, and the badge the cross-surface test watches).
+- ~data-confirm~ on approve and on reverse is the same unmodified Phoenix attribute already trusted for the fail control in ~lib/bear_cub_web/live/admin/today_live.ex~ and for chore/calendar delete. As in Story 09 of the gamification batch, the decline-the-dialog path is verified structurally via the attribute, not behaviorally — there is no browser-driven test tool in this repo.
+- ~Admin.TodayLive~ subscribes to ="rewards"= in addition to ="chores"= — one extra ~handle_info/2~ clause that re-fetches, never patching from a payload.
+- Day-scoping of the reverse control follows the shipped D55 pattern: derived from ~local_date == today~, no flag, no job.
+- Stable DOM ids for the tests: ~#request-{id}~, ~#approve-request-{id}~, ~#decline-request-{id}~, ~#reverse-redemption-{id}~.
+- Balances shown here are ~Points.balance/2~ — the true signed figure.
+- The re-check is the context function from Story 03; this story surfaces its failure reason in the UI and must not re-implement either check.

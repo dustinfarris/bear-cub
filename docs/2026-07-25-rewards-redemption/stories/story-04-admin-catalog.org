@@ -1,0 +1,75 @@
+#+title: Story 04 — Admin catalog: ~/admin/rewards~, form, ordering, archive, direct-redeem
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** ~/admin/rewards~ — the catalog
+
+A new route and a fifth bottom-nav entry (~:today, :chores, :kids, :calendars~ → plus ~:rewards~), scaffolded with ~mix phx.gen.live~ mirroring ~ChoreLive.Index~ / ~ChoreLive.Form~ per repo convention. The form carries name, emoji (default =🎁=), price, repeatable, and an optional kid ("Anyone" or a specific child) (SC-1).
+
+Ordering is *~position~ with ▲/▼*. ~move_reward/2~ is written from the shipped ~move_chore/2~ as its template — the same neighbor-swap in a transaction, the same silent no-op at the list edge, the same broadcast. The ~is_nil/1~ bucketing discipline from ~docs/learnings.org~ [2026-07-12] does *not* apply here: the reward list is a single flat bucket, so the neighbor lookup has no nullable discriminator to bucket by.
+
+Removal is *archive, never delete*: ~retired_at~ is the only removal affordance in this design. An archived reward vanishes from the kiosk catalog and from the direct-redeem picker, and remains in the history view with its redemptions intact (SC-7).
+
+Direct-redeem lives here: a per-reward action opening a kid picker showing each kid's *true signed balance*, then a ~data-confirm~ guard, then the spend. Same affordability and availability rules as the kid leg — no override (SC-2, SC-4).
+
+** Balances in admin
+
+Every admin surface that shows a balance shows the *true signed* figure, negative included (see Key Behaviors → hidden debt).
+
+** From hidden debt
+
+- *Admin displays the true signed balance*, negative and all, wherever it shows a balance (the approval queue, the direct-redeem picker, the history view). The parent is a reader, not a pre-reader, and is the only party who can act on debt.
+
+** From affordability — strict on both legs
+
+The *true signed sum*, never the floored display figure — D41 pre-authorizes this in as many words. There is no parent override and no IOU concept: a parent's direct-redeem is bound by exactly the same check as a child's request (SC-4).
+
+** Testing (excerpt)
+
+- *LiveView integration* — ... admin: ... direct-redeem, ..., archive-hides-from-catalog-but-not-history ...
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d68][D68]] (2026-07-25) — ~/admin/rewards~ owns the catalog: ~position~ ordering, archive over deletion, and the direct-redeem action:* A new route and a fifth bottom-nav entry, scaffolded with ~mix phx.gen.live~ mirroring ~ChoreLive.Index~ / ~ChoreLive.Form~ per repo convention; the form carries name, emoji (default =🎁=), price, repeatable, and an optional kid ("Anyone" or a specific child). Ordering is parent-controlled ~position~ with ▲/▼, and ~move_reward/2~ is written from the shipped ~move_chore/2~ as its template — same neighbor swap in a transaction, same silent no-op at the list edge, same broadcast; the ~is_nil/1~ bucketing discipline from ~docs/learnings.org~ [2026-07-12] does not apply, because the reward list is a single flat bucket with no nullable discriminator to bucket by. Removal is ~retired_at~ — *archive, never delete*: an archived reward vanishes from the kiosk catalog and the direct-redeem picker and remains in the history view with its redemptions intact. Direct-redeem lives here as a per-reward action opening a kid picker showing each kid's true signed balance, then a ~data-confirm~ guard (D53), then the spend, bound by the same affordability and availability rules as the kid leg with no override ([[file:../../decisions.org::#d63][D63]]). Rejected — a hard delete with FK cleanup: either cascades and destroys the audit trail outright, or nilifies ~reward_id~ and strands redemption rows with no identity — which would then force the ~reward_name~ snapshot [[file:../../decisions.org::#d60][D60]] correctly declined. Settles rewards/SC-1, rewards/SC-2 parent-direct leg. → rewards/Screens (admin catalog).
+
+- *[[file:../../decisions.org::#d64][D64]] (2026-07-25) — Redemption widens hidden debt: the kiosk keeps the floor and explains with a lock glyph; every admin balance shows the true signed figure* (admin half): Admin displays the true signed balance, negative included, wherever it shows one (approval queue, direct-redeem picker, history), because the parent is a reader and the only party who can act on debt. Rejected — floored balances in admin for consistency with the kiosk: hides the only signal the party who can act on it needs. Settles rewards/SC-3, rewards/SC-4, rewards/SC-6.
+
+* User Story
+
+As a parent, I need a rewards screen on my phone where I can add what the kids can earn, price it, say who it is for and how often it can be claimed, put the list in the order I want, retire what we have outgrown, and hand a reward over directly when we are away from the tablet — so that the catalog the kids shop from is mine to maintain.
+
+* Acceptance Criteria
+
+** [ ] ~/admin/rewards~ is a route reachable from a fifth bottom-nav entry beside Today, Chores, Kids, and Calendars, and it lists the catalog in ~position~ order showing each reward's icon, name, price, whether it is repeatable, and who it is offered to. (SC-1, D68)
+** [ ] The reward form carries name, emoji (defaulting to =🎁=), price, repeatable, and an optional kid — "Anyone" or a specific child — and creating or editing a reward through it persists exactly those choices. (SC-1, D58, D68)
+** [ ] ▲/▼ controls reorder the catalog through ~move_reward/2~: the reward swaps with its neighbor, the move is a silent no-op at either end of the list, and the new order is what the kiosk and this screen both read. (SC-1, D68)
+** [ ] The only removal affordance is archive: archiving a reward removes it from this catalog and, per Story 05 and Story 07, from the kiosk shop and the direct-redeem picker — while the reward row and every redemption of it survive. (SC-7, D68)
+** [ ] A per-reward direct-redeem action opens a kid picker showing each kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D68)
+** [ ] Direct-redeem is ~data-confirm~ guarded before the spend lands. (SC-2, D53, D68)
+** [ ] A direct-redeem is bound by exactly the same affordability and availability rules as a child's request, with no parent override: it is refused for a kid who cannot afford the reward or has already claimed it under its repeatability rule, and the refusal names which check failed. (SC-4, SC-5, D63, D68)
+** [ ] A successful direct-redeem lowers that kid's balance by the reward's price and the drop is visible on the connected kiosk without a reload. (SC-2, SC-3, D71)
+** [ ] LiveView integration tests cover the catalog list, create/edit through the form, reordering including the list-edge no-op, archive hiding the reward from the catalog, and direct-redeem in both its success and its refused-by-re-check forms. (repo convention, design §Testing)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 03: every write this screen performs — create, update, archive, ~move_reward/2~, direct-redeem — is a ~BearCub.Rewards~ call landed and unit-tested there. ~move_reward/2~ itself is the one context function this story adds, written from the shipped ~move_chore/2~ as its template.
+- Scaffold with ~mix phx.gen.live~ mirroring ~ChoreLive.Index~ / ~ChoreLive.Form~, then reshape — do not hand-roll the LiveView, form, or route wiring.
+- The nav entry means extending the ~:active~ attr's ~values:~ list in ~lib/bear_cub_web/components/layouts.ex~ alongside the existing four.
+- ~move_reward/2~: same neighbor swap in a transaction, same silent no-op at the edge, same broadcast as ~move_chore/2~. The ~is_nil/1~ bucketing discipline from ~docs/learnings.org~ [2026-07-12] does *not* apply — the reward list is one flat bucket.
+- Give every control a stable DOM id (~#reward-{id}~, ~#move-reward-up-{id}~, ~#archive-reward-{id}~, ~#redeem-reward-{id}~) so the integration tests select elements rather than raw HTML.
+- Balances shown here are ~Points.balance/2~, not ~Points.total/2~ — the true signed figure, negative included.
+- The archive-does-not-hide-from-history half of the design's integration test is completed by Story 07, which builds the history view; assert here what this screen owns (gone from the catalog, row still present).

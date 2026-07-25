@@ -1,0 +1,363 @@
+#+title: DESIGN — Bear Cub: Rewards / Redemption
+#+date: 2026-07-25
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Points stop being a number that only goes up. A parent maintains a catalog of rewards in admin — name, emoji, price, and whether it is offered to one child or both (SC-1). On the kiosk a child opens a reward view from their own banner, sees at a glance what their points can buy, and taps to /ask/ for one; a parent approves or declines from their phone, and may also redeem directly with no request at all, for when the family is away from the tablet (SC-2). An approved redemption spends the points permanently (SC-3).
+
+This is the first /non-completion signed input/ to the points total. The gamification initiative shaped the total as ~max(0, completions_earnings + other_signed_inputs)~ with the second term empty and named redemption as the anticipated occupant (D42); this initiative makes that term literal and does not re-derive earnings at all. It also exercises the pre-authorized raw-balance seam: the zero floor is display-only and applies to the aggregate, so a balance-needing feature sums the raw signed contributions directly (D41). Affordability is checked against that /raw signed balance/, never the floored display figure, so every penalty a child has taken counts against what they can have (SC-4).
+
+Two new tables carry it — ~rewards~ and ~redemptions~ — and nothing about ~chores~ or ~completions~ changes. Redemption state is *derived from nullable timestamp markers*, never a status column, exactly as ~undone_at~ and ~failed_at~ already are: the row records what happened and when, and pending / lapsed / approved / reversed / declined are all queries over those facts (honoring D10). Availability is derived the same way: a one-time reward is consumed for a child once they hold an unreversed approval for it, and a repeatable reward is on cooldown for the rest of the local day — so "available again tomorrow" arrives by the date rolling over, with no job and no midnight machinery. Both predicates are scoped *per kid*; ~rewards.kid_id~ is an administrative audience control and carries no scarcity meaning (SC-5).
+
+Redemption also makes the points total load-bearing: it is read on every reward-card render, on every tap that checks affordability, and on every admin balance display. The shipped ~points_total/2~ issues on the order of one query per routine-day of history, which is why PRD SC-9 requires the check be cheap and /stay/ cheap as months accumulate. The deferred aggregate rewrite is therefore claimed here as a batch member and lands early, before affordability depends on it — as a pure performance refactor with semantics provably unchanged.
+
+Everything the kid sees stays pre-reader legible: a locked card, a claimed card, and a declined card share one dim treatment and differ only by glyph, so a child learns three glyphs against one layout rather than three layouts (SC-6). The kiosk keeps the zero floor and never shows a negative number; the /admin/ surfaces show the true signed balance, negative and all, because the parent is the only party who can act on debt.
+
+** Context this design builds on (restated, self-contained)
+
+Facts from shipped work that this initiative depends on and does not reshape:
+
+- *The redemption seam* (D42) — the total is ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today. A spend is a negative, non-completion signed input slotting into that term. Earnings derivation is untouched.
+- *The zero floor is display-only, on the aggregate* (D41) — signed rows are never clamped; the raw signed sum is the true balance, and D41 states outright that a future balance-needing feature sums the raw signed contributions directly.
+- *The always-visible per-kid points badge* (D43) lives in the kid-color banner and shows the floored total, tied to child identity. D41 and D43 together are the authority for the kiosk never showing a negative number.
+- *Derived state doctrine* (D10) — day state is a query over dated facts. No status flags, no reset jobs, no midnight machinery.
+- *Every scoring event so far is a completion event* (D39), with redemptions named as the anticipated first non-completion input; new storage is expected here, and its shape is argued in Data Model rather than forced onto ~completions~.
+- *Audit permanence* — signed records persist forever and are never erased. A reversal is a marker, never a deletion.
+- *Irreversible, point-affecting admin actions are confirmation-guarded* (D53); the shipped precedent is ~data-confirm~ on the fail control in ~lib/bear_cub_web/live/admin/today_live.ex~.
+- *The day-scoped standing-evidence pattern* (D55) — admin state derived from "did this happen today", independent of current object state, resetting by date rollover rather than by a job.
+- *The night screen* ([[file:../decisions.org::#d56][D56]]) — between 23:00 and 05:00 the kiosk is one dark screen with one evening-colored moon and nothing else; no columns render and nothing is interactive.
+- *Nullable discriminator over a parallel table* (D27; ~docs/learnings.org~ [2026-07-12]) — give a new entity an existing entity's machinery via a nullable column. Confirmed pattern, applied twice already.
+- *Payload-free PubSub* — writes broadcast a bare message; subscribers re-fetch and never patch from a payload.
+- *Kiosk/admin fence* — the kiosk contains zero links or navigation to ~/admin~.
+- *Contexts do not reach sideways* — ~BearCub.Chores~ must never depend on ~BearCub.Calendars~; the same discipline governs the new context.
+- *Pre-reader glance legibility* — a child who cannot read must be able to act correctly on glance. Kid names never enter git.
+
+* Data Model
+
+Two new tables. ~completions~ and ~chores~ are untouched.
+
+** ~rewards~
+
+| column       | type                 | notes                                                                              |
+|--------------+----------------------+------------------------------------------------------------------------------------|
+| ~kid_id~     | FK, *nullable*       | NULL = offered to any kid; set = offered to that kid only. Audience, never scarcity |
+| ~name~       | string, NOT NULL     |                                                                                    |
+| ~icon~       | string, NOT NULL     | emoji, per the chore-icon convention; form default =🎁=                             |
+| ~points~     | integer, NOT NULL    | the price                                                                          |
+| ~repeatable~ | boolean, NOT NULL    | default ~true~                                                                     |
+| ~position~   | integer, NOT NULL    | parent-controlled order                                                            |
+| ~retired_at~ | ~utc_datetime~, NULL | soft archive                                                                       |
+
+~kid_id~ is set programmatically from the form's kid selection and never cast from attrs, matching the shipped ~create_chore/2~ treatment.
+
+Why *nullable ~kid_id~* rather than a family-only or per-kid-only catalog: the nullable discriminator is the repo's confirmed pattern (D27; ~docs/learnings.org~ [2026-07-12]). One column buys both models, and the two knobs stay orthogonal — "who is this offered to" (~kid_id~) is a separate question from "how often may a kid claim it" (~repeatable~). ~list_rewards(kid, local_date)~ is ~where is_nil(kid_id) or kid_id == ^kid.id~, not retired, ordered by ~position~.
+
+~kid_id~ is *purely an administrative audience control*: when a parent creates a reward they are answering "is this on offer to both kids, or just one?" — nothing more. It says nothing about how many times the reward can be claimed; that is ~repeatable~'s job, and both questions are answered per-kid (Key Behaviors → availability).
+
+A one-time reward offered to *both* kids ("your own bike" — each of them may earn one) and a repeatable kid-scoped reward ("an extra bedtime story for Ollie") are both legal and both meaningful; the two knobs are never coupled.
+
+~repeatable~ is *a boolean, not a cooldown interval*. Repeatable means available again the next local day — a fixed one-day cooldown. A ~cooldown_days~ integer would be strictly more general and would collapse both concepts into one field, but nothing in family use asks for a 3-day or 7-day cooldown; if it ever arrives, ~repeatable~ widens to ~cooldown_days~ additively.
+
+** ~redemptions~ — the D42 signed input
+
+| column         | type                 | notes                                                 |
+|----------------+----------------------+---------------------------------------------------------|
+| ~kid_id~       | FK, NOT NULL         | set programmatically, never cast                      |
+| ~reward_id~    | FK, NOT NULL         |                                                       |
+| ~points~       | integer, NOT NULL    | *price snapshot* taken at row creation                |
+| ~local_date~   | date, NOT NULL       | the local day the row was created                     |
+| ~requested_at~ | ~utc_datetime~, NULL | NULL = parent direct-redeem (no kid request)          |
+| ~approved_at~  | ~utc_datetime~, NULL |                                                       |
+| ~declined_at~  | ~utc_datetime~, NULL |                                                       |
+| ~reversed_at~  | ~utc_datetime~, NULL | the reversal marker                                   |
+| ~source~       | string, NOT NULL     | ="kiosk"= / ="admin"=, mirroring ~completions.source~  |
+
+Contribution is marker-first, mirroring the shipped ~extra_contribution/2~ ~cond~ exactly:
+
+#+begin_src
+reversed_at set  ->  0        (reversed; row retained forever as the trail)
+approved_at set  -> −points   (the spend)
+otherwise        ->  0        (pending, declined, or lapsed)
+#+end_src
+
+State is derived from nullable timestamp markers, *never a status column* — D10's posture and the ~undone_at~ / ~failed_at~ precedent:
+
+#+begin_src
+pending?   = requested_at && !approved_at && !declined_at && local_date == today
+lapsed?    = requested_at && !approved_at && !declined_at && local_date <  today
+approved?  = approved_at  && !reversed_at
+reversed?  = approved_at  &&  reversed_at
+declined?  = declined_at
+#+end_src
+
+The price snapshot is *non-negotiable*. The total is cumulative all-time and purely derived, so reading a live ~rewards.points~ at derivation time would make history mutable: a parent raising a reward's price would retroactively deepen every past spend of it and silently move a child's balance, potentially into debt after the fact. The snapshot is taken at *request* time for the kid leg — that is the deal the child was shown — and at redeem time for the parent-direct leg (SC-7).
+
+A ~reward_name~ snapshot is deliberately *not* taken: reward rows are kept forever (archive, never delete), so the join is always available and the name stays a single source of truth. A rename is correctly reflected in history — a parent renaming a reward is clarifying what it is, not creating a different one.
+
+** Indexes
+
+#+begin_src sql
+-- one open request per kid per local day
+CREATE UNIQUE INDEX redemptions_one_pending_per_kid
+  ON redemptions (kid_id, local_date)
+  WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL;
+#+end_src
+
+The same partial-unique-index technique the shipped ~completions (chore_id, local_date) WHERE undone_at IS NULL~ index already uses. Including ~local_date~ in the key is what makes lapse *free*: yesterday's unanswered request cannot block today's, with no job and no cleanup (SC-6).
+
+A racing duplicate hits the index and returns ~{:error, changeset}~, which callers treat as already-asked — the same posture ~complete_chore/3~ takes on a racing double-tap.
+
+Supporting indexes on ~redemptions (reward_id)~ and ~(kid_id, local_date)~ serve the availability and balance reads.
+
+* Screens / Interfaces
+
+** Kiosk — the reward view
+
+A new per-column state ~:rewards~, beside the shipped ~:rows~ and ~:band~. The column *body* — the events strip, the routine card region, and extras — swaps to the reward catalog; the kid-color banner stays, so the points badge is visible while shopping and the column remains identifiable by color at a distance. The sibling's column is untouched and fully usable.
+
+Because ~:rewards~ replaces the routine region rather than sitting beside it, *the 5-chore no-scroll budget is untouched*. The only permanent addition to the column is the banner button, which is horizontal.
+
+** Kiosk — the banner button
+
+The banner becomes ~[completion icon] NAME [★ points] [🎁]~ — the gift button grouped with the points badge on the right, because the badge and the shop are the same economy and read as one unit.
+
+The button has exactly *two* states: =🎁= idle, and =⏳= while this kid has a pending request today. A verdict returns it to =🎁=.
+
+Decline visibility is *in-shop only*: the declined glyph rides the card (precedence row 4) and is there whenever the child next looks, while the banner returns to =🎁=. An approval needs no banner state either — it drops the always-visible points badge by the reward's price, the most legible ambient signal the kiosk has.
+
+The points badge's own tap gesture stays *unbound* — the gift button is a distinct gesture, so the deferred points-stats affordance is not precluded.
+
+** Kiosk — card states, one precedence table
+
+Verdict states and availability states are the same kind of thing — derived from redemption markers plus ~local_date == today~ — so they resolve in one ordered table rather than two overlapping systems. Evaluated top-down, first match wins:
+
+| # | condition                                                        | rendering               | tappable |
+|---+------------------------------------------------------------------+-------------------------+----------|
+| 1 | ~retired_at~ set                                                 | absent                  | —        |
+| 2 | one-time, this kid consumed it, and that redemption is not today | absent                  | —        |
+| 3 | this kid has a pending request for this reward today             | =⏳= pending treatment  | no       |
+| 4 | this kid was declined for this reward today                      | dim + declined glyph    | no       |
+| 5 | this kid claimed this reward today                               | dim + check glyph       | no       |
+| 6 | ~Points.balance(kid, today) < reward.points~                     | dim + lock glyph        | no       |
+| 7 | otherwise                                                        | full-color card         | *yes*    |
+
+Notes on the ordering and the choices:
+
+- *Claimed (5) outranks unaffordable (6)* — after a spend the balance is usually below the price again, and "you got this today" is strictly more informative than "you can't afford this".
+- *Rows 4–6 share one dim treatment and differ only by glyph* — declined, check (claimed today), lock (can't afford). A pre-reader learns three glyphs against *one* layout rather than three layouts, and the pending row's =⏳= is the same glyph already carried by the banner button. Extending the existing "not now" vocabulary costs no new visual grammar (SC-6).
+- *Consumed one-time rewards show as claimed for the rest of the local day, then disappear.* A child who saved 500 for the ATM toy should not watch it vanish the instant it is granted — that reads as a bug rather than a triumph. Showing "claimed" permanently is the other failure: dead cards would accumulate forever in a catalog a pre-reader scans by glance.
+- *Repeatable rewards on cooldown are dimmed, not hidden* — a catalog that changes shape day to day with no visible reason is the least explicable thing a shelf can do.
+- *Row 4 doubles as the re-ask block.* A declined row does not occupy the one-open-request index slot (it has ~declined_at~ set), so without this rendering rule a child could re-tap the same reward immediately and re-queue it indefinitely. Deriving "declined for this reward today" and rendering it untappable closes the loop with no new storage — the D55 day-scope pattern.
+
+** Kiosk — night (D56)
+
+D56 outranks ~:rewards~ *absolutely*. Between 23:00 and 05:00 the kiosk renders one dark screen with one moon and nothing else — no columns, therefore no banner, no gift button, no reward view, and nothing rewards-related that could be tapped. Because columns simply do not render at night, this needs no special case: the state is unreachable rather than suppressed. An idle timer that happens to fire at night is a harmless no-op re-render.
+
+** Kiosk — design-language recordings
+
+The reward card surface, the dim+glyph vocabulary for the three unavailable reasons, and the =🎁= / =⏳= banner button are all *new kids'-view indicators*. Per the D48 / D54 pattern they are *pending design-language recordings* — written into ~docs/design-language.org~ by the story that lands them, not at design time. The existing "do not add further indicators without a ruling" clause on the completion badge makes this mandatory, not optional.
+
+** ~/admin/rewards~ — the catalog
+
+A new route and a fifth bottom-nav entry (~:today, :chores, :kids, :calendars~ → plus ~:rewards~), scaffolded with ~mix phx.gen.live~ mirroring ~ChoreLive.Index~ / ~ChoreLive.Form~ per repo convention. The form carries name, emoji (default =🎁=), price, repeatable, and an optional kid ("Anyone" or a specific child) (SC-1).
+
+Ordering is *~position~ with ▲/▼*. ~move_reward/2~ is written from the shipped ~move_chore/2~ as its template — the same neighbor-swap in a transaction, the same silent no-op at the list edge, the same broadcast. The ~is_nil/1~ bucketing discipline from ~docs/learnings.org~ [2026-07-12] does *not* apply here: the reward list is a single flat bucket, so the neighbor lookup has no nullable discriminator to bucket by.
+
+Removal is *archive, never delete*: ~retired_at~ is the only removal affordance in this design. An archived reward vanishes from the kiosk catalog and from the direct-redeem picker, and remains in the history view with its redemptions intact (SC-7).
+
+Direct-redeem lives here: a per-reward action opening a kid picker showing each kid's *true signed balance*, then a ~data-confirm~ guard, then the spend. Same affordability and availability rules as the kid leg — no override (SC-2, SC-4).
+
+** ~Admin.TodayLive~ — the approval queue and reversal
+
+A per-kid *Requests* section alongside the existing Extras section, in today's stacked layout. Today is where a parent already looks, and a request is a day-shaped object — the same shape as everything else on that screen.
+
+Each pending request shows the reward's icon and name, its snapshot price, and the kid's true signed balance, with:
+
+- *Approve* — ~data-confirm~ guarded (D53: points-affecting, and permanent from tomorrow onward, since the reversal control is day-scoped). Re-validates affordability *and* availability before stamping ~approved_at~; a failed re-check tells the parent which check failed rather than silently no-opping.
+- *Decline* — no confirmation. It costs nothing, contributes 0, and its own day-scoping is the undo.
+
+Lapsed rows *never surface in the queue*. The queue reads pending rows only — ~requested_at~ set, no verdict, and ~local_date == today~. Yesterday's unanswered ask is invisible here by the same predicate that makes it invisible on the kiosk, with nothing to clean up (SC-6).
+
+Reverse lives on the same screen beside the day's redemptions, ~data-confirm~ guarded, and is *day-scoped* — offered only on redemptions with ~local_date == today~, following the D55 pattern (SC-8). Today is the correction surface, and a mis-tap gets caught the same day or not at all; a reversal reachable from arbitrary history would be an editing affordance over the permanent record rather than a same-day correction. A reversal's *effect* remains legible indefinitely in the history view, which is where the durable record belongs.
+
+** ~/admin/rewards/history~ — the redemption record
+
+A parent must be able to answer "did this child redeem this reward?" days later (SC-7). The storage already supports it — append-only rows, price snapshot, ~reversed_at~ marker — so this is purely a read surface.
+
+It is *one flat reverse-chronological list*, its own route, linked from ~/admin/rewards~. Each row: date, kid (name + color chip), reward icon + name, snapshot price, and state (approved / reversed / declined). A reversed row renders its price struck through with a "reversed" marker and the reversal's date — this is where a reversal stays legible days later.
+
+- At family scale — two kids, a handful of rewards, a few redemptions a week — one list beats per-kid or per-reward views: no navigation, no filter UI, and the whole record fits on a phone screen. Per-kid grouping can be added later if the list ever gets long enough to need it.
+- *Shows approved, reversed, and declined; omits lapsed.* A never-answered ask is an abandoned intention, not history, and including it would bury real redemptions in noise.
+- *Archived rewards still appear* with their name and icon — the row is retained, and only the catalog and picker filter on ~retired_at~.
+- *Bounded, visibly.* The list shows the 50 most recent entries with no pagination, and *says so on screen* — a silent truncation would read as "this is everything" when it is not. At the stated family volume 50 entries spans months, comfortably covering SC-7's "days afterward" horizon; pagination is a backlog seed if it ever bites.
+
+** Balances in admin
+
+Every admin surface that shows a balance shows the *true signed* figure, negative included (see Key Behaviors → hidden debt).
+
+* Key Behaviors
+
+** Contexts and dependency direction
+
+Two new modules.
+
+~BearCub.Rewards~ — a context owning the ~rewards~ and ~redemptions~ tables, the request / approve / decline / direct-redeem / reverse write paths, the availability derivation, and its own PubSub topic. It knows nothing about chores or completions.
+
+~BearCub.Points~ — a composition module, the only place in the app that knows both earnings and spends:
+
+#+begin_src elixir
+Points.balance(kid, local_date)   # raw signed integer; may be negative
+Points.total(kid, local_date)     # max(0, balance) — the D41 display figure
+Points.balances(local_date)       # %{kid_id => signed} for a whole render
+Points.totals(local_date)         # %{kid_id => floored} for a whole render
+#+end_src
+
+~Chores.points_total/2~ becomes ~Chores.earnings/2~ and returns the *raw signed* earnings, unfloored — the floor moves up to ~Points~, where the complete summation lives. ~Chores~ never learns that ~Rewards~ exists.
+
+#+begin_src
+Points.balance = Chores.earnings + Rewards.spend_total
+                 └─ D42's completions_earnings   └─ D42's other_signed_inputs
+#+end_src
+
+Cost to shipped code, stated plainly: the kiosk's ~points: Chores.points_total(kid, today)~ call, admin balance reads, and the existing points-derivation tests all move to ~Points~. This is a rename plus a re-point, not a rewrite, and the aggregate rewrite touches the same function anyway.
+
+** Availability and repeatability
+
+Availability is *fully derived* from existing redemption rows. Nothing is stored, no job runs, and the next local day arriving is what restores a repeatable reward — exactly the D10 mechanism by which a completed chore becomes incomplete at midnight.
+
+Both predicates are *scoped per-kid*. ~kid_id~ on a reward is an audience control — who the reward is offered to — and carries no scarcity meaning whatever.
+
+Let ~spends(reward, kid)~ be the redemption rows for that reward /and that kid/ with ~approved_at IS NOT NULL AND reversed_at IS NULL~.
+
+#+begin_src
+one-time  (repeatable = false):
+  consumed?     = spends(reward, kid) is non-empty     -- this kid, ANY day
+  available?    = not consumed?
+
+repeatable (repeatable = true):
+  on_cooldown?  = spends(reward, kid) has a row with local_date = today
+  available?    = not on_cooldown?
+#+end_src
+
+One uniform scope, one mental model: *every availability question is asked about one kid at a time.* "One-time" means /each kid may claim it once, ever/; "repeatable" means /each kid may claim it once per day/ (SC-5). Whether a reward is offered to one kid or to both changes nothing about how either predicate evaluates — ~kid_id~ decides *who sees it*, never *how many exist*.
+
+A reversal *restores availability for free*. Both predicates exclude reversed rows, so a parent reversing a redemption returns a one-time reward to that child's catalog and clears a repeatable reward's cooldown, with no extra code path (SC-8).
+
+Pending requests *do not consume*. A pending row has no ~approved_at~, so it is invisible to both predicates. Under per-kid scoping there is *no cross-kid race to close*: two kids holding pending requests for the same reward is simply two independent asks, and both may legitimately be approved.
+
+A *same-kid* interleaving does remain possible, and it is why the approval-time re-check validates availability as well as affordability: a child asks for a reward on the kiosk, the parent direct-redeems that same reward for that same child from admin, and then approves the still-open request — which would claim a one-time reward twice, or a repeatable one twice in a day. The re-check catches it and tells the parent which check failed.
+
+Card state is *always evaluated for the kid whose column it is*. With both predicates per-kid this is trivially true rather than an invariant needing maintenance: nothing on a child's shelf can change because of something the sibling did.
+
+The one-open-request index *does not interact with any of this*. Its key is ~(kid_id, local_date)~ with no reward component, so it constrains *how many asks a kid has open*, never *which reward they may ask for*. Repeatability, kid scoping, and the open-request cap are three independent constraints.
+
+** Affordability — strict on both legs
+
+One rule, one function, both legs:
+
+#+begin_src
+Points.balance(kid, today) >= reward.points
+#+end_src
+
+The *true signed sum*, never the floored display figure — D41 pre-authorizes this in as many words. There is no parent override and no IOU concept: a parent's direct-redeem is bound by exactly the same check as a child's request (SC-4).
+
+Checked twice:
+
+1. *At request time* (kiosk) — an unaffordable reward renders visibly locked and is not tappable, so the check is a rendering rule before it is a validation.
+2. *At approval time* (admin) — affordability *and* availability are re-validated, because the balance and the catalog both move between ask and answer.
+
+Pending requests *contribute nothing*. A pending request contributes 0 to the balance and has no effect on the total, the badge, or affordability. There is no reserve or hold: escrowing a pending request's price against the balance would create two balances (true and available) that the always-visible badge (D43) cannot show at once. The race it would close — a child asking for two things they can only afford one of — is closed instead by the approval-time re-check plus the one-open-request-per-kid index, at zero display cost.
+
+** Hidden debt: bounded, and made visible to the party who can act
+
+A child at true balance 2 who then takes a fail sits at true −3 while the badge honestly shows 0. Redemption does not create this — D41 accepted it explicitly ("two kids both showing 0 may have different true standings") — but redemption *widens* it, because a spend is now a routine way to arrive near the floor.
+
+No spend-time guard can close it. Affordability already guarantees a spend never drives the balance below zero; all residual debt comes from *fails after* a spend, which is by construction outside any spend-time check.
+
+The resolution is not to hide less on the kiosk but to hide nothing in admin:
+
+- *Kiosk keeps the floor* (D41, D43). The *lock glyph on an unaffordable card is the pre-reader-legible explanation* — a child who cannot read a negative number can read a lock. No number is needed for the child to act correctly (SC-3, SC-6).
+- *Admin displays the true signed balance*, negative and all, wherever it shows a balance (the approval queue, the direct-redeem picker, the history view). The parent is a reader, not a pre-reader, and is the only party who can act on debt.
+
+** Kiosk interaction
+
+One tap to ask — *no modal, no confirmation*, with ~phx-throttle~ matching the shipped chore row. This is the deliberate contrast to D53: D53 guards actions that are *irreversible* and punitive, and a request is neither — the parent gate *is* the protection, and a mistaken ask costs a decline. A confirmation dialog is also the wrong instrument on this surface, since a pre-reader cannot read it.
+
+No kid-side withdraw. The escapes are the parent's decline and the overnight lapse.
+
+Dismiss and idle auto-return: an explicit ✕ closes the view. In addition, an idle timer returns the column to its normal state if the child wanders off — a ~Process.send_after~ armed on open, reset on each tap inside the view, and cancelled on dismiss. The duration is a module constant tuned at the on-device gate, exactly as ~@collapse_delay_ms~ (currently 400ms) is; this design deliberately does not pin a number, though ~30s is the starting guess.
+
+After a successful request the view returns to the normal column immediately and the banner button flips to =⏳=, so the pending state lives where the child can see it without standing in the shop.
+
+State is *ephemeral*: ~:rewards~ membership is a socket-level ~MapSet~ of kid ids, exactly like the shipped ~@expanded~ — never persisted, cleared by the timer, and cleared on the routine boundary re-render.
+
+** Live updates
+
+~BearCub.Rewards~ owns PubSub topic ="rewards"= and broadcasts a payload-free ~:rewards_changed~ on every successful write. ~KioskLive~ and ~Admin.TodayLive~ subscribe to it *in addition to* ="chores"=, and re-fetch — never patching from a payload.
+
+This is the shipped ~Calendars.subscribe/0~ / ~:calendars_changed~ shape exactly: ~KioskLive~ already handles two independent topics with two ~handle_info/2~ clauses, so the pattern costs one clause per subscriber and introduces nothing new.
+
+** The points aggregate rewrite (claimed batch member)
+
+The problem, sized: ~points_total/2~ issues one query for distinct ~(routine, local_date)~ pairs, then calls ~routine_day_contribution/3~ — two more queries — per pair. After a year of use that is roughly 2 routines × 365 days ≈ 1,460 queries per kid, per render, and it runs on every ~:chores_changed~ broadcast on every connected surface. Correctness is unaffected today, which is why it was deferred. Redemption makes it load-bearing three ways: the affordability check runs on *every tap* and on every reward-card render, the badge reads it, and admin reads it for every balance display. It lands *early in the batch*, before affordability depends on it (SC-9).
+
+The target shape: ~Points.balances(local_date) :: %{kid_id => signed_integer}~ — O(1) queries for an entire render, not O(kids × days). Three grouped queries:
+
+1. *Extras* — one aggregate over ~completions~ joined to ~chores~ where ~routine IS NULL~, summing a ~CASE~ over ~failed_at~ / ~undone_at~ (the shipped ~extra_contribution/2~ ladder expressed in SQL), grouped by ~kid_id~.
+2. *Routine-days* — one query grouping completions by ~(kid_id, routine, local_date)~ computing a live-completion count and an any-failed boolean, joined against a per-~(kid_id, routine)~ chore-count subquery; ~complete? = chore_count > 0 AND live_count == chore_count~, ~failed?~ from the boolean, then the capped ~+R~ / ~−R~ arithmetic.
+3. *Redemptions* — one aggregate summing ~points~ over rows with ~approved_at IS NOT NULL AND reversed_at IS NULL~, grouped by ~kid_id~.
+
+~Points.balance(kid, local_date)~ delegates to the map for a single kid, so tests and single-kid admin reads keep an ergonomic entry point. ~Points.total~ / ~Points.totals~ apply the D41 floor on top.
+
+There is *no memoization, no cached totals, no materialized column* — the derived-state doctrine (D10) is not negotiable here, and the aggregate is fast enough that caching would be complexity buying nothing.
+
+Discovered property — *roster drift*, surfaced but not fixed: ~routine_day_contribution/3~ loads the kid's *current* chore roster for the routine and requires every one of those chores to have a live completion on the evaluated date. Historical routine-days are therefore evaluated against today's roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping all historical ~+R~; deleting one can retroactively complete past days and grant points that were never earned. This ships today, and the badge already moves when a parent edits chores. Redemption raises the stakes: a roster edit can move a balance *after* a spend, potentially into debt with no fail involved.
+
+Semantics stay *unchanged* in the rewrite — it is a pure performance refactor, proven behavior-preserving by tests — and roster drift is captured as its own backlog entry at initiative close. The claimed item is the query shape, not the derivation's semantics.
+
+The pinning tests *must include a roster-drift case* — a routine-day evaluated after the roster changed — so behavior preservation is proven on the weird path and not merely the happy one. A refactor that silently "fixed" drift would be an unruled semantic change smuggled in under a performance story.
+
+** Testing and the on-device gate
+
+Per repo convention, LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
+
+- *Unit* — redemption contribution across all marker combinations; the pending / lapsed / approved / reversed / declined derivations; one-time consumption and repeatable cooldown, both at per-kid scope — including a sibling's redemption of the same reward leaving this kid's card untouched, and the reversal-restores-availability path; affordability against a negative true balance; and the ~Points.balances~ aggregate *pinned against the current per-kid implementation*, including the roster-drift case.
+
+- *LiveView integration* — kiosk: open, dismiss, idle auto-return, request, and each of the seven card states; admin: approve, decline, direct-redeem, reverse, archive-hides-from-catalog-but-not-history, and the approval-time re-check failing on both affordability and availability; cross-surface PubSub: a kiosk request appearing in the admin queue, and an approval moving the kiosk badge.
+
+- *Time* — every test pins ~:routine_windows~ per ~docs/learnings.org~ [2026-07-17] rather than inheriting the wall clock, and all new derivations take a local-date argument. Day-rollover behavior (lapse, cooldown reset, verdict-state expiry) is tested by *passing a different local date*, never by mocking a clock.
+
+- *On-device gate* (per repo convention a manual human checklist at gate close — never CI'd, never skipped) — the reward view rendering in Fully Kiosk's Android WebView; the gift button's tap target at fridge distance and at a child's height; the dim+glyph states distinguishable at a glance across the kitchen; the idle-timer duration *tuned there*, not at a desk; and explicit confirmation that ~:rows~ still meets the 5-chore no-scroll budget with the banner button present.
+
+* Out of Scope for This Design
+
+Per the PRD's Out of Scope, restated as design boundaries:
+
+- *Changing how points are earned* — the earnings derivation is read, renamed (~Chores.earnings/2~), and re-homed under ~Points~, never re-derived. Streaks are an earnings-side mechanic and are out.
+- *Fulfillment tracking* — this design lets a parent see that a redemption *happened*; it is not a fulfillment tracker. No ~fulfilled_at~, no "purchased" checkbox. At two-kid scale the verbal channel covers it, and deferral is structurally free: a nullable-timestamp marker plus one admin control later is a trivially additive oneshot. Swept to the backlog at initiative close as an untriaged entry — /"fulfillment marker on redemptions; act if double-buy or forgot-to-buy occurs in family use"/.
+- *Family-scarce rewards* — a reward that is a single physical object, claimable once across the *whole family* rather than once per kid, is a real and interesting concept ("there is one trampoline, whoever saves for it first gets it") — but it is deliberately not what ~repeatable = false~ means here. Modeling it would need a scarcity notion orthogonal to both existing knobs, plus a first-come contention story on the kiosk that a pre-reader could read. Not designed for here, and not to be smuggled in by reading scarcity into ~kid_id~.
+- *A points-stats view for the kids, and the skip-a-chore admin action* — not claimed, and not designed for. Neither is precluded: the points badge's own tap gesture stays unbound, and nothing in the redemption derivation constrains what a "skipped" chore could contribute, since redemptions sum into the signed-inputs term independently of how earnings are derived.
+- *Notifications of any kind* when a request is made or answered. The parent-notification backlog entry is separately ruled and unclaimed.
+- *Roster drift* — surfaced above; semantics unchanged in the rewrite, captured as its own backlog entry at initiative close.
+- *Not built:* reward categories or tags; per-kid pricing of a shared reward; scheduled or expiring rewards; a wishlist or savings-goal concept; kid-side withdrawal of a request; pagination or filtering in history; hard deletion of rewards.
+
+* Decision Log
+
+Entries for this initiative live in [[file:../decisions.org]] (D57 onward).
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
+
+# (none — design not yet canon)

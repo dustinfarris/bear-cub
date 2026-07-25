@@ -1,0 +1,37 @@
+#+title: PRD — Bear Cub: Rewards / Redemption
+#+date: 2026-07-25
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The kids earn points for routines and extras, but the number only ever goes up — there is nothing to spend it on. A score with no economy behind it stops motivating, and a balance that can only grow teaches nothing about saving toward something worth having. Parents have no way to turn a saved-up balance into an actual reward: not at the fridge tablet where the kids do everything else, and not from a phone when the family is away from the house. Off-the-shelf chore and allowance apps ship a rewards store, but only bundled with their own chore, money, and scheduling model — the whole reason Bear Cub exists instead of one of them.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. A parent maintains a catalog of rewards — each with a name, an emoji, and a price in points — and chooses for each whether it is offered to one child or to both.
+2. A child can browse the rewards on the kiosk and ask for one; a parent approves or declines that request from their phone. A parent can also redeem a reward for a child outright, with no request from the child, for when the family is away from the kiosk.
+3. A redemption spends the points: the child's total drops by the reward's price and stays down. The kiosk never displays a negative total.
+4. A child can only receive a reward they can genuinely afford, counting every penalty they have taken; the same limit binds a parent redeeming on a child's behalf, with no override.
+5. Each reward is either repeatable — a child who claims it can claim it again from the next day onward — or one-time, claimable once ever by a given child.
+6. Without reading a word, a child can tell which rewards they can have right now and which they cannot, and can see the day's answer to a request they made. An unanswered request does not carry over to the next day.
+7. Every redemption is recorded permanently at the price that was paid and is never erased; a parent can answer "did this child redeem this reward?" days afterward, including whether it was later reversed.
+8. A parent can reverse a redemption on the day it happened, returning the points.
+9. Checking what a child can afford is cheap enough to run on every tap, and stays cheap as months of history accumulate.
+
+* Out of Scope
+
+- Changing how points are earned — the earning and penalty rules are untouched by this version.
+- Streaks.
+- Fulfillment tracking — the app records that a redemption was granted, not that the parent actually delivered it.
+- Family-scarce rewards — a single item claimable once across the whole family, as distinct from once per child.
+- A points-stats or history view for the kids, and the "skip a chore" admin action.
+- Notifications of any kind when a request is made or answered.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)

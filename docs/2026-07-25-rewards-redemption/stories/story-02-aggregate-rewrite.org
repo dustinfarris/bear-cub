@@ -1,0 +1,73 @@
+#+title: Story 02 — Aggregate rewrite: ~Points.balances/1~ in grouped queries
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** The points aggregate rewrite (claimed batch member)
+
+The problem, sized: ~points_total/2~ issues one query for distinct ~(routine, local_date)~ pairs, then calls ~routine_day_contribution/3~ — two more queries — per pair. After a year of use that is roughly 2 routines × 365 days ≈ 1,460 queries per kid, per render, and it runs on every ~:chores_changed~ broadcast on every connected surface. Correctness is unaffected today, which is why it was deferred. Redemption makes it load-bearing three ways: the affordability check runs on *every tap* and on every reward-card render, the badge reads it, and admin reads it for every balance display. It lands *early in the batch*, before affordability depends on it (SC-9).
+
+The target shape: ~Points.balances(local_date) :: %{kid_id => signed_integer}~ — O(1) queries for an entire render, not O(kids × days). Three grouped queries:
+
+1. *Extras* — one aggregate over ~completions~ joined to ~chores~ where ~routine IS NULL~, summing a ~CASE~ over ~failed_at~ / ~undone_at~ (the shipped ~extra_contribution/2~ ladder expressed in SQL), grouped by ~kid_id~.
+2. *Routine-days* — one query grouping completions by ~(kid_id, routine, local_date)~ computing a live-completion count and an any-failed boolean, joined against a per-~(kid_id, routine)~ chore-count subquery; ~complete? = chore_count > 0 AND live_count == chore_count~, ~failed?~ from the boolean, then the capped ~+R~ / ~−R~ arithmetic.
+3. *Redemptions* — one aggregate summing ~points~ over rows with ~approved_at IS NOT NULL AND reversed_at IS NULL~, grouped by ~kid_id~.
+
+~Points.balance(kid, local_date)~ delegates to the map for a single kid, so tests and single-kid admin reads keep an ergonomic entry point. ~Points.total~ / ~Points.totals~ apply the D41 floor on top.
+
+There is *no memoization, no cached totals, no materialized column* — the derived-state doctrine (D10) is not negotiable here, and the aggregate is fast enough that caching would be complexity buying nothing.
+
+Discovered property — *roster drift*, surfaced but not fixed: ~routine_day_contribution/3~ loads the kid's *current* chore roster for the routine and requires every one of those chores to have a live completion on the evaluated date. Historical routine-days are therefore evaluated against today's roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping all historical ~+R~; deleting one can retroactively complete past days and grant points that were never earned. This ships today, and the badge already moves when a parent edits chores. Redemption raises the stakes: a roster edit can move a balance *after* a spend, potentially into debt with no fail involved.
+
+Semantics stay *unchanged* in the rewrite — it is a pure performance refactor, proven behavior-preserving by tests — and roster drift is captured as its own backlog entry at initiative close. The claimed item is the query shape, not the derivation's semantics.
+
+The pinning tests *must include a roster-drift case* — a routine-day evaluated after the roster changed — so behavior preservation is proven on the weird path and not merely the happy one. A refactor that silently "fixed" drift would be an unruled semantic change smuggled in under a performance story.
+
+** Testing and the on-device gate (excerpt)
+
+- *Unit* — ... the ~Points.balances~ aggregate *pinned against the current per-kid implementation*, including the roster-drift case.
+
+- *Time* — every test pins ~:routine_windows~ per ~docs/learnings.org~ [2026-07-17] rather than inheriting the wall clock, and all new derivations take a local-date argument. Day-rollover behavior (lapse, cooldown reset, verdict-state expiry) is tested by *passing a different local date*, never by mocking a clock.
+
+** Decision Log entries in scope
+
+- *[[file:../../decisions.org::#d72][D72]] (2026-07-25) — The points aggregate rewrite is claimed and lands early, as a pure performance refactor; roster drift is surfaced, not fixed:* The deferred ~points_total/2~ N+1 rewrite is claimed as a batch member of this initiative and lands *before* affordability depends on it. The shipped derivation issues one query per distinct ~(routine, local_date)~ pair plus two per pair — roughly 1,460 queries per kid per render after a year — and runs on every broadcast on every connected surface; redemption makes it load-bearing three ways (the affordability check on every tap and every card render, the badge, and every admin balance display). The target is ~Points.balances(local_date) :: %{kid_id => signed_integer}~ in three grouped queries — extras, routine-days, redemptions — O(1) queries for a whole render, with ~Points.balance/2~ delegating to the map and ~Points.total~ / ~Points.totals~ applying the D41 floor on top. No memoization, no cached totals, no materialized column: the derived-state doctrine (D10) is not negotiable and the aggregate is fast enough that caching would buy nothing. Semantics stay *unchanged*: the claimed item is the query shape, not the derivation's meaning. This preserves a discovered defect — ~routine_day_contribution/3~ evaluates historical routine-days against the kid's *current* roster, so adding a morning chore today retroactively wipes past ~+R~ and deleting one can grant points never earned; redemption raises the stakes, since a roster edit can move a balance after a spend, potentially into debt with no fail involved. Roster drift is captured as its own backlog entry at initiative close: a fix needs its own ruling, and a ~chores.inserted_at~-bounded roster would handle additions but not deletions, so the honest fix is not obviously cheap. The pinning tests must include a roster-drift case — a routine-day evaluated after the roster changed — so behavior preservation is proven on the weird path; a refactor that silently "fixed" drift would be an unruled semantic change smuggled in under a performance story. Rejected — fixing drift inside the rewrite: a semantic change disguised as a refactor, and unruled. Rejected — deferring the rewrite to a later initiative: rewards/SC-9 requires the affordability check be cheap on every tap and stay cheap as months accumulate, which the shipped shape does not satisfy. Settles rewards/SC-9. → rewards/Key Behaviors (points aggregate rewrite, testing), rewards/Out of Scope.
+
+* User Story
+
+As a kid tapping a reward card, I need the check of what I can afford to be answered from a couple of queries rather than one per day of history, so that the kiosk stays fast on every tap and stays fast after months of completions have piled up.
+
+* Acceptance Criteria
+
+** [ ] The Story-01 pinning suite passes UNMODIFIED — not one expected value, fixture, or assertion is edited to accommodate the rewrite. (SC-9, D72)
+** [ ] ~Points.balances(local_date)~ returns ~%{kid_id => signed_integer}~ for every kid in one pass, computed by grouped aggregate queries rather than per-kid, per-routine-day derivation. (SC-9, D72)
+** [ ] The extras leg is a single aggregate over ~completions~ joined to ~chores~ where ~routine IS NULL~, summing the shipped ~extra_contribution/2~ ladder (failed → ~−points~, undone → 0, live → ~+points~) grouped by ~kid_id~. (SC-9, D72)
+** [ ] The routine-days leg is a single query grouping completions by ~(kid_id, routine, local_date)~ against a per-~(kid_id, routine)~ chore-count subquery, applying ~complete? = chore_count > 0 AND live_count == chore_count~ and the capped ~+R~ / ~−R~ arithmetic — two fails in a routine-day still contribute a single ~−R~. (SC-9, D72, D40)
+** [ ] The query count for a whole-render balance read does not grow with the number of days of history — verified by exercising the aggregate over a fixture spanning many routine-days and asserting the derived values, with the query shape stated in the code, not merely intended. (SC-9, D72)
+** [ ] ~Points.balance/2~ delegates to the map for a single kid, and ~Points.total/2~ / ~Points.totals/1~ apply the ~max(0, …)~ floor on top of it. (SC-3, D72, D41)
+** [ ] No memoization, no cached total, and no materialized column is introduced — the balance stays fully derived on read. (D10, D72)
+** [ ] Roster-drift behavior is unchanged: the Story-01 roster-drift pin produces the same value after the rewrite as before it. (D72)
+** [ ] The kiosk points badge and every admin balance display show exactly what they showed before this story. (SC-3, D41)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 01: the module boundary (~BearCub.Points~, ~Chores.earnings/2~) and the pinning suite both come from there, and this story's acceptance rests on those pins passing untouched.
+- *The pins are the contract.* If a pin fails, the rewrite is wrong — do not adjust the pin. Editing a pin to make the rewrite pass is precisely the smuggled semantic change D72 forbids.
+- The design names three grouped queries. Two of them — extras and routine-days — are implementable here. The third, the redemptions aggregate, has no table to query until Story 03's migration lands, so the spend term contributes nothing in this story and Story 03 adds the third leg alongside the table it reads.
+- ~R~ comes from ~BearCub.Routines.bonus/0~; keep it out of the SQL as a parameter, not a literal.
+- Watch the SQLite/Ecto expression surface: the ~CASE~ ladder and the boolean any-failed aggregate need to work under ~ecto_sqlite3~; prefer ~fragment/1~ over cleverness, and keep the resulting arithmetic in Elixir where it is easier to read against the shipped ladder.
+- Pin ~:routine_windows~ in every test per ~docs/learnings.org~ [2026-07-17]; day-dependent behavior is exercised by passing a different local date.
+- Roster drift stays as-is. Its backlog entry is written at initiative close, not here.
