@@ -52,6 +52,25 @@ defmodule BearCub.Rewards do
   @doc "Gets a single reward. Raises `Ecto.NoResultsError` if absent."
   def get_reward!(id), do: Repo.get!(Reward, id)
 
+  @doc "Gets a single reward. Returns `nil` if absent, instead of raising."
+  def get_reward(id), do: Repo.get(Reward, id)
+
+  @doc """
+  The whole catalog, for the admin screen that manages it (D68): every
+  not-retired reward regardless of audience, in parent-controlled
+  `position` order, with `:kid` preloaded so a caller can show who each
+  reward is offered to. Unlike `list_rewards/2`, this is not filtered to
+  one kid's audience — the parent manages the entire catalog at once.
+  """
+  def list_all_rewards do
+    Repo.all(
+      from r in Reward,
+        where: is_nil(r.retired_at),
+        order_by: [asc: r.position, asc: r.id],
+        preload: [:kid]
+    )
+  end
+
   @doc """
   Creates a reward offered to `kid_or_nil` (`nil` = any kid), appended at
   the end of the flat position list — a single bucket, no discriminator
@@ -95,12 +114,63 @@ defmodule BearCub.Rewards do
 
   def change_reward(%Reward{} = reward, attrs \\ %{}), do: Reward.changeset(reward, attrs)
 
+  @doc """
+  Reorders `reward` one slot `:up` or `:down` (D68), written from
+  `Chores.move_chore/2` as its template: the same neighbor swap inside a
+  transaction, the same silent no-op at either end of the list, the same
+  broadcast. The reward catalog is a single flat bucket — no
+  `is_nil/1` discriminator needed (`docs/learnings.org` [2026-07-12]
+  does not apply here).
+  """
+  def move_reward(%Reward{} = reward, direction) when direction in [:up, :down] do
+    case reward_neighbor(reward, direction) do
+      nil ->
+        {:ok, reward}
+
+      other ->
+        {:ok, moved} =
+          Repo.transaction(fn ->
+            {:ok, _} =
+              other |> Ecto.Changeset.change(position: reward.position) |> Repo.update()
+
+            {:ok, moved} =
+              reward |> Ecto.Changeset.change(position: other.position) |> Repo.update()
+
+            moved
+          end)
+
+        broadcast_change({:ok, moved})
+    end
+  end
+
   defp kid_id_of(nil), do: nil
   defp kid_id_of(%Kid{id: id}), do: id
 
   defp next_position do
     max_position = Repo.one(from r in Reward, select: max(r.position))
     (max_position || -1) + 1
+  end
+
+  # Position-gap tolerant, mirroring Chores.neighbor/2 — the nearest
+  # not-retired reward wins, ties broken by id. Archived rewards are
+  # excluded so the neighbor lookup matches what the admin catalog
+  # (list_all_rewards/0) actually shows.
+  defp reward_neighbor(%Reward{} = reward, :up) do
+    Repo.one(
+      from r in Reward,
+        where: is_nil(r.retired_at) and r.position < ^reward.position,
+        order_by: [desc: r.position, desc: r.id],
+        limit: 1
+    )
+  end
+
+  defp reward_neighbor(%Reward{} = reward, :down) do
+    Repo.one(
+      from r in Reward,
+        where: is_nil(r.retired_at) and r.position > ^reward.position,
+        order_by: [asc: r.position, asc: r.id],
+        limit: 1
+    )
   end
 
   ## Redemptions — write paths (D59)

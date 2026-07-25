@@ -85,6 +85,97 @@ defmodule BearCub.RewardsTest do
       assert Rewards.list_rewards(kid, ~D[2026-07-25]) == []
       assert Rewards.get_reward!(reward.id).id == reward.id
     end
+
+    test "list_all_rewards/0 returns every non-retired reward regardless of audience, in position order" do
+      kid = kid_fixture()
+      other = sibling()
+
+      family = reward_fixture(nil, %{name: "Family Movie"})
+      mine = reward_fixture(kid, %{name: "Mine"})
+      theirs = reward_fixture(other, %{name: "Theirs"})
+
+      {:ok, archived} =
+        Rewards.archive_reward(
+          reward_fixture(nil, %{name: "Gone"}),
+          la(~D[2026-07-25], ~T[10:00:00])
+        )
+
+      assert Rewards.list_all_rewards() |> Enum.map(& &1.id) == [family.id, mine.id, theirs.id]
+      refute archived.id in (Rewards.list_all_rewards() |> Enum.map(& &1.id))
+    end
+
+    test "get_reward/1 returns nil for a vanished reward instead of raising" do
+      reward = reward_fixture()
+      assert Rewards.get_reward(reward.id).id == reward.id
+
+      Repo.delete!(reward)
+      assert Rewards.get_reward(reward.id) == nil
+    end
+
+    test "list_all_rewards/0 preloads :kid so callers can show who a reward is offered to" do
+      kid = kid_fixture()
+      reward_fixture(kid, %{name: "Mine"})
+
+      [loaded] = Rewards.list_all_rewards()
+      assert %BearCub.Chores.Kid{} = loaded.kid
+      assert loaded.kid.id == kid.id
+    end
+  end
+
+  describe "ordering (SC-1, D68)" do
+    test "move_reward/2 :down swaps position with the next reward" do
+      {:ok, first} = Rewards.create_reward(nil, %{name: "First", icon: "1️⃣", points: 5})
+      {:ok, second} = Rewards.create_reward(nil, %{name: "Second", icon: "2️⃣", points: 5})
+
+      {:ok, _} = Rewards.move_reward(first, :down)
+
+      assert Rewards.list_all_rewards() |> Enum.map(& &1.id) == [second.id, first.id]
+    end
+
+    test "move_reward/2 :up swaps position with the previous reward" do
+      {:ok, first} = Rewards.create_reward(nil, %{name: "First", icon: "1️⃣", points: 5})
+      {:ok, second} = Rewards.create_reward(nil, %{name: "Second", icon: "2️⃣", points: 5})
+
+      {:ok, _} = Rewards.move_reward(second, :up)
+
+      assert Rewards.list_all_rewards() |> Enum.map(& &1.id) == [second.id, first.id]
+    end
+
+    test "move_reward/2 is a silent no-op at the top of the list" do
+      {:ok, only} = Rewards.create_reward(nil, %{name: "Only", icon: "🌟", points: 5})
+
+      assert {:ok, _} = Rewards.move_reward(only, :up)
+      assert Rewards.list_all_rewards() |> Enum.map(& &1.id) == [only.id]
+    end
+
+    test "move_reward/2 is a silent no-op at the bottom of the list" do
+      {:ok, only} = Rewards.create_reward(nil, %{name: "Only", icon: "🌟", points: 5})
+
+      assert {:ok, _} = Rewards.move_reward(only, :down)
+      assert Rewards.list_all_rewards() |> Enum.map(& &1.id) == [only.id]
+    end
+
+    test "move_reward/2 broadcasts :rewards_changed" do
+      {:ok, first} = Rewards.create_reward(nil, %{name: "First", icon: "1️⃣", points: 5})
+      {:ok, _second} = Rewards.create_reward(nil, %{name: "Second", icon: "2️⃣", points: 5})
+      Rewards.subscribe()
+
+      {:ok, _} = Rewards.move_reward(first, :down)
+      assert_receive :rewards_changed
+    end
+
+    test "the new order from move_reward/2 is what the kiosk-facing list_rewards/2 also reads" do
+      kid = kid_fixture()
+      {:ok, first} = Rewards.create_reward(nil, %{name: "First", icon: "1️⃣", points: 5})
+      {:ok, second} = Rewards.create_reward(nil, %{name: "Second", icon: "2️⃣", points: 5})
+
+      {:ok, _} = Rewards.move_reward(first, :down)
+
+      assert Rewards.list_rewards(kid, ~D[2026-07-25]) |> Enum.map(& &1.id) == [
+               second.id,
+               first.id
+             ]
+    end
   end
 
   describe "one open request per kid per local day (D61)" do

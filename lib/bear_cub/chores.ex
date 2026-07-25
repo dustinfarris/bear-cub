@@ -39,6 +39,9 @@ defmodule BearCub.Chores do
   @doc "Gets a single kid. Raises `Ecto.NoResultsError` if absent."
   def get_kid!(id), do: Repo.get!(Kid, id)
 
+  @doc "Gets a single kid. Returns `nil` if absent, instead of raising."
+  def get_kid(id), do: Repo.get(Kid, id)
+
   @doc "Creates a kid."
   def create_kid(attrs) do
     %Kid{}

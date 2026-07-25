@@ -4,7 +4,7 @@ defmodule BearCub.Rewards.Reward do
 
   schema "rewards" do
     field :name, :string
-    field :icon, :string
+    field :icon, :string, default: "🎁"
     field :points, :integer
     field :repeatable, :boolean, default: true
     field :position, :integer

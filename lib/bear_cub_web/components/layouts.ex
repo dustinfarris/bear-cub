@@ -96,7 +96,7 @@ defmodule BearCubWeb.Layouts do
   sees an anchor (FR-26).
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :active, :atom, required: true, values: [:today, :chores, :kids, :calendars]
+  attr :active, :atom, required: true, values: [:today, :chores, :kids, :calendars, :rewards]
   slot :inner_block, required: true
 
   def admin(assigns) do
@@ -109,7 +109,7 @@ defmodule BearCubWeb.Layouts do
       id="admin-tabs"
       class="fixed inset-x-0 bottom-0 border-t border-base-300 bg-base-100 pb-[env(safe-area-inset-bottom)]"
     >
-      <div class="mx-auto grid max-w-md grid-cols-4">
+      <div class="mx-auto grid max-w-md grid-cols-5">
         <.admin_tab
           navigate={~p"/admin"}
           icon="hero-check-circle"
@@ -133,6 +133,12 @@ defmodule BearCubWeb.Layouts do
           icon="hero-calendar-days"
           label="Calendars"
           active={@active == :calendars}
+        />
+        <.admin_tab
+          navigate={~p"/admin/rewards"}
+          icon="hero-gift"
+          label="Rewards"
+          active={@active == :rewards}
         />
       </div>
     </nav>

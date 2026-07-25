@@ -23,6 +23,14 @@ defmodule BearCub.ChoresTest do
       assert Chores.get_kid!(kid.id) == kid
     end
 
+    test "get_kid/1 returns nil for a vanished kid instead of raising" do
+      kid = kid_fixture()
+      assert Chores.get_kid(kid.id) == kid
+
+      Repo.delete!(kid)
+      assert Chores.get_kid(kid.id) == nil
+    end
+
     test "create_kid/1 with valid data creates a kid" do
       valid_attrs = %{name: "Kid A", color: "#f59e0b", position: 0}
 

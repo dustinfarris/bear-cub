@@ -6,6 +6,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.LocalTime
   alias BearCub.Messages
   alias BearCub.Points
+  alias BearCub.Rewards
   alias BearCub.Routines
 
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
@@ -19,6 +20,7 @@ defmodule BearCubWeb.KioskLive do
     if connected?(socket) do
       Chores.subscribe()
       Calendars.subscribe()
+      Rewards.subscribe()
     end
 
     # one clock read per mount — two could straddle a window edge
@@ -75,6 +77,14 @@ defmodule BearCubWeb.KioskLive do
   end
 
   def handle_info(:calendars_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
+  # Story 04, D71: a redemption (any of Rewards' write paths) changes a
+  # kid's balance — the points badge (D43) must reflect it live. The
+  # reward view / banner button / card states this topic also feeds are
+  # Story 05's job; this clause only keeps the badge fresh.
+  def handle_info(:rewards_changed, socket) do
     {:noreply, load(socket, LocalTime.now())}
   end
 

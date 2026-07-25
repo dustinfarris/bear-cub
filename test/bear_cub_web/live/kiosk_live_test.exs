@@ -4,6 +4,7 @@ defmodule BearCubWeb.KioskLiveTest do
   import Phoenix.LiveViewTest
   import BearCub.ChoresFixtures
   import BearCub.CalendarsFixtures
+  import BearCub.RewardsFixtures
 
   alias BearCub.Calendars
   alias BearCub.LocalTime
@@ -1325,6 +1326,20 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
 
       assert has_element?(view, "#points-badge-#{kid.id}", "12")
+    end
+
+    test "a redemption from admin updates the badge live, without a reload (Story 04 AC-8, D71)",
+         %{conn: conn, kid: kid} do
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 50})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+      reward = reward_fixture(nil, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#points-badge-#{kid.id}", "50")
+
+      {:ok, _} = BearCub.Rewards.direct_redeem(kid, reward, 50, LocalTime.now())
+
+      assert has_element?(view, "#points-badge-#{kid.id}", "40")
     end
 
     test "the badge stays visible across rows, collapsed band, and re-expanded rows; the night screen replaces it entirely (D56)",
