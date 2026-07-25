@@ -169,7 +169,7 @@ Ordering is *~position~ with ▲/▼*. ~move_reward/2~ is written from the shipp
 
 Removal is *archive, never delete*: ~retired_at~ is the only removal affordance in this design. An archived reward vanishes from the kiosk catalog and from the direct-redeem picker, and remains in the history view with its redemptions intact (SC-7).
 
-Direct-redeem lives here: a per-reward action opening a kid picker showing each kid's *true signed balance*, then a ~data-confirm~ guard, then the spend. Same affordability and availability rules as the kid leg — no override (SC-2, SC-4).
+Direct-redeem lives here: a per-reward action opening a kid picker *scoped to the reward's audience* — showing the true signed balance of each kid the reward is offered to, never every kid regardless of ~kid_id~ — then a ~data-confirm~ guard, then the spend. Same affordability, availability, and audience rules as the kid leg — no override (SC-2, SC-4, D74).
 
 ** ~Admin.TodayLive~ — the approval queue and reversal
 
@@ -367,3 +367,9 @@ Entries for this initiative live in [[file:../decisions.org]] (D57 onward).
 /Sections affected: §~Admin.TodayLive~ — the approval queue and reversal/
 
 The initial Story 03 close shipped ~approve_redemption/3~ and ~decline_redemption/2~ guarded by a date-independent ~check_open/1~: any redemption with no verdict yet — pending *or lapsed* — was answerable, on the reading that D61's lapse only frees the one-open-request slot and does not make the row inert. If you're reading old excerpts, story fixtures, or code referencing that shape, they're stale — a lapsed row (no verdict, dated before today) is now refused by both write paths with ~{:error, :not_open}~, the same signal an already-answered row returns. Rationale: [[file:../decisions.org::#d73][D73]].
+
+** [2026-07-25 Sat 14:21] §~/admin/rewards~ — the catalog — direct-redeem's kid picker is now scoped to the reward's audience (D74)
+
+/Sections affected: §~/admin/rewards~ — the catalog/
+
+The initial Story 04 close shipped the direct-redeem kid picker listing *every* kid regardless of a kid-scoped reward's ~kid_id~, and neither ~direct_redeem/4~ nor ~approve_redemption/3~ checked audience at all — the domain permitted redeeming a kid-scoped reward for the wrong kid, with the mismatch swept to the backlog as an untriaged, unruled discovery. If you're reading old excerpts, story fixtures, or code referencing "showing each kid's true signed balance" as *every* kid in the picker, that's stale: the picker now filters to the reward's audience via ~Rewards.offered?/2~, and both write paths refuse a non-audience kid with ~{:error, :not_offered}~. Rationale: [[file:../decisions.org::#d74][D74]].
