@@ -322,6 +322,81 @@ defmodule BearCub.Rewards do
 
   defp check_approved(%Redemption{}), do: {:error, :not_approved}
 
+  @doc """
+  Whether `kid_id` has an open request today, for any reward (Story 05,
+  D65) — the banner gift button's second state (=⏳=). Marker-derived,
+  day-scoped exactly like `pending?/2`, but not reward-scoped: only one
+  request can be open per kid per day (D61), so this is the whole check.
+  """
+  def any_pending?(kid_id, %Date{} = local_date) do
+    Repo.exists?(
+      from r in Redemption,
+        where:
+          r.kid_id == ^kid_id and not is_nil(r.requested_at) and is_nil(r.approved_at) and
+            is_nil(r.declined_at) and r.local_date == ^local_date
+    )
+  end
+
+  @doc """
+  A reward card's state for `kid_id` as of `local_date` (Story 05, D66):
+  one ordered resolution, first match wins. `balance` is the kid's raw
+  signed balance (D63/D64), supplied by the caller through
+  `BearCub.Points` at the boundary. Rows 1 and 2 of the design's
+  precedence table both render nothing, so they collapse to `:absent`;
+  the remaining five distinct renderings are `:pending`, `:declined`,
+  `:claimed`, `:locked`, and `:available`.
+  """
+  def card_state(%Reward{} = reward, kid_id, balance, %Date{} = local_date)
+      when is_integer(balance) do
+    cond do
+      reward.retired_at ->
+        :absent
+
+      not reward.repeatable and consumed_before?(reward.id, kid_id, local_date) ->
+        :absent
+
+      pending_today?(reward.id, kid_id, local_date) ->
+        :pending
+
+      declined_today?(reward.id, kid_id, local_date) ->
+        :declined
+
+      on_cooldown?(reward.id, kid_id, local_date) ->
+        :claimed
+
+      balance < reward.points ->
+        :locked
+
+      true ->
+        :available
+    end
+  end
+
+  defp consumed_before?(reward_id, kid_id, local_date) do
+    reward_id
+    |> spends_query(kid_id)
+    |> where([r], r.local_date < ^local_date)
+    |> Repo.exists?()
+  end
+
+  defp pending_today?(reward_id, kid_id, local_date) do
+    Repo.exists?(
+      from r in Redemption,
+        where:
+          r.reward_id == ^reward_id and r.kid_id == ^kid_id and not is_nil(r.requested_at) and
+            is_nil(r.approved_at) and is_nil(r.declined_at) and r.local_date == ^local_date
+    )
+  end
+
+  defp declined_today?(reward_id, kid_id, local_date) do
+    Repo.exists?(
+      from r in Redemption,
+        where:
+          r.reward_id == ^reward_id and r.kid_id == ^kid_id and not is_nil(r.declined_at) and
+            r.local_date == ^local_date
+    )
+  end
+
   ## Redemption state (D59) — derived from markers, never a status column
 
   @doc "Requested today, no verdict yet."

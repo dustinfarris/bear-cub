@@ -618,6 +618,109 @@ defmodule BearCub.RewardsTest do
     end
   end
 
+  describe "any_pending?/2 (Story 05 — the banner button's second state, D65)" do
+    test "true only for a kid with an unanswered request dated today" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(nil, %{points: 10})
+
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-10])
+
+      {:ok, _} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.any_pending?(kid.id, ~D[2026-07-10])
+      refute Rewards.any_pending?(other.id, ~D[2026-07-10])
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-11])
+    end
+
+    test "false once the request is answered or has lapsed" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      Rewards.decline_redemption(pending, la(~D[2026-07-10], ~T[09:00:00]))
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-10])
+
+      {:ok, pending2} = Rewards.request_redemption(kid, reward, la(~D[2026-07-11], ~T[08:00:00]))
+      assert Rewards.any_pending?(kid.id, ~D[2026-07-11])
+      # lapsed by the next day — never carries over
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-12])
+      Rewards.get_redemption!(pending2.id)
+    end
+  end
+
+  describe "card_state/4 — the seven-row precedence table, first match wins (D66)" do
+    test "row 1 — retired renders absent regardless of any other state" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, reward} = Rewards.archive_reward(reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :absent
+    end
+
+    test "row 2 — one-time consumed on an earlier day renders absent; today it renders claimed" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10, repeatable: false})
+      {:ok, _} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :claimed
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :absent
+    end
+
+    test "row 3 — a pending request today renders pending, untappable by construction (no other state wins)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, _} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :pending
+    end
+
+    test "row 4 — declined today renders declined, and doubles as the re-ask block" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, _} = Rewards.decline_redemption(pending, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :declined
+      # the next local day the decline no longer applies
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :available
+    end
+
+    test "row 5 — claimed today outranks unaffordable (D66's own ordering note)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 50, repeatable: true})
+      {:ok, _} = Rewards.direct_redeem(kid, reward, 50, la(~D[2026-07-10], ~T[08:00:00]))
+
+      # balance has since dropped below the price, but claimed still wins
+      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :claimed
+    end
+
+    test "row 5 — a repeatable reward is dimmed as claimed on cooldown day, available again next day" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10, repeatable: true})
+      {:ok, _} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :claimed
+      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :available
+    end
+
+    test "row 6 — unaffordable against the raw signed balance renders locked, even at balance 0" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+
+      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :locked
+      assert Rewards.card_state(reward, kid.id, -3, ~D[2026-07-10]) == :locked
+      assert Rewards.card_state(reward, kid.id, 9, ~D[2026-07-10]) == :locked
+    end
+
+    test "row 7 — otherwise a full-color, tappable card" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+
+      assert Rewards.card_state(reward, kid.id, 10, ~D[2026-07-10]) == :available
+    end
+  end
+
   describe "live updates (D71)" do
     test "subscribe/0 receives a payload-free :rewards_changed on every successful write" do
       kid = kid_fixture()

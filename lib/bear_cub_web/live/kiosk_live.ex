@@ -15,6 +15,12 @@ defmodule BearCubWeb.KioskLive do
   # concrete duration is implementation freedom, tuned at the on-device gate.
   @collapse_delay_ms 400
 
+  # Reward-shop idle auto-return (Story 05, D65): how long a column stays
+  # open with no tap before it snaps back to normal, in case a child wanders
+  # off mid-shop. Deliberately not design-pinned — tuned at the on-device
+  # gate exactly like @collapse_delay_ms was; 30s is the starting guess.
+  @rewards_idle_ms 30_000
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -30,6 +36,8 @@ defmodule BearCubWeb.KioskLive do
      socket
      |> assign(:expanded, MapSet.new())
      |> assign(:pending_collapse, MapSet.new())
+     |> assign(:rewards, MapSet.new())
+     |> assign(:rewards_timers, %{})
      |> load(now)
      |> schedule_boundary(now)}
   end
@@ -71,6 +79,58 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:expanded, expanded) |> load(LocalTime.now())}
   end
 
+  # Opens the reward shop (Story 05, D65): `:rewards` is a socket-level
+  # MapSet of kid ids, exactly like `@expanded` — never persisted. Arms the
+  # idle-auto-return timer for this kid.
+  def handle_event("open-shop", %{"kid-id" => id}, socket) do
+    kid_id = String.to_integer(id)
+
+    socket =
+      socket
+      |> assign(:rewards, MapSet.put(socket.assigns.rewards, kid_id))
+      |> arm_rewards_idle_timer(kid_id)
+
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
+  # Explicit ✕ dismiss (D65): cancels the idle timer and returns the
+  # column to its normal state.
+  def handle_event("dismiss-shop", %{"kid-id" => id}, socket) do
+    kid_id = String.to_integer(id)
+
+    socket =
+      socket
+      |> cancel_rewards_idle_timer(kid_id)
+      |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
+
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
+  # One tap to ask (D65, D63): no affordability/availability/audience check
+  # here — the card's own tappability (derived by `Rewards.card_state/4`)
+  # is the whole guard, and a race that hits the one-open-request index
+  # (D61) is treated as already-asked, per `request_redemption/3`'s own
+  # doc. The view returns to the normal column immediately either way.
+  def handle_event("request-reward", %{"kid-id" => id, "reward-id" => reward_id}, socket) do
+    now = LocalTime.now()
+    kid_id = String.to_integer(id)
+
+    case {Chores.get_kid(kid_id), Rewards.get_reward(reward_id)} do
+      {%Chores.Kid{} = kid, %Rewards.Reward{} = reward} ->
+        Rewards.request_redemption(kid, reward, now)
+
+      _ ->
+        :ok
+    end
+
+    socket =
+      socket
+      |> cancel_rewards_idle_timer(kid_id)
+      |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
+
+    {:noreply, load(socket, now)}
+  end
+
   @impl true
   def handle_info(:chores_changed, socket) do
     {:noreply, load(socket, LocalTime.now())}
@@ -91,9 +151,31 @@ defmodule BearCubWeb.KioskLive do
   def handle_info(:boundary, socket) do
     # Window handoff (FR-3) and the midnight re-render of derived day state
     # (design §2) are all one event: recompute everything and schedule the
-    # next boundary.
+    # next boundary. The reward shop is cleared here too (D65): `:rewards`
+    # does not carry across a routine boundary re-render.
     now = LocalTime.now()
-    {:noreply, socket |> load(now) |> schedule_boundary(now)}
+
+    socket =
+      socket
+      |> cancel_all_rewards_idle_timers()
+      |> assign(:rewards, MapSet.new())
+      |> load(now)
+      |> schedule_boundary(now)
+
+    {:noreply, socket}
+  end
+
+  # Idle auto-return (D65): fires when a shopping column has seen no tap
+  # for `@rewards_idle_ms`. Harmless no-op if the kid already isn't
+  # shopping (dismissed, requested, or a boundary already cleared it) —
+  # including a stray fire at night, when no column could ever be open.
+  def handle_info({:rewards_idle, kid_id}, socket) do
+    socket =
+      socket
+      |> assign(:rewards_timers, Map.delete(socket.assigns.rewards_timers, kid_id))
+      |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
+
+    {:noreply, load(socket, LocalTime.now())}
   end
 
   # Collapse-delay (Story 07): fires once per kid whose routine just became
@@ -122,6 +204,7 @@ defmodule BearCubWeb.KioskLive do
     failed_ids = Chores.failed_chore_ids(today)
     expanded = socket.assigns.expanded
     pending_collapse = socket.assigns.pending_collapse
+    rewards = socket.assigns.rewards
 
     {columns, pending_collapse} =
       Enum.map_reduce(Chores.list_kids(), pending_collapse, fn kid, pending_collapse ->
@@ -134,7 +217,8 @@ defmodule BearCubWeb.KioskLive do
           failed_ids,
           today,
           expanded,
-          pending_collapse
+          pending_collapse,
+          rewards
         )
       end)
 
@@ -175,7 +259,8 @@ defmodule BearCubWeb.KioskLive do
          failed_ids,
          today,
          expanded,
-         pending_collapse
+         pending_collapse,
+         rewards
        ) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
@@ -203,10 +288,12 @@ defmodule BearCubWeb.KioskLive do
     delaying? = MapSet.member?(pending_collapse, kid.id)
     reveal? = not night? and complete? and not delaying?
     kid_expanded? = MapSet.member?(expanded, kid.id)
+    shopping? = not night? and MapSet.member?(rewards, kid.id)
 
     state =
       cond do
         night? -> :night
+        shopping? -> :rewards
         reveal? and not kid_expanded? -> :band
         true -> :rows
       end
@@ -219,6 +306,15 @@ defmodule BearCubWeb.KioskLive do
       else
         []
       end
+
+    # Gift-button pending state (Story 05, D65, D67): read regardless of
+    # `state`, since the banner (and its button) render in every non-night
+    # state, not only while shopping.
+    pending_request? = not night? and Rewards.any_pending?(kid.id, today)
+
+    # The catalog itself is only ever fetched while this kid is actually
+    # shopping — the sibling column pays nothing for the reward domain.
+    catalog = if state == :rewards, do: build_catalog(kid, today), else: []
 
     column = %{
       kid: kid,
@@ -233,10 +329,25 @@ defmodule BearCubWeb.KioskLive do
       # per-chore loop (D45, D46) — only relevant in the expanded rows state.
       routine_penalty?: state == :rows and Enum.any?(chore_rows, & &1.failed?),
       events: Calendars.today_events(kid.id, today),
-      points: Points.total(kid, today)
+      points: Points.total(kid, today),
+      pending_request?: pending_request?,
+      catalog: catalog
     }
 
     {column, pending_collapse}
+  end
+
+  # Reward cards, in catalog order, resolved through the seven-row
+  # precedence table (D66) and filtered to what's actually rendered —
+  # rows 1 and 2 render nothing, so an `:absent` card never reaches the
+  # template at all.
+  defp build_catalog(kid, today) do
+    balance = Points.balance(kid, today)
+
+    kid
+    |> Rewards.list_rewards(today)
+    |> Enum.map(&%{reward: &1, state: Rewards.card_state(&1, kid.id, balance, today)})
+    |> Enum.reject(&(&1.state == :absent))
   end
 
   # A chore/extra reads "failed and not yet redone" (warning shown) only
@@ -258,6 +369,33 @@ defmodule BearCubWeb.KioskLive do
     end
 
     socket
+  end
+
+  # Idle auto-return timer (Story 05, D65): armed on open, replaced (not
+  # merely reset) on each tap inside the view. Cancelling any existing
+  # timer before arming a new one is what makes "reset" correct — an
+  # earlier still-pending timer message would otherwise close the view
+  # early even though the child just interacted with it.
+  defp arm_rewards_idle_timer(socket, kid_id) do
+    socket = cancel_rewards_idle_timer(socket, kid_id)
+    ref = Process.send_after(self(), {:rewards_idle, kid_id}, @rewards_idle_ms)
+    assign(socket, :rewards_timers, Map.put(socket.assigns.rewards_timers, kid_id, ref))
+  end
+
+  defp cancel_rewards_idle_timer(socket, kid_id) do
+    case Map.get(socket.assigns.rewards_timers, kid_id) do
+      nil ->
+        socket
+
+      ref ->
+        Process.cancel_timer(ref)
+        assign(socket, :rewards_timers, Map.delete(socket.assigns.rewards_timers, kid_id))
+    end
+  end
+
+  defp cancel_all_rewards_idle_timers(socket) do
+    Enum.each(socket.assigns.rewards_timers, fn {_kid_id, ref} -> Process.cancel_timer(ref) end)
+    assign(socket, :rewards_timers, %{})
   end
 
   @impl true
@@ -307,13 +445,15 @@ defmodule BearCubWeb.KioskLive do
               extras: extras,
               routine_penalty?: routine_penalty?,
               events: events,
-              points: points
+              points: points,
+              pending_request?: pending_request?,
+              catalog: catalog
             } <-
               @columns
           }
           :if={!@night?}
           id={"kid-column-#{kid.id}"}
-          class="grid grid-rows-[auto_auto_1fr_auto] overflow-hidden bg-base-100"
+          class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100"
         >
           <%!-- Header band: the color block, not the name, is the primary
                identifier (FR-5a) — a pre-reader finds their column by color.
@@ -359,133 +499,232 @@ defmodule BearCubWeb.KioskLive do
             <h1 class="text-4xl font-bold tracking-tight text-white drop-shadow-sm">
               {kid.name}
             </h1>
-            <span
-              id={"points-badge-#{kid.id}"}
-              class="absolute right-5 flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-lg font-bold text-white drop-shadow-sm"
-            >
-              <.icon name="hero-star-solid" class="size-4" />
-              {points}
-            </span>
+            <%!-- Points badge + gift button (Story 05, D65): grouped on the
+                 right — badge and shop are the same economy, so they read
+                 as one unit. The badge's own tap gesture stays unbound
+                 (the deferred points-stats affordance is not precluded);
+                 the gift button is a distinct gesture, always tappable,
+                 opening the shop regardless of the pending state its own
+                 glyph shows. --%>
+            <div class="absolute right-5 flex items-center gap-2">
+              <span
+                id={"points-badge-#{kid.id}"}
+                class="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-lg font-bold text-white drop-shadow-sm"
+              >
+                <.icon name="hero-star-solid" class="size-4" />
+                {points}
+              </span>
+              <button
+                type="button"
+                id={"gift-button-#{kid.id}"}
+                phx-click="open-shop"
+                phx-value-kid-id={kid.id}
+                data-pending={pending_request?}
+                class="flex size-9 items-center justify-center rounded-full bg-white/20 text-xl leading-none transition active:scale-[0.99]"
+              >
+                <%= if pending_request? do %>
+                  ⏳
+                <% else %>
+                  🎁
+                <% end %>
+              </button>
+            </div>
           </header>
 
-          <%!-- Events strip: chronological, blended per-kid + family list
-               (FR-19). All-day events pin to the top (FR-22); a family
-               event renders as a neutral chip + house glyph in every
-               column, a personal event as the kid-color dot. --%>
-          <div id={"events-#{kid.id}"} class="border-b border-base-300 px-5 py-3">
-            <p :if={events == []} class="text-sm text-base-content/40">No events today</p>
-            <ul :if={events != []} class="flex flex-col gap-1.5">
-              <li
-                :for={event <- events}
-                id={"event-#{kid.id}-#{event.uid}"}
-                class="flex items-center gap-2 text-sm"
-              >
-                <span
-                  :if={!event.family?}
-                  class="size-2.5 shrink-0 rounded-full"
-                  style={"background-color: #{kid.color}"}
-                />
-                <span
-                  :if={event.family?}
-                  class="flex size-4 shrink-0 items-center justify-center rounded-full bg-base-300"
+          <%!-- Column body: either the normal routine region (events,
+               routine card, extras) or the reward shop (Story 05, D65) —
+               the shop replaces the whole body, never sits beside it, so
+               the 5-chore no-scroll budget (FR-6) is untouched by
+               construction. The banner above is shared by both. --%>
+          <div :if={state != :rewards} class="grid grid-rows-[auto_1fr_auto] overflow-hidden">
+            <%!-- Events strip: chronological, blended per-kid + family list
+                 (FR-19). All-day events pin to the top (FR-22); a family
+                 event renders as a neutral chip + house glyph in every
+                 column, a personal event as the kid-color dot. --%>
+            <div id={"events-#{kid.id}"} class="border-b border-base-300 px-5 py-3">
+              <p :if={events == []} class="text-sm text-base-content/40">No events today</p>
+              <ul :if={events != []} class="flex flex-col gap-1.5">
+                <li
+                  :for={event <- events}
+                  id={"event-#{kid.id}-#{event.uid}"}
+                  class="flex items-center gap-2 text-sm"
                 >
-                  <.icon name="hero-home" class="size-3 text-base-content/60" />
-                </span>
-                <span class="shrink-0 text-base-content/40">{event_time_label(event)}</span>
-                <span class="truncate font-medium">{event.summary}</span>
-              </li>
-            </ul>
-          </div>
-
-          <%!-- Routine card: either the chore rows (normal or manually
-               re-expanded) or the completion message (collapsed band). The
-               persistent routine header bar is retired (D44, D48) — the
-               banner completion icon above is now the sole collapse/expand
-               affordance; a tap is a no-op server-side unless the routine
-               is reveal-eligible (D33/D34). Columns never render at night
-               (D56), so no :night state reaches this markup. --%>
-          <div id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
-            <%!-- Chores: fixed-height full-width rows, top-aligned (empty
-                 space below the last card is fine); beyond capacity only
-                 this region scrolls (FR-6). A done row shrinks a little
-                 (h-24 → h-20) — a quiet completion signal that also buys
-                 back vertical room for the no-scroll budget.
-                 Not done = routine tint fill +
-                 child-color border (chore ownership); done = kid-color fill
-                 + check, emoji still visible (FR-7), border merged into the
-                 fill; tap again to undo, no confirmation (FR-8).
-                 phx-throttle swallows the excited rapid double-tap (D15).
-                 Also covers the manually re-expanded band (state 4, D34):
-                 same rows, all shown done, tap-to-undo. --%>
-            <div :if={state == :rows} class="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <%!-- Routine-penalty strip: a single capped −R shown once while
-                   any routine chore is failed-and-not-redone (D45, D46) —
-                   never a per-chore sum (two fails still show one −R, not
-                   −2R). Explicit row-start so the chore list below always
-                   lands in the 1fr track, strip present or not. --%>
-              <div
-                :if={routine_penalty?}
-                id={"routine-penalty-#{kid.id}"}
-                class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 text-base font-bold text-warning-content"
-              >
-                <.icon name="hero-exclamation-triangle" class="size-5" />
-                <span>−{Routines.bonus()}</span>
-              </div>
-
-              <ul
-                id={"chores-#{kid.id}"}
-                class="row-start-2 grid max-h-full auto-rows-min gap-px self-start overflow-y-auto bg-base-300"
-              >
-                <.chore_row
-                  :for={%{chore: chore, done?: done?, failed?: failed?} <- chores}
-                  chore={chore}
-                  done?={done?}
-                  failed?={failed?}
-                  kid={kid}
-                  routine={routine}
-                />
+                  <span
+                    :if={!event.family?}
+                    class="size-2.5 shrink-0 rounded-full"
+                    style={"background-color: #{kid.color}"}
+                  />
+                  <span
+                    :if={event.family?}
+                    class="flex size-4 shrink-0 items-center justify-center rounded-full bg-base-300"
+                  >
+                    <.icon name="hero-home" class="size-3 text-base-content/60" />
+                  </span>
+                  <span class="shrink-0 text-base-content/40">{event_time_label(event)}</span>
+                  <span class="truncate font-medium">{event.summary}</span>
+                </li>
               </ul>
             </div>
 
-            <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
-                 active window, not pure completion. A single bounded card —
-                 routine tint fill (same token as chore cards), message
-                 inside; no header bar edge (retired, D44, D48). `self-start`
-                 keeps it hugging its own content height instead of
-                 stretching to fill the column (docs/design-language.org).
-                 The banner completion icon above is the tap target back to
-                 the rows, not the card itself (D44). --%>
-            <div
-              :if={state == :band}
-              id={"band-#{kid.id}"}
-              class="flex flex-col self-start overflow-hidden"
-              style={"background-color: var(--routine-#{routine}-tint)"}
-            >
-              <span class="px-4 py-3 text-center text-base font-semibold">
-                {band_message(routine)}
-              </span>
+            <%!-- Routine card: either the chore rows (normal or manually
+                 re-expanded) or the completion message (collapsed band). The
+                 persistent routine header bar is retired (D44, D48) — the
+                 banner completion icon above is now the sole collapse/expand
+                 affordance; a tap is a no-op server-side unless the routine
+                 is reveal-eligible (D33/D34). Columns never render at night
+                 (D56), so no :night state reaches this markup. --%>
+            <div id={"routine-#{kid.id}"} class="overflow-hidden bg-base-100">
+              <%!-- Chores: fixed-height full-width rows, top-aligned (empty
+                   space below the last card is fine); beyond capacity only
+                   this region scrolls (FR-6). A done row shrinks a little
+                   (h-24 → h-20) — a quiet completion signal that also buys
+                   back vertical room for the no-scroll budget.
+                   Not done = routine tint fill +
+                   child-color border (chore ownership); done = kid-color fill
+                   + check, emoji still visible (FR-7), border merged into the
+                   fill; tap again to undo, no confirmation (FR-8).
+                   phx-throttle swallows the excited rapid double-tap (D15).
+                   Also covers the manually re-expanded band (state 4, D34):
+                   same rows, all shown done, tap-to-undo. --%>
+              <div :if={state == :rows} class="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                <%!-- Routine-penalty strip: a single capped −R shown once while
+                     any routine chore is failed-and-not-redone (D45, D46) —
+                     never a per-chore sum (two fails still show one −R, not
+                     −2R). Explicit row-start so the chore list below always
+                     lands in the 1fr track, strip present or not. --%>
+                <div
+                  :if={routine_penalty?}
+                  id={"routine-penalty-#{kid.id}"}
+                  class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 text-base font-bold text-warning-content"
+                >
+                  <.icon name="hero-exclamation-triangle" class="size-5" />
+                  <span>−{Routines.bonus()}</span>
+                </div>
+
+                <ul
+                  id={"chores-#{kid.id}"}
+                  class="row-start-2 grid max-h-full auto-rows-min gap-px self-start overflow-y-auto bg-base-300"
+                >
+                  <.chore_row
+                    :for={%{chore: chore, done?: done?, failed?: failed?} <- chores}
+                    chore={chore}
+                    done?={done?}
+                    failed?={failed?}
+                    kid={kid}
+                    routine={routine}
+                  />
+                </ul>
+              </div>
+
+              <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
+                   active window, not pure completion. A single bounded card —
+                   routine tint fill (same token as chore cards), message
+                   inside; no header bar edge (retired, D44, D48). `self-start`
+                   keeps it hugging its own content height instead of
+                   stretching to fill the column (docs/design-language.org).
+                   The banner completion icon above is the tap target back to
+                   the rows, not the card itself (D44). --%>
+              <div
+                :if={state == :band}
+                id={"band-#{kid.id}"}
+                class="flex flex-col self-start overflow-hidden"
+                style={"background-color: var(--routine-#{routine}-tint)"}
+              >
+                <span class="px-4 py-3 text-center text-base font-semibold">
+                  {band_message(routine)}
+                </span>
+              </div>
             </div>
+
+            <%!-- Extras: below the routine card, never tinted (invariant —
+                 docs/design-language.org). Morning-only reveal, gated with
+                 the band (D34 technical notes: extras are chores, so this is
+                 the same tappable row, just styled as a fixed neutral card). --%>
+            <ul
+              :if={state == :band and routine == :morning}
+              id={"extras-#{kid.id}"}
+              class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
+            >
+              <.chore_row
+                :for={%{chore: chore, done?: done?, failed?: failed?} <- extras}
+                chore={chore}
+                done?={done?}
+                failed?={failed?}
+                kid={kid}
+                routine={routine}
+                extra?={true}
+              />
+            </ul>
           </div>
 
-          <%!-- Extras: below the routine card, never tinted (invariant —
-               docs/design-language.org). Morning-only reveal, gated with
-               the band (D34 technical notes: extras are chores, so this is
-               the same tappable row, just styled as a fixed neutral card). --%>
-          <ul
-            :if={state == :band and routine == :morning}
-            id={"extras-#{kid.id}"}
-            class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
+          <%!-- Reward shop (Story 05, D65-D67): one tap to ask, no modal —
+               the seven-row precedence table (D66) is the whole guard, so
+               an unaffordable/unavailable/claimed/declined card carries no
+               phx-click at all and is inert under a tap. --%>
+          <div
+            :if={state == :rewards}
+            id={"rewards-#{kid.id}"}
+            class="grid grid-rows-[auto_1fr] overflow-hidden"
           >
-            <.chore_row
-              :for={%{chore: chore, done?: done?, failed?: failed?} <- extras}
-              chore={chore}
-              done?={done?}
-              failed?={failed?}
-              kid={kid}
-              routine={routine}
-              extra?={true}
-            />
-          </ul>
+            <div class="flex items-center justify-between border-b border-base-300 px-5 py-3">
+              <span class="text-sm font-semibold text-base-content/60">Shop</span>
+              <button
+                type="button"
+                id={"dismiss-shop-#{kid.id}"}
+                phx-click="dismiss-shop"
+                phx-value-kid-id={kid.id}
+                class="flex size-8 items-center justify-center rounded-full text-base-content/60 transition active:scale-[0.99]"
+              >
+                <.icon name="hero-x-mark" class="size-6" />
+              </button>
+            </div>
+
+            <ul
+              id={"reward-list-#{kid.id}"}
+              class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
+            >
+              <li
+                :for={%{reward: reward, state: card_state} <- catalog}
+                id={"reward-card-#{reward.id}-#{kid.id}"}
+                data-card-state={card_state}
+                phx-click={if card_state == :available, do: "request-reward"}
+                phx-value-kid-id={kid.id}
+                phx-value-reward-id={reward.id}
+                phx-throttle="1000"
+                class={
+                  [
+                    "flex h-24 items-center gap-5 px-6 transition-all",
+                    card_state == :available && "cursor-pointer active:scale-[0.99]",
+                    # Rows 4-6 (declined/claimed/locked) share one dim
+                    # treatment (D66) — pending (row 3) is its own untappable
+                    # treatment, carrying the banner's own =⏳= glyph rather
+                    # than joining the dim group.
+                    card_state in [:declined, :claimed, :locked] && "opacity-45"
+                  ]
+                }
+                style="background-color: var(--extra-card-background); color: var(--extra-card-content)"
+              >
+                <span class="text-[2.5rem] leading-none">{reward.icon}</span>
+                <span class="text-2xl font-semibold">{reward.name}</span>
+                <span class="ml-auto flex items-center gap-1 text-lg font-bold">
+                  <.icon name="hero-star-solid" class="size-4" />
+                  {reward.points}
+                </span>
+                <span :if={card_state == :pending} class="text-3xl leading-none">⏳</span>
+                <.icon
+                  :if={card_state == :declined}
+                  name="hero-x-mark"
+                  class="size-9 text-base-content/60"
+                />
+                <.icon :if={card_state == :claimed} name="hero-check" class="size-9" />
+                <.icon
+                  :if={card_state == :locked}
+                  name="hero-lock-closed"
+                  class="size-9 text-base-content/60"
+                />
+              </li>
+            </ul>
+          </div>
         </section>
       </div>
     </Layouts.app>
