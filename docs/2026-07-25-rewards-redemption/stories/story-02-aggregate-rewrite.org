@@ -43,22 +43,74 @@ As a kid tapping a reward card, I need the check of what I can afford to be answ
 
 * Acceptance Criteria
 
-** [ ] The Story-01 pinning suite passes UNMODIFIED — not one expected value, fixture, or assertion is edited to accommodate the rewrite. (SC-9, D72)
-** [ ] ~Points.balances(local_date)~ returns ~%{kid_id => signed_integer}~ for every kid in one pass, computed by grouped aggregate queries rather than per-kid, per-routine-day derivation. (SC-9, D72)
-** [ ] The extras leg is a single aggregate over ~completions~ joined to ~chores~ where ~routine IS NULL~, summing the shipped ~extra_contribution/2~ ladder (failed → ~−points~, undone → 0, live → ~+points~) grouped by ~kid_id~. (SC-9, D72)
-** [ ] The routine-days leg is a single query grouping completions by ~(kid_id, routine, local_date)~ against a per-~(kid_id, routine)~ chore-count subquery, applying ~complete? = chore_count > 0 AND live_count == chore_count~ and the capped ~+R~ / ~−R~ arithmetic — two fails in a routine-day still contribute a single ~−R~. (SC-9, D72, D40)
-** [ ] The query count for a whole-render balance read does not grow with the number of days of history — verified by exercising the aggregate over a fixture spanning many routine-days and asserting the derived values, with the query shape stated in the code, not merely intended. (SC-9, D72)
-** [ ] ~Points.balance/2~ delegates to the map for a single kid, and ~Points.total/2~ / ~Points.totals/1~ apply the ~max(0, …)~ floor on top of it. (SC-3, D72, D41)
-** [ ] No memoization, no cached total, and no materialized column is introduced — the balance stays fully derived on read. (D10, D72)
-** [ ] Roster-drift behavior is unchanged: the Story-01 roster-drift pin produces the same value after the rewrite as before it. (D72)
-** [ ] The kiosk points badge and every admin balance display show exactly what they showed before this story. (SC-3, D41)
+** [X] The Story-01 pinning suite passes UNMODIFIED — not one expected value, fixture, or assertion is edited to accommodate the rewrite. (SC-9, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  Verified: ~git diff~ / ~git status~ show ~test/bear_cub/points_test.exs~ untouched throughout the rewrite. ~mix test test/bear_cub/points_test.exs~ → ~Result: 27 passed~, 0 failures, reproduced across multiple runs including after the ~routine_days_by_kid/1~ subquery revision. Independently confirmed by the ~story-verifier~ subagent audit.
+:END:
+** [X] ~Points.balances(local_date)~ returns ~%{kid_id => signed_integer}~ for every kid in one pass, computed by grouped aggregate queries rather than per-kid, per-routine-day derivation. (SC-9, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  ~lib/bear_cub/points.ex~'s ~balances/1~ now builds the map from ~Chores.earnings_by_kid/1~ (two grouped queries) merged over ~Chores.list_kids()~, rather than looping ~balance/2~ per kid. Verified by the unmodified pinning suite's ~"whole-render map forms (D57)"~ describe block and a new ~chores_test.exs~ test ("matches earnings/2 for each kid") asserting pointwise equivalence with the old per-kid derivation.
+:END:
+** [X] The extras leg is a single aggregate over ~completions~ joined to ~chores~ where ~routine IS NULL~, summing the shipped ~extra_contribution/2~ ladder (failed → ~−points~, undone → 0, live → ~+points~) grouped by ~kid_id~. (SC-9, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  ~lib/bear_cub/chores.ex~'s ~extras_by_kid/1~ (private) is one ~Repo.all~ over ~Completion~ joined to ~Chore~ where ~is_nil(ch.routine)~, ~group_by: ch.kid_id~, selecting a ~fragment~-based ~SUM(CASE WHEN failed_at ... WHEN undone_at ... ELSE points END)~ mirroring ~extra_contribution/2~'s ~cond~ ladder exactly (failed_at checked first). Verified via the story-verifier subagent's direct telemetry probe (1 query emitted) and the unmodified extras pins.
+:END:
+** [X] The routine-days leg is a single query grouping completions by ~(kid_id, routine, local_date)~ against a per-~(kid_id, routine)~ chore-count subquery, applying ~complete? = chore_count > 0 AND live_count == chore_count~ and the capped ~+R~ / ~−R~ arithmetic — two fails in a routine-day still contribute a single ~−R~. (SC-9, D72, D40)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  Initially shipped as two ~Repo.all~ calls (a chore-count map plus the per-day aggregate) merged in Elixir — a story-verifier audit flagged this as a CONCERN against the AC's literal "single query" text. Rewritten to use Ecto's ~subquery/1~: ~routine_days_by_kid/1~ now issues exactly one ~Repo.all~, joining the chore-count query in SQL (~join: cc in subquery(chore_counts), on: cc.kid_id == ch.kid_id and cc.routine == ch.routine~). The row-reduce arithmetic (~row.chore_count > 0 and row.live_count == row.chore_count~; capped ~±R~ via a ~MAX(CASE ...)~ any-failed flag) is unchanged and re-verified by a follow-up story-verifier audit. Confirmed against the unmodified roster-drift and two-fails-one-penalty pins.
+:END:
+** [X] The query count for a whole-render balance read does not grow with the number of days of history — verified by exercising the aggregate over a fixture spanning many routine-days and asserting the derived values, with the query shape stated in the code, not merely intended. (SC-9, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  New test in ~test/bear_cub/chores_test.exs~, describe ~"earnings_by_kid/1 (Story 02, D72)"~: ~"the query count for a whole-render read does not grow with days of history"~ attaches ~:telemetry~ to ~[:bear_cub, :repo, :query]~, compares the query count for a 1-day fixture against a 60-day fixture on the same kid/chore, and asserts equality — a real assertion that would fail under the old N+1 shape. Passes in isolation and as part of the full 74-test file run.
+:END:
+** [X] ~Points.balance/2~ delegates to the map for a single kid, and ~Points.total/2~ / ~Points.totals/1~ apply the ~max(0, …)~ floor on top of it. (SC-3, D72, D41)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  ~lib/bear_cub/points.ex~: ~balance/2~ now calls ~balances/1~ then ~Map.fetch!(kid.id)~ rather than calling ~Chores.earnings/2~ directly; ~total/2~ stays ~max(0, balance(kid, local_date))~; ~totals/1~ maps ~balances/1~ through ~max(0, balance)~ per kid. Verified by the unmodified pinning suite (all four functions exercised) and by direct code read.
+:END:
+** [X] No memoization, no cached total, and no materialized column is introduced — the balance stays fully derived on read. (D10, D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  ~grep -rniE "cachex|persistent_term|:ets\.|ETS\."~ over ~chores.ex~/~points.ex~ returns nothing. No new schema field, migration, or process-based cache was introduced; ~earnings_by_kid/1~ and ~balances/1~ recompute from ~completions~/~chores~ on every call.
+:END:
+** [X] Roster-drift behavior is unchanged: the Story-01 roster-drift pin produces the same value after the rewrite as before it. (D72)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  The ~"roster drift (D72)"~ describe block in the unmodified pinning suite (asserting through both ~balance/2~ and ~balances/1~) passes unchanged: ~routine_days_by_kid/1~'s chore-count leg counts the kid's current roster via the ~Chore~ join, exactly reproducing ~routine_day_contribution/3~'s drift behavior (adding a chore retroactively wipes a past ~+R~; deleting one retroactively grants one).
+:END:
+** [X] The kiosk points badge and every admin balance display show exactly what they showed before this story. (SC-3, D41)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:33] \\
+  ~git diff --stat~ against the pre-story tree shows only ~lib/bear_cub/chores.ex~, ~lib/bear_cub/points.ex~, and ~test/bear_cub/chores_test.exs~ changed — no file under ~lib/bear_cub_web/~ was touched. Since ~Points.total/2~/~Points.totals/1~'s signatures and outputs are unchanged (per the pins above), every caller (kiosk badge, admin balance reads) is unaffected by construction.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:36] \\
+  All 9 Acceptance Criteria above are marked ~[X]~ with LOGBOOK evidence; none deferred or removed. Confirmed by a dedicated story-verifier subagent audit of the file state.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:36] \\
+  ~mix test test/bear_cub/points_test.exs~ → ~27 passed~ (unmodified pinning suite); ~mix test test/bear_cub/chores_test.exs~ → ~74 passed~, including the new ~"earnings_by_kid/1 (Story 02, D72)"~ describe block (equivalence test, absent-kid test, and the telemetry-based query-count-invariance test). Full suite ~mix test~ → ~307 passed~, reproduced across three consecutive runs.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:36] \\
+  ~%Kid{}~/~%Date{}~ struct guards present on all new/changed public functions; ~@doc~ present on every public function (~balance/2~, ~total/2~, ~balances/1~, ~totals/1~, ~earnings_by_kid/1~); private helpers (~extras_by_kid/1~, ~routine_days_by_kid/1~) correctly left undocumented. No ~String.to_atom~ on user input; no cache/ETS/persistent_term usage. ~mix format --check-formatted~ exits 0. Confirmed by story-verifier subagent review.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 12:36] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) final line: ~Result: 307 passed~, 0 failures, no compile warnings, no unused deps, no formatting diffs. Reproduced clean across three consecutive runs after the test database was restored from an errant mid-session ~MIX_ENV=test mix ecto.reset~ (which had run ~priv/repo/seeds.exs~ against the test db outside any sandbox transaction — unrelated to this story's code, fixed by a plain drop/create/migrate with no seeding).
+:END:
 
 * Technical Notes
 
@@ -71,3 +123,4 @@ The Design excerpt above is the source of truth; DESIGN.org is broader context.
 - Watch the SQLite/Ecto expression surface: the ~CASE~ ladder and the boolean any-failed aggregate need to work under ~ecto_sqlite3~; prefer ~fragment/1~ over cleverness, and keep the resulting arithmetic in Elixir where it is easier to read against the shipped ladder.
 - Pin ~:routine_windows~ in every test per ~docs/learnings.org~ [2026-07-17]; day-dependent behavior is exercised by passing a different local date.
 - Roster drift stays as-is. Its backlog entry is written at initiative close, not here.
+- Deferred discovery: ~mix ecto.reset~'s alias (~mix.exs~) chains ~ecto.drop~ → ~ecto.setup~, and ~ecto.setup~ runs ~priv/repo/seeds.exs~ — so running it with ~MIX_ENV=test~ permanently inserts the placeholder ~"Kid A"~/~"Kid B"~ seed data straight into the test database, outside any sandbox transaction. It reproduced as a run of spurious cross-test failures (leaked kid/chore rows, id drift) during this story's own verification, confirmed unrelated to the rewrite by reproducing it identically against a ~git stash~ of pre-story code. Fix used: ~MIX_ENV=test mix ecto.drop~ then ~ecto.create~ then ~ecto.migrate~ directly, skipping the seeds step. Out of scope here — a repo-tooling footgun, not a Points/Chores defect.
