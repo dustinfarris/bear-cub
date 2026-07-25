@@ -42,21 +42,69 @@ As a parent, I need a single screen that answers "did this child redeem this rew
 
 * Acceptance Criteria
 
-** [ ] ~/admin/rewards/history~ is its own route, linked from ~/admin/rewards~, and renders one flat reverse-chronological list. (SC-7, D70)
-** [ ] Each row shows the date, the kid's name with their color chip, the reward's icon and name, the snapshot price, and the state — approved, reversed, or declined. (SC-7, D70)
-** [ ] A reversed row renders its price struck through with a "reversed" marker and the reversal's date. (SC-7, SC-8, D70)
-** [ ] Approved, reversed, and declined rows all appear; lapsed rows — requested, never answered — are omitted. (SC-6, SC-7, D70)
-** [ ] A redemption of a reward that has since been archived still appears, with that reward's name and icon; a reward renamed since the redemption shows under its current name. (SC-7, D60, D68, D70)
-** [ ] The list shows the 50 most recent entries with no pagination, and says so on screen. (SC-7, D70)
-** [ ] The history screen offers no way to edit, delete, or reverse a redemption — reversal is Today's day-scoped control only. (SC-7, SC-8, D69, D70)
-** [ ] LiveView integration tests cover the row content for each state, the reversed row's struck-through price and reversal date, lapsed omission, an archived reward's redemption still listed, and the stated 50-entry bound. (repo convention, design §Testing)
+** [X] ~/admin/rewards/history~ is its own route, linked from ~/admin/rewards~, and renders one flat reverse-chronological list. (SC-7, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~lib/bear_cub_web/router.ex~ registers ~live "/rewards/history", RewardLive.History~ in the ~/admin~ scope; ~RewardLive.Index~'s header carries a ~#view-history~ link to it. ~RewardLive.History~ renders one ~<ul id="history">~ ordered by ~Rewards.list_redemption_history/1~ (desc by verdict date). Covered by test "links to the redemption history" and "renders one flat reverse-chronological list..." in ~test/bear_cub_web/live/admin/reward_live_test.exs~.
+:END:
+** [X] Each row shows the date, the kid's name with their color chip, the reward's icon and name, the snapshot price, and the state — approved, reversed, or declined. (SC-7, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~history_row/1~ in ~lib/bear_cub_web/live/admin/reward_live/history.ex~ renders all six fields. Verified per-state by tests "each row shows the date, kid name and color chip..." (approved) and "a declined row shows the date, kid, reward icon and name, price, and declined state" — both assert every field individually.
+:END:
+** [X] A reversed row renders its price struck through with a "reversed" marker and the reversal's date. (SC-7, SC-8, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  The price ~<span>~ takes the ~line-through~ class when ~Rewards.reversed?/1~; a second line renders "reversed" plus ~format_date(@redemption.reversed_at)~, distinct from the row's primary (approval) date. Test "a reversed row shows the struck-through price, a reversed marker, and the reversal date" asserts ~.line-through~ on the price, the "Reversed" label, and the reversal date differing from the approval date.
+:END:
+** [X] Approved, reversed, and declined rows all appear; lapsed rows — requested, never answered — are omitted. (SC-6, SC-7, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~Rewards.list_redemption_history/1~ selects rows where ~approved_at~ or ~declined_at~ is set, which naturally excludes both pending and lapsed rows (neither carries a verdict) without needing to distinguish them. Unit tests in ~test/bear_cub/rewards_test.exs~ cover inclusion of all three verdict states and exclusion of pending/lapsed; LiveView test "omits a lapsed (never-answered) request" confirms the same at the screen.
+:END:
+** [X] A redemption of a reward that has since been archived still appears, with that reward's name and icon; a reward renamed since the redemption shows under its current name. (SC-7, D60, D68, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  No ~reward_name~ snapshot exists on ~Redemption~; the query preloads ~:reward~, so a rename or archive is reflected live. Unit test "an archived reward's redemption still appears, joined to its current name" and LiveView test "a redemption of a since-archived reward still appears under its current name and icon" both rename then archive before asserting the current name and icon render.
+:END:
+** [X] The list shows the 50 most recent entries with no pagination, and says so on screen. (SC-7, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~list_redemption_history/1~ defaults its ~limit~ argument to 50; the template's subtitle reads "Showing the last 50 redemptions — no pagination". Test "shows at most the 50 most recent entries and states the bound on screen" creates 51 redemptions, asserts exactly 50 rows render (newest present, oldest absent), and asserts the on-screen text.
+:END:
+** [X] The history screen offers no way to edit, delete, or reverse a redemption — reversal is Today's day-scoped control only. (SC-7, SC-8, D69, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~RewardLive.History~'s template contains no buttons, forms, or ~phx-click~ handlers — only navigation links. Test "offers no way to edit, delete, or reverse a redemption" refutes any ~button~ or ~[phx-click]~ within ~#admin-rewards-history~ and the specific ~#reverse-redemption-<id>~ id.
+:END:
+** [X] LiveView integration tests cover the row content for each state, the reversed row's struck-through price and reversal date, lapsed omission, an archived reward's redemption still listed, and the stated 50-entry bound. (repo convention, design §Testing)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:25] \\
+  ~test/bear_cub_web/live/admin/reward_live_test.exs~'s "history" describe block covers all named cases: full row content for approved and declined states, the reversed row's strike-through and reversal date, lapsed omission, an archived reward's redemption still listed under its current name, and the 50-entry bound with its on-screen statement — verified via ~workflow-kit:story-verifier~ (initial pass flagged the declined-state test as a subset of the approved one; extended to check the full field set and re-verified as met).
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:27] \\
+  All 8 ACs above are marked ~[X]~ with LOGBOOK entries naming concrete evidence; none deferred or removed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:27] \\
+  ~mix test test/bear_cub/rewards_test.exs test/bear_cub_web/live/admin/reward_live_test.exs~ → 96 passed, 0 failures. One test per AC clause in the "history" describe block, plus context-level coverage in ~rewards_test.exs~'s ~list_redemption_history/1~ describe block.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:27] \\
+  ~RewardLive.History~ uses ~<Layouts.admin flash={@flash} active={:rewards}>~, ~<.link navigate={...}>~ (no deprecated ~live_redirect~), correct curly-brace interpolation, DOM ids on all key elements. ~list_redemption_history/1~ preloads ~:kid~ and ~:reward~ per the Ecto guideline. Verified via ~workflow-kit:story-verifier~ spot-check of all four changed/new files.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 16:27] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exits 0 with ~Result: 441 passed~, no compile warnings, ~mix.lock~ untouched. The ~Exqlite.Connection ... disconnected~ log lines during the run are accepted noise per repo convention, not a failure.
+:END:
 
 * Technical Notes
 
