@@ -139,6 +139,211 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     assert has_element?(view, "#progress-#{kid_a.id}-#{ctx.inactive}", "1/1")
   end
 
+  describe "approval queue and reversal (Story 06, D69, D62, D63, D71)" do
+    import BearCub.RewardsFixtures
+
+    alias BearCub.Rewards
+
+    setup %{active: active} do
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      pin_active_routine(active)
+      :ok
+    end
+
+    defp fail_for_penalty(kid, points) do
+      chore = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: points})
+      now = LocalTime.now()
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, now)
+      :ok
+    end
+
+    defp earn(kid, points) do
+      extra = chore_fixture(kid, %{name: "Mow Lawn", icon: "🌱", routine: nil, points: points})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+      :ok
+    end
+
+    test "a pending request shows the reward's icon, name, snapshot price, and the kid's true signed balance",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Movie Night", icon: "🎬", points: 30})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      fail_for_penalty(kid_a, 40)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#request-#{request.id}", "🎬")
+      assert has_element?(view, "#request-#{request.id}", "Movie Night")
+      assert has_element?(view, "#request-#{request.id}", "30")
+      # true signed balance is -40, never floored to 0 (D64)
+      assert has_element?(view, "#request-#{request.id}", "-40")
+    end
+
+    test "the queue never shows a request left unanswered from an earlier day (SC-6, D61, D73)",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a)
+      {:ok, lapsed} = Rewards.request_redemption(kid_a, reward, la(~D[2026-07-09], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#request-#{lapsed.id}")
+    end
+
+    test "approve is data-confirm guarded, and on confirmation lowers the kid's balance and clears the request",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 50)
+      reward = reward_fixture(kid_a, %{points: 20})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#approve-request-#{request.id}[data-confirm]")
+
+      view |> element("#approve-request-#{request.id}") |> render_click()
+
+      refute has_element?(view, "#request-#{request.id}")
+      approved = Rewards.get_redemption!(request.id)
+      assert approved.approved_at
+      assert Points.balance(kid_a, DateTime.to_date(LocalTime.now())) == 30
+    end
+
+    test "approving keeps the balance down (it stays lowered, SC-3, SC-7)",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 50)
+      reward = reward_fixture(kid_a, %{points: 20})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#approve-request-#{request.id}") |> render_click()
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert Points.balance(kid_a, DateTime.to_date(LocalTime.now())) == 30
+      refute has_element?(view, "#request-#{request.id}")
+    end
+
+    test "decline carries no confirmation, costs nothing, and removes the request from the queue",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{points: 20})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#decline-request-#{request.id}[data-confirm]")
+
+      view |> element("#decline-request-#{request.id}") |> render_click()
+
+      refute has_element?(view, "#request-#{request.id}")
+      declined = Rewards.get_redemption!(request.id)
+      assert declined.declined_at
+      assert Points.balance(kid_a, DateTime.to_date(LocalTime.now())) == 0
+    end
+
+    test "a failed affordability re-check tells the parent and leaves the request pending",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{points: 20})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      fail_for_penalty(kid_a, 30)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#approve-request-#{request.id}") |> render_click()
+
+      assert has_element?(view, "#request-#{request.id}")
+      assert render(view) =~ "afford"
+      refute Rewards.get_redemption!(request.id).approved_at
+    end
+
+    test "the same-kid interleaving: a direct-redeem lands between ask and approve, failing the availability check and saying so",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{points: 10, repeatable: false})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      {:ok, _direct} = Rewards.direct_redeem(kid_a, reward, 100, LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#approve-request-#{request.id}") |> render_click()
+
+      assert has_element?(view, "#request-#{request.id}")
+      assert render(view) =~ "already claimed"
+      refute Rewards.get_redemption!(request.id).approved_at
+    end
+
+    test "a reverse control sits beside the day's redemptions, is data-confirm guarded, and restores points and availability",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{points: 20, repeatable: false})
+      {:ok, redemption} = Rewards.direct_redeem(kid_a, reward, 100, LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#reverse-redemption-#{redemption.id}[data-confirm]")
+      assert Points.balance(kid_a, DateTime.to_date(LocalTime.now())) == -20
+
+      view |> element("#reverse-redemption-#{redemption.id}") |> render_click()
+
+      reversed = Rewards.get_redemption!(redemption.id)
+      assert reversed.reversed_at
+      assert Points.balance(kid_a, DateTime.to_date(LocalTime.now())) == 0
+      assert Rewards.available?(reward, kid_a.id, DateTime.to_date(LocalTime.now()))
+    end
+
+    test "reverse is offered only on today's redemptions, never an earlier day's",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{points: 20, repeatable: false})
+
+      {:ok, yesterday} =
+        Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-09], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#redemption-#{yesterday.id}")
+      refute has_element?(view, "#reverse-redemption-#{yesterday.id}")
+    end
+
+    test "cross-surface: a kiosk request appears in the admin queue without a reload",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 10)
+      reward = reward_fixture(kid_a, %{name: "Bike", points: 10})
+
+      {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "[id^=request-]")
+
+      kiosk
+      |> element("#gift-button-#{kid_a.id}")
+      |> render_click()
+
+      kiosk
+      |> element("#reward-card-#{reward.id}-#{kid_a.id}")
+      |> render_click()
+
+      request = Rewards.get_redemption!(Repo.one!(from(r in Rewards.Redemption, select: r.id)))
+      assert has_element?(view, "#request-#{request.id}", "Bike")
+    end
+
+    test "cross-surface: approving moves the kiosk's points badge and flips the gift button back to the idle glyph",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 20)
+      reward = reward_fixture(kid_a, %{points: 15})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+
+      {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      before_points = Points.total(kid_a, DateTime.to_date(LocalTime.now()))
+      assert has_element?(kiosk, "#points-badge-#{kid_a.id}", "#{before_points}")
+      assert has_element?(kiosk, "#gift-button-#{kid_a.id}", "⏳")
+
+      view |> element("#approve-request-#{request.id}") |> render_click()
+
+      after_points = Points.total(kid_a, DateTime.to_date(LocalTime.now()))
+      assert after_points < before_points
+      assert has_element?(kiosk, "#points-badge-#{kid_a.id}", "#{after_points}")
+      assert has_element?(kiosk, "#gift-button-#{kid_a.id}", "🎁")
+    end
+  end
+
   test "kiosk taps appear live in the progress counts (FR-9)",
        %{conn: conn, kid_a: kid_a} = ctx do
     {:ok, view, _html} = live(conn, ~p"/admin")

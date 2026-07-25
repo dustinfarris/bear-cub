@@ -295,6 +295,39 @@ defmodule BearCub.Rewards do
     end
   end
 
+  @doc """
+  Pending requests for `kid_id` as of `local_date` (Story 06, D69): the
+  per-kid Requests section on `Admin.TodayLive`. Requested, no verdict
+  yet, dated `local_date` — the same predicate that keeps a lapsed row
+  invisible on the kiosk (D61/D73). Preloads `:reward` for the icon,
+  name, and snapshot price the queue displays.
+  """
+  def list_pending_redemptions(kid_id, %Date{} = local_date) do
+    Repo.all(
+      from r in Redemption,
+        where:
+          r.kid_id == ^kid_id and not is_nil(r.requested_at) and is_nil(r.approved_at) and
+            is_nil(r.declined_at) and r.local_date == ^local_date,
+        order_by: [asc: r.requested_at],
+        preload: [:reward]
+    )
+  end
+
+  @doc """
+  Today's approved redemptions for `kid_id` (Story 06, D69): the "day's
+  redemptions" beside the reverse control — `approved_at` set, dated
+  `local_date`, reversed or not (a parent can see today's answer either
+  way). Preloads `:reward`.
+  """
+  def list_redemptions_today(kid_id, %Date{} = local_date) do
+    Repo.all(
+      from r in Redemption,
+        where: r.kid_id == ^kid_id and not is_nil(r.approved_at) and r.local_date == ^local_date,
+        order_by: [asc: r.approved_at],
+        preload: [:reward]
+    )
+  end
+
   # Pending only — requested, no verdict yet, dated today. Lapse is
   # terminal at the write layer (D73): a lapsed row (no verdict, dated
   # before today) is refused here exactly like an already-answered one,

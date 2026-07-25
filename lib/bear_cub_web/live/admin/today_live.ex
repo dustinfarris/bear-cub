@@ -3,11 +3,16 @@ defmodule BearCubWeb.Admin.TodayLive do
 
   alias BearCub.Chores
   alias BearCub.LocalTime
+  alias BearCub.Points
+  alias BearCub.Rewards
   alias BearCub.Routines
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Chores.subscribe()
+    if connected?(socket) do
+      Chores.subscribe()
+      Rewards.subscribe()
+    end
 
     socket = load(socket, LocalTime.now())
 
@@ -61,8 +66,74 @@ defmodule BearCubWeb.Admin.TodayLive do
     {:noreply, assign(socket, :expanded, expanded)}
   end
 
+  # Approve re-validates audience, availability, and affordability (D63,
+  # D69) — any may have moved between ask and answer, including the
+  # same-kid interleaving a direct-redeem creates (D62). A failed
+  # re-check names which check failed rather than silently no-opping,
+  # and leaves the request pending (Rewards.approve_redemption/3 stamps
+  # no marker on refusal).
+  def handle_event("approve-request", %{"request-id" => id}, socket) do
+    now = LocalTime.now()
+    redemption = Rewards.get_redemption!(id)
+    kid = Chores.get_kid!(redemption.kid_id)
+    reward = Rewards.get_reward!(redemption.reward_id)
+    balance = Points.balance(kid, DateTime.to_date(now))
+
+    case Rewards.approve_redemption(redemption, balance, now) do
+      {:ok, _} ->
+        {:noreply, load(socket, now)}
+
+      {:error, :unaffordable} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "#{kid.name} can't afford “#{reward.name}” (#{redemption.points} pts)"
+         )
+         |> load(now)}
+
+      {:error, :unavailable} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "#{kid.name} has already claimed “#{reward.name}”")
+         |> load(now)}
+
+      {:error, :not_offered} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "“#{reward.name}” isn't offered to #{kid.name}")
+         |> load(now)}
+
+      {:error, :not_open} ->
+        # lapsed or already answered elsewhere between render and tap — the
+        # reload drops the row (D73)
+        {:noreply, load(socket, now)}
+    end
+  end
+
+  # No confirmation (design §Requests): costs nothing, contributes 0.
+  def handle_event("decline-request", %{"request-id" => id}, socket) do
+    now = LocalTime.now()
+    Rewards.decline_redemption(Rewards.get_redemption!(id), now)
+    {:noreply, load(socket, now)}
+  end
+
+  # Restores points and availability for free (D62, SC-8) — the row is
+  # retained forever as the trail, never deleted.
+  def handle_event("reverse-redemption", %{"redemption-id" => id}, socket) do
+    now = LocalTime.now()
+    Rewards.reverse_redemption(Rewards.get_redemption!(id), now)
+    {:noreply, load(socket, now)}
+  end
+
   @impl true
   def handle_info(:chores_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
+  # BearCub.Rewards owns its own payload-free "rewards" topic (D71) —
+  # re-fetch, never patch from a payload.
+  def handle_info(:rewards_changed, socket) do
     {:noreply, load(socket, LocalTime.now())}
   end
 
@@ -96,7 +167,14 @@ defmodule BearCubWeb.Admin.TodayLive do
             build_row(extra, completions, failed_ids)
           end
 
-        %{kid: kid, sections: sections, extras: extras}
+        %{
+          kid: kid,
+          sections: sections,
+          extras: extras,
+          balance: Points.balance(kid, today),
+          requests: Rewards.list_pending_redemptions(kid.id, today),
+          redemptions: Rewards.list_redemptions_today(kid.id, today)
+        }
       end
 
     assign(socket, cards: cards, active: active)
@@ -122,7 +200,16 @@ defmodule BearCubWeb.Admin.TodayLive do
         <.header>Today</.header>
 
         <section
-          :for={%{kid: kid, sections: sections, extras: extras} <- @cards}
+          :for={
+            %{
+              kid: kid,
+              sections: sections,
+              extras: extras,
+              balance: balance,
+              requests: requests,
+              redemptions: redemptions
+            } <- @cards
+          }
           id={"today-kid-#{kid.id}"}
           class="overflow-hidden rounded-2xl bg-base-100 shadow-sm"
         >
@@ -172,6 +259,34 @@ defmodule BearCubWeb.Admin.TodayLive do
               <.chore_row :for={row <- extras} row={row} kid={kid} />
               <li :if={extras == []} class="px-5 py-3 text-sm text-base-content/40">
                 No extras
+              </li>
+            </ul>
+          </div>
+
+          <div class="border-t border-base-200">
+            <h3 class="px-5 py-3 font-semibold">Requests</h3>
+
+            <ul
+              id={"requests-#{kid.id}"}
+              class="divide-y divide-base-200 border-t border-base-200"
+            >
+              <.request_row :for={request <- requests} request={request} balance={balance} />
+              <li :if={requests == []} class="px-5 py-3 text-sm text-base-content/40">
+                No requests
+              </li>
+            </ul>
+          </div>
+
+          <div class="border-t border-base-200">
+            <h3 class="px-5 py-3 font-semibold">Redemptions</h3>
+
+            <ul
+              id={"redemptions-#{kid.id}"}
+              class="divide-y divide-base-200 border-t border-base-200"
+            >
+              <.redemption_row :for={redemption <- redemptions} redemption={redemption} />
+              <li :if={redemptions == []} class="px-5 py-3 text-sm text-base-content/40">
+                No redemptions today
               </li>
             </ul>
           </div>
@@ -226,6 +341,74 @@ defmodule BearCubWeb.Admin.TodayLive do
         <.icon name="hero-flag-solid" class="size-5" />
       </span>
       <.icon :if={@row.done?} name="hero-check" class="size-6 text-white drop-shadow-sm" />
+    </li>
+    """
+  end
+
+  attr :request, :map, required: true
+  attr :balance, :integer, required: true
+
+  # Requests section (Story 06, D69): approve re-checks affordability and
+  # availability server-side and is data-confirm guarded (points-affecting,
+  # permanent from tomorrow since reversal is day-scoped, D53); decline
+  # carries no confirmation — it costs nothing and its own day-scoping is
+  # the undo.
+  defp request_row(assigns) do
+    ~H"""
+    <li id={"request-#{@request.id}"} class="flex items-center gap-3 px-5 py-3">
+      <span class="text-2xl leading-none">{@request.reward.icon}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-medium">{@request.reward.name}</p>
+        <p class="text-sm text-base-content/60">
+          {@request.points} pts · balance {@balance}
+        </p>
+      </div>
+      <button
+        id={"decline-request-#{@request.id}"}
+        phx-click="decline-request"
+        phx-value-request-id={@request.id}
+        class="rounded-lg px-3 py-1.5 text-sm font-semibold text-base-content/60"
+      >
+        Decline
+      </button>
+      <button
+        id={"approve-request-#{@request.id}"}
+        phx-click="approve-request"
+        phx-value-request-id={@request.id}
+        data-confirm={"Give “#{@request.reward.name}” for #{@request.points} points?"}
+        class="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-content"
+      >
+        Approve
+      </button>
+    </li>
+    """
+  end
+
+  attr :redemption, :map, required: true
+
+  # Reverse (Story 06, D69, D62): restores points and availability for
+  # free, offered only on today's redemptions (D55 day-scoping) — an
+  # earlier day's spend has no reverse control here at all.
+  defp redemption_row(assigns) do
+    ~H"""
+    <li id={"redemption-#{@redemption.id}"} class="flex items-center gap-3 px-5 py-3">
+      <span class="text-2xl leading-none">{@redemption.reward.icon}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-medium">{@redemption.reward.name}</p>
+        <p class="text-sm text-base-content/60">
+          {@redemption.points} pts <span :if={Rewards.reversed?(@redemption)}>· reversed</span>
+        </p>
+      </div>
+      <button
+        :if={Rewards.approved?(@redemption)}
+        id={"reverse-redemption-#{@redemption.id}"}
+        phx-click="reverse-redemption"
+        phx-value-redemption-id={@redemption.id}
+        data-confirm={"Reverse “#{@redemption.reward.name}”? This returns the points."}
+        class="rounded-lg px-3 py-1.5 text-sm font-semibold text-base-content/60"
+      >
+        Reverse
+      </button>
     </li>
     """
   end

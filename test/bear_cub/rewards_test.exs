@@ -721,6 +721,72 @@ defmodule BearCub.RewardsTest do
     end
   end
 
+  describe "list_pending_redemptions/2 (Story 06 — the admin Requests section, D69/D73)" do
+    test "returns only this kid's pending-today rows, preloading :reward" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(kid, %{name: "Movie Night"})
+
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _other_pending} =
+        Rewards.request_redemption(other, reward_fixture(other), la(~D[2026-07-10], ~T[08:00:00]))
+
+      [loaded] = Rewards.list_pending_redemptions(kid.id, ~D[2026-07-10])
+      assert loaded.id == pending.id
+      assert loaded.reward.id == reward.id
+    end
+
+    test "excludes answered rows and rows lapsed from an earlier day" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+
+      {:ok, answered} = Rewards.request_redemption(kid, reward, la(~D[2026-07-09], ~T[08:00:00]))
+      {:ok, _} = Rewards.decline_redemption(answered, la(~D[2026-07-09], ~T[09:00:00]))
+
+      {:ok, _lapsed} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.list_pending_redemptions(kid.id, ~D[2026-07-11]) == []
+    end
+  end
+
+  describe "list_redemptions_today/2 (Story 06 — beside the reverse control, D69)" do
+    test "returns this kid's approved rows dated today, preloading :reward" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true, points: 10})
+
+      {:ok, approved} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      [loaded] = Rewards.list_redemptions_today(kid.id, ~D[2026-07-10])
+      assert loaded.id == approved.id
+      assert loaded.reward.id == reward.id
+    end
+
+    test "excludes a pending (unanswered) request and an earlier day's approval" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true, points: 10})
+
+      {:ok, _pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _yesterday} =
+        Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-09], ~T[08:00:00]))
+
+      assert Rewards.list_redemptions_today(kid.id, ~D[2026-07-10]) == []
+    end
+
+    test "includes an already-reversed row dated today" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true, points: 10})
+
+      {:ok, approved} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, reversed} = Rewards.reverse_redemption(approved, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert Rewards.list_redemptions_today(kid.id, ~D[2026-07-10]) |> Enum.map(& &1.id) == [
+               reversed.id
+             ]
+    end
+  end
+
   describe "live updates (D71)" do
     test "subscribe/0 receives a payload-free :rewards_changed on every successful write" do
       kid = kid_fixture()
