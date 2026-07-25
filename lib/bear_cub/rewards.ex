@@ -204,16 +204,20 @@ defmodule BearCub.Rewards do
   @doc """
   The parent-direct leg (SC-2, D68): redeems `reward` for `kid`
   immediately, with no prior request. This leg has no separate approval
-  step, so it is checked here and only here — affordability against
+  step, so it is checked here and only here — audience (a reward's
+  `kid_id` is a domain semantic, not merely a display filter), then
+  availability (owned by this context), then affordability against
   `balance` (the kid's current raw signed balance, supplied by the
-  caller through `BearCub.Points` at the boundary, per D57) and
-  availability (owned by this context), exactly the rule the kid leg is
-  bound by (D63), with no override. Returns `{:error, :unavailable}` or
-  `{:error, :unaffordable}` naming the failed check.
+  caller through `BearCub.Points` at the boundary, per D57) — exactly
+  the rule the kid leg is bound by (D63), with no override. Returns
+  `{:error, :not_offered}`, `{:error, :unavailable}`, or
+  `{:error, :unaffordable}` naming the failed check, most categorical
+  first.
   """
   def direct_redeem(%Kid{} = kid, %Reward{} = reward, balance, %DateTime{} = local_now)
       when is_integer(balance) do
-    with :ok <- check_availability(reward, kid.id, DateTime.to_date(local_now)),
+    with :ok <- check_audience(reward, kid.id),
+         :ok <- check_availability(reward, kid.id, DateTime.to_date(local_now)),
          :ok <- check_affordability(balance, reward.points) do
       %Redemption{kid_id: kid.id, reward_id: reward.id}
       |> Redemption.changeset(%{
@@ -229,13 +233,19 @@ defmodule BearCub.Rewards do
 
   @doc """
   Approves an open request (the kid leg's second check, D63): stamps
-  `approved_at` after re-validating affordability and availability,
-  because both may have moved between ask and answer — including the
-  same-kid interleaving where a direct-redeem of the same reward lands
-  in between (D62). `balance` is the caller-supplied current raw signed
-  balance. Returns `{:error, :not_open}`, `{:error, :unavailable}`, or
-  `{:error, :unaffordable}` naming the failed check rather than silently
-  no-opping or stamping a second marker onto an already-answered row.
+  `approved_at` after re-validating audience, availability, and
+  affordability, because any of the three may have moved between ask
+  and answer — including the same-kid interleaving where a
+  direct-redeem of the same reward lands in between (D62), and a
+  reward's audience narrowing after the ask (defense in depth: the
+  kiosk leg is audience-correct by construction, since a kid only ever
+  requests from an audience-filtered catalog, but the domain does not
+  depend on that remaining true). `balance` is the caller-supplied
+  current raw signed balance. Returns `{:error, :not_open}`,
+  `{:error, :not_offered}`, `{:error, :unavailable}`, or
+  `{:error, :unaffordable}` naming the failed check, most categorical
+  first, rather than silently no-opping or stamping a second marker
+  onto an already-answered row.
   """
   def approve_redemption(%Redemption{} = redemption, balance, %DateTime{} = local_now)
       when is_integer(balance) do
@@ -243,6 +253,7 @@ defmodule BearCub.Rewards do
     today = DateTime.to_date(local_now)
 
     with :ok <- check_open(redemption, today),
+         :ok <- check_audience(reward, redemption.kid_id),
          :ok <- check_availability(reward, redemption.kid_id, today),
          :ok <- check_affordability(balance, redemption.points) do
       redemption
@@ -347,6 +358,22 @@ defmodule BearCub.Rewards do
       r.approved_at -> -r.points
       true -> 0
     end
+  end
+
+  ## Audience (D58) — a domain semantic, not merely a display filter
+
+  @doc """
+  Whether `reward` is offered to `kid_id`: true when the reward's
+  `kid_id` is `nil` (offered to any kid) or matches. Purely an
+  administrative "who is this offered to" control (D58) — it carries no
+  scarcity meaning, which is `available?/3`'s job.
+  """
+  def offered?(%Reward{kid_id: nil}, _kid_id), do: true
+  def offered?(%Reward{kid_id: kid_id}, kid_id), do: true
+  def offered?(%Reward{}, _kid_id), do: false
+
+  defp check_audience(reward, kid_id) do
+    if offered?(reward, kid_id), do: :ok, else: {:error, :not_offered}
   end
 
   ## Availability (D62) — fully derived, scoped per kid

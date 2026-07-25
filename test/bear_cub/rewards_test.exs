@@ -507,6 +507,50 @@ defmodule BearCub.RewardsTest do
     end
   end
 
+  describe "offered?/2 — audience is a domain semantic, enforced at the write layer (D58)" do
+    test "true for every kid when the reward has no kid_id" do
+      reward = reward_fixture(nil)
+      assert Rewards.offered?(reward, 1)
+      assert Rewards.offered?(reward, 999)
+    end
+
+    test "true only for the matching kid when the reward is kid-scoped" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(kid)
+
+      assert Rewards.offered?(reward, kid.id)
+      refute Rewards.offered?(reward, other.id)
+    end
+  end
+
+  describe "audience is enforced at the write layer, not only in display" do
+    test "direct_redeem/4 refuses a kid outside a kid-scoped reward's audience, creating no redemption row" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(kid, %{points: 10})
+
+      assert {:error, :not_offered} =
+               Rewards.direct_redeem(other, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Repo.aggregate(BearCub.Rewards.Redemption, :count) == 0
+    end
+
+    test "approve_redemption/3 refuses when the reward's audience narrows to exclude the requesting kid after the ask, stamping no marker" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(nil, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _reward} = Rewards.update_reward(reward, other, %{})
+
+      assert {:error, :not_offered} =
+               Rewards.approve_redemption(pending, 100, la(~D[2026-07-10], ~T[09:00:00]))
+
+      refute Rewards.get_redemption!(pending.id).approved_at
+    end
+  end
+
   describe "write paths refuse to act on the wrong state (AC-6 integrity)" do
     test "approve_redemption/3 refuses a request already declined" do
       kid = kid_fixture()

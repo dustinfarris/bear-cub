@@ -76,6 +76,12 @@ defmodule BearCubWeb.Admin.RewardLive.Index do
            socket
            |> put_flash(:error, "#{kid.name} has already claimed “#{reward.name}”")
            |> load()}
+
+        {:error, :not_offered} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "“#{reward.name}” isn't offered to #{kid.name}")
+           |> load()}
       end
     else
       # deleted from another surface after this render — the reload drops the row
@@ -213,7 +219,7 @@ defmodule BearCubWeb.Admin.RewardLive.Index do
         class="divide-y divide-base-200 border-t border-base-200 bg-base-200/40"
       >
         <div
-          :for={kid <- @kids}
+          :for={kid <- Enum.filter(@kids, &Rewards.offered?(@reward, &1.id))}
           id={"redeem-reward-#{@reward.id}-kid-#{kid.id}"}
           class="flex items-center justify-between gap-3 px-4 py-2"
         >

@@ -170,6 +170,17 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
       assert Rewards.list_rewards(kid_a, DateTime.to_date(LocalTime.now())) == [reward]
     end
 
+    test "the picker for a kid-scoped reward shows only the kid it's offered to",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards")
+      view |> element("#redeem-reward-#{reward.id}") |> render_click()
+
+      assert has_element?(view, "#redeem-reward-#{reward.id}-kid-#{kid_a.id}")
+      refute has_element?(view, "#redeem-reward-#{reward.id}-kid-#{kid_b.id}")
+    end
+
     test "refuses a kid who already claimed a one-time reward, naming the check",
          %{conn: conn, kid_a: kid_a} do
       reward = reward_fixture(nil, %{name: "Bike", icon: "🚲", points: 10, repeatable: false})
