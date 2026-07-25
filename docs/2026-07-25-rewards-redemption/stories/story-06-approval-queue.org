@@ -54,25 +54,89 @@ As a parent, I need the day's reward requests waiting on the screen I already ch
 
 * Acceptance Criteria
 
-** [ ] ~Admin.TodayLive~ carries a per-kid Requests section alongside the existing Extras section in today's stacked layout. (SC-2, D69)
-** [ ] Each pending request shows the reward's icon and name, its snapshot price, and that kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D69)
-** [ ] The queue shows pending rows only — ~requested_at~ set, no verdict, ~local_date == today~ — so a request left unanswered yesterday never appears and nothing has to be cleaned up. (SC-6, D61, D69)
-** [ ] Approve is ~data-confirm~ guarded and, on confirmation, re-validates affordability *and* availability before the redemption is approved. (SC-2, SC-4, D53, D63, D69)
-** [ ] A failed re-check tells the parent which check failed — affordability or availability — rather than silently no-opping, and leaves the request pending. (SC-4, SC-5, D63, D69)
-** [ ] Approving a request lowers that kid's balance by the snapshot price and it stays down. (SC-3, SC-7, D59, D60)
-** [ ] Decline carries no confirmation, costs nothing, and removes the request from the queue. (SC-6, D69)
-** [ ] A reverse control sits beside the day's redemptions on the same screen, is ~data-confirm~ guarded, and is offered only on redemptions with ~local_date == today~ — never on an earlier day's. (SC-8, D55, D69)
-** [ ] Reversing a redemption returns the points and restores that kid's availability: a one-time reward is claimable again and a repeatable reward's cooldown is cleared. (SC-5, SC-8, D62)
-** [ ] The same-kid interleaving is caught: with a request open, a direct-redeem of that same reward for that same kid makes the subsequent approve fail the availability check and say so. (SC-5, D62, D63)
-** [ ] Cross-surface liveness holds without a reload: a request made on the kiosk appears in this queue, and approving it moves the kiosk's points badge. (SC-2, D71)
-** [ ] LiveView integration tests cover approve, decline, reverse, the re-check failing on affordability and on availability, the same-kid interleaving, and both cross-surface PubSub directions, with ~:routine_windows~ pinned and day-scoping exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+** [X] ~Admin.TodayLive~ carries a per-kid Requests section alongside the existing Extras section in today's stacked layout. (SC-2, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: ~lib/bear_cub_web/live/admin/today_live.ex~ places a Requests ~<div>~ (line ~266~) inside the same per-kid ~<section id="today-kid-#{kid.id}">~ loop as the existing Extras ~<div>~ (line ~252~). Rendered and asserted by ~test/bear_cub_web/live/admin/today_live_test.exs~, describe ~"approval queue and reversal (Story 06, D69, D62, D63, D71)"~, test ="a pending request shows the reward's icon, name, snapshot price, and the kid's true signed balance"=.
+:END:
+** [X] Each pending request shows the reward's icon and name, its snapshot price, and that kid's true signed balance — negative included, never floored. (SC-2, SC-4, D64, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: the queue loads ~balance: Points.balance(kid, today)~ (the raw signed figure, distinct from the floored ~Points.total/2~) and the template renders it unconditionally with no ~max/2~ applied. The same test drives kid_a to a true balance of ~-40~ via a failed chore and asserts the literal string ="-40"= renders in the request row, proving the figure is signed and unfloored, not merely present.
+:END:
+** [X] The queue shows pending rows only — ~requested_at~ set, no verdict, ~local_date == today~ — so a request left unanswered yesterday never appears and nothing has to be cleaned up. (SC-6, D61, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: ~Rewards.list_pending_redemptions/2~ filters on the marker shape plus ~local_date == today~. Test ="the queue never shows a request left unanswered from an earlier day (SC-6, D61, D73)"= constructs a request dated the day before and asserts the rendered admin view (mounted for today) never shows it — confirmed against the rendered HTML, not only the query. Context-level exclusion also pinned in ~test/bear_cub/rewards_test.exs~.
+:END:
+** [X] Approve is ~data-confirm~ guarded and, on confirmation, re-validates affordability *and* availability before the redemption is approved. (SC-2, SC-4, D53, D63, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: the approve button carries ~data-confirm~ (~today_live.ex~), asserted by test ="approve is data-confirm guarded, and on confirmation lowers the kid's balance and clears the request"=. The handler delegates the re-check entirely to the unmodified ~Rewards.approve_redemption/3~ (Story 03), which chains ~check_open → check_audience → check_availability → check_affordability~ — this story surfaces the result, does not re-implement the check.
+:END:
+** [X] A failed re-check tells the parent which check failed — affordability or availability — rather than silently no-opping, and leaves the request pending. (SC-4, SC-5, D63, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: the handler distinguishes ~{:error, :unaffordable}~ (flash containing "can't afford") from ~{:error, :unavailable}~ (flash containing "already claimed") — genuinely distinct text. Tests ="a failed affordability re-check tells the parent and leaves the request pending"= and ="the same-kid interleaving...failing the availability check and saying so"= each assert their own distinct substring and that the request row remains with ~approved_at~ still nil.
+:END:
+** [X] Approving a request lowers that kid's balance by the snapshot price and it stays down. (SC-3, SC-7, D59, D60)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: test ="approving keeps the balance down (it stays lowered, SC-3, SC-7)"= earns 50, requests a 20-point reward, approves, then performs a second independent ~live/2~ mount and asserts ~Points.balance/2 == 30~ — proving persistence beyond the LiveView process's own assigns, not just an unrefreshed render.
+:END:
+** [X] Decline carries no confirmation, costs nothing, and removes the request from the queue. (SC-6, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: no ~data-confirm~ on the decline button, asserted by ~refute has_element?(view, "#decline-request-#{request.id}[data-confirm]")~. Same test confirms ~declined_at~ stamped, balance unchanged, and the row gone from the queue.
+:END:
+** [X] A reverse control sits beside the day's redemptions on the same screen, is ~data-confirm~ guarded, and is offered only on redemptions with ~local_date == today~ — never on an earlier day's. (SC-8, D55, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: reverse carries ~data-confirm~; ~Rewards.list_redemptions_today/2~ scopes the whole Redemptions list to ~local_date == today~, so an earlier day's approval is excluded from the list entirely rather than shown with its Reverse control merely hidden. Test ="reverse is offered only on today's redemptions, never an earlier day's"= constructs a redemption dated the day before and asserts both the row and its reverse control are absent from the rendered view.
+:END:
+** [X] Reversing a redemption returns the points and restores that kid's availability: a one-time reward is claimable again and a repeatable reward's cooldown is cleared. (SC-5, SC-8, D62)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: one-time case via test ="a reverse control sits beside the day's redemptions...restores points and availability"= (balance returns to 0, ~Rewards.available?/3~ true after reversal). Repeatable-cooldown case covered at the domain layer by the pre-existing (unmodified) ~test/bear_cub/rewards_test.exs~ "reversal restores availability for free" describe block, valid evidence since this story's reverse handler calls the same unmodified ~Rewards.reverse_redemption/2~.
+:END:
+** [X] The same-kid interleaving is caught: with a request open, a direct-redeem of that same reward for that same kid makes the subsequent approve fail the availability check and say so. (SC-5, D62, D63)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: test ="the same-kid interleaving: a direct-redeem lands between ask and approve, failing the availability check and saying so"= requests a one-time reward, direct-redeems the same reward for the same kid, then approves the still-open request via the admin view — asserts the row remains, the flash names "already claimed", and ~approved_at~ stays nil.
+:END:
+** [X] Cross-surface liveness holds without a reload: a request made on the kiosk appears in this queue, and approving it moves the kiosk's points badge. (SC-2, D71)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified both directions against already-mounted LiveView processes (no re-fetch of either test view): test ="cross-surface: a kiosk request appears in the admin queue without a reload"= drives the kiosk gift button and reward card, then asserts the already-mounted admin view shows the new request. Test ="cross-surface: approving moves the kiosk's points badge and flips the gift button back to the idle glyph"= approves from the admin view and asserts the already-mounted kiosk's points badge and gift-button glyph update in place, driven by ~Admin.TodayLive~'s new ~Rewards.subscribe/0~ + ~handle_info(:rewards_changed, ...)~ clause.
+:END:
+** [X] LiveView integration tests cover approve, decline, reverse, the re-check failing on affordability and on availability, the same-kid interleaving, and both cross-surface PubSub directions, with ~:routine_windows~ pinned and day-scoping exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:28] \\
+  Verified: describe block ="approval queue and reversal (Story 06, D69, D62, D63, D71)"= in ~test/bear_cub_web/live/admin/today_live_test.exs~ pins ~:routine_windows~ in its own ~setup~ (calling the file's existing ~pin_active_routine/1~ helper) for every test in the block, and exercises day-scoping by passing an explicit earlier ~DateTime~ (the ~la/2~ helper) rather than manipulating "today" — covering the lapsed-request and reverse-day-scoping cases. All 11 tests in the block pass as part of the 426-test ~mix precommit~ run.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:30] \\
+  Verified: all 12 items in the Acceptance Criteria section above are marked ~[X]~, each with its own LOGBOOK entry citing specific tests and file locations. None left as a bare TODO.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:30] \\
+  Verified: ~mix test test/bear_cub/rewards_test.exs test/bear_cub_web/live/admin/today_live_test.exs~ → 95 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:30] \\
+  Verified by spot-check of both touched files (~lib/bear_cub_web/live/admin/today_live.ex~, ~lib/bear_cub/rewards.ex~) against CLAUDE.md's Phoenix/LiveView/Elixir guidelines: ~<.icon>~ used for all icons, no raw ~<script>~, correct HEEx class-list ~[...]~ syntax with parenthesized ~if/3~, no struct map-access, ~data-confirm~ on approve/reverse only (not decline), associations preloaded where the template reads them. This story added no new forms/changesets, so those guidelines don't apply. The per-kid collections (~requests~, ~redemptions~) are assigned directly rather than via ~LiveView.stream/3~ — a pre-existing pattern already carried by ~sections~/~extras~ in this same file (and by the sibling kiosk lists, per Story 05's own Deferred discovery), not something newly introduced by this story.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 15:30] \\
+  Verified: ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) → 426 passed, no warnings, ~format~ made no changes. The ~Exqlite.Connection ... disconnected~ ~[error]~ teardown lines are pre-existing accepted noise (~docs/backlog.org~, PLAN.org Deferred), not a failure.
+:END:
 
 * Technical Notes
 
