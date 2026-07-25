@@ -787,6 +787,84 @@ defmodule BearCub.RewardsTest do
     end
   end
 
+  describe "list_redemption_history/1 (Story 07 — the history record, D70)" do
+    test "returns approved, reversed, and declined rows, preloading :kid and :reward" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{name: "Movie Night"})
+
+      {:ok, approved} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, requested} =
+        Rewards.request_redemption(kid, reward, la(~D[2026-07-09], ~T[08:00:00]))
+
+      {:ok, declined} = Rewards.decline_redemption(requested, la(~D[2026-07-09], ~T[09:00:00]))
+
+      loaded = Rewards.list_redemption_history()
+      assert Enum.map(loaded, & &1.id) == [approved.id, declined.id]
+      assert Enum.all?(loaded, &(&1.kid.id == kid.id and &1.reward.id == reward.id))
+    end
+
+    test "omits a pending (unanswered) request and a lapsed one" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true})
+
+      {:ok, _pending} =
+        Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _lapsed} =
+        Rewards.request_redemption(kid, reward, la(~D[2026-07-09], ~T[08:00:00]))
+
+      assert Rewards.list_redemption_history() == []
+    end
+
+    test "orders reverse-chronological by the date the verdict landed, not insertion order" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true})
+
+      {:ok, older} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-01], ~T[08:00:00]))
+      {:ok, newer} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-15], ~T[08:00:00]))
+
+      assert Rewards.list_redemption_history() |> Enum.map(& &1.id) == [newer.id, older.id]
+    end
+
+    test "a reversed row still appears, ordered by its original approval date" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true})
+
+      {:ok, approved} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, reversed} = Rewards.reverse_redemption(approved, la(~D[2026-07-11], ~T[08:00:00]))
+
+      assert Rewards.list_redemption_history() |> Enum.map(& &1.id) == [reversed.id]
+    end
+
+    test "an archived reward's redemption still appears, joined to its current name" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{name: "Bike"})
+
+      {:ok, redemption} =
+        Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _renamed} = Rewards.update_reward(reward, kid, %{name: "Trail Bike"})
+      {:ok, _archived} = Rewards.archive_reward(reward, la(~D[2026-07-11], ~T[08:00:00]))
+
+      [loaded] = Rewards.list_redemption_history()
+      assert loaded.id == redemption.id
+      assert loaded.reward.name == "Trail Bike"
+      assert loaded.reward.retired_at
+    end
+
+    test "limit/1 bounds the result to the most recent rows" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{repeatable: true})
+
+      {:ok, _oldest} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-01], ~T[08:00:00]))
+      {:ok, middle} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-05], ~T[08:00:00]))
+      {:ok, newest} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Rewards.list_redemption_history(2) |> Enum.map(& &1.id) == [newest.id, middle.id]
+    end
+  end
+
   describe "live updates (D71)" do
     test "subscribe/0 receives a payload-free :rewards_changed on every successful write" do
       kid = kid_fixture()

@@ -9,12 +9,16 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
   alias BearCub.Points
   alias BearCub.Rewards
 
+  @tz "America/Los_Angeles"
+
   defp ordered_ids(html, selector) do
     html
     |> LazyHTML.from_fragment()
     |> LazyHTML.query(selector)
     |> LazyHTML.attribute("id")
   end
+
+  defp la(date, time), do: DateTime.new!(date, time, @tz)
 
   setup do
     kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
@@ -93,6 +97,12 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
         Rewards.create_reward(nil, %{name: "Water Balloon Fight", icon: "💧", points: 10})
 
       assert has_element?(view, "#reward-#{reward.id}")
+    end
+
+    test "links to the redemption history", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards")
+
+      assert view |> element("#view-history") |> render() =~ ~p"/admin/rewards/history"
     end
   end
 
@@ -270,6 +280,151 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
       updated = Rewards.get_reward!(reward.id)
       assert updated.name == "Family Movie Night"
       assert updated.kid_id == kid_a.id
+    end
+  end
+
+  describe "history (Story 07 — /admin/rewards/history, D70)" do
+    test "renders one flat reverse-chronological list, reachable from /admin/rewards",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, older} = Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-01], ~T[08:00:00]))
+      {:ok, newer} = Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      assert ordered_ids(render(view), "#history li[id]") == [
+               "history-#{newer.id}",
+               "history-#{older.id}"
+             ]
+    end
+
+    test "each row shows the date, kid name and color chip, reward icon and name, snapshot price, and approved state",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, redemption} =
+        Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      row = "#history-#{redemption.id}"
+      assert has_element?(view, row, "Jul 10, 2026")
+      assert has_element?(view, row, "Kid A")
+      assert has_element?(view, "#{row} span[style*=\"#{kid_a.color}\"]")
+      assert has_element?(view, row, "🚲")
+      assert has_element?(view, row, "Bike")
+      assert has_element?(view, row, "10 pts")
+      assert has_element?(view, row, "Approved")
+    end
+
+    test "a reversed row shows the struck-through price, a reversed marker, and the reversal date",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, approved} =
+        Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, reversed} = Rewards.reverse_redemption(approved, la(~D[2026-07-11], ~T[09:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      row = "#history-#{reversed.id}"
+      assert has_element?(view, "#{row} .line-through", "10 pts")
+      assert has_element?(view, row, "Reversed")
+      assert has_element?(view, row, "Jul 11, 2026")
+    end
+
+    test "a declined row shows the date, kid, reward icon and name, price, and declined state",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, requested} =
+        Rewards.request_redemption(kid_a, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, declined} = Rewards.decline_redemption(requested, la(~D[2026-07-10], ~T[09:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      row = "#history-#{declined.id}"
+      assert has_element?(view, row, "Jul 10, 2026")
+      assert has_element?(view, row, "Kid A")
+      assert has_element?(view, "#{row} span[style*=\"#{kid_a.color}\"]")
+      assert has_element?(view, row, "🚲")
+      assert has_element?(view, row, "Bike")
+      assert has_element?(view, row, "10 pts")
+      assert has_element?(view, row, "Declined")
+    end
+
+    test "omits a lapsed (never-answered) request", %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{repeatable: true})
+
+      {:ok, lapsed} =
+        Rewards.request_redemption(kid_a, reward, la(~D[2026-07-01], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      refute has_element?(view, "#history-#{lapsed.id}")
+      assert has_element?(view, "#history", "No redemptions yet")
+    end
+
+    test "a redemption of a since-archived reward still appears under its current name and icon",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲"})
+
+      {:ok, redemption} =
+        Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _renamed} = Rewards.update_reward(reward, kid_a, %{name: "Trail Bike"})
+      {:ok, _archived} = Rewards.archive_reward(reward, la(~D[2026-07-11], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      row = "#history-#{redemption.id}"
+      assert has_element?(view, row, "Trail Bike")
+      assert has_element?(view, row, "🚲")
+    end
+
+    test "shows at most the 50 most recent entries and states the bound on screen",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{repeatable: true, points: 1})
+
+      redemptions =
+        for day <- 1..51 do
+          {:ok, r} =
+            Rewards.direct_redeem(
+              kid_a,
+              reward,
+              999,
+              la(Date.add(~D[2026-01-01], day), ~T[08:00:00])
+            )
+
+          r
+        end
+
+      oldest = Enum.at(redemptions, 0)
+      newest = Enum.at(redemptions, -1)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      html = render(view)
+      assert length(ordered_ids(html, "#history li[id]")) == 50
+      assert has_element?(view, "#history-#{newest.id}")
+      refute has_element?(view, "#history-#{oldest.id}")
+      assert html =~ "last 50"
+    end
+
+    test "offers no way to edit, delete, or reverse a redemption", %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(kid_a, %{name: "Bike", icon: "🚲", points: 10})
+
+      {:ok, redemption} =
+        Rewards.direct_redeem(kid_a, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards/history")
+
+      refute has_element?(view, "#reverse-redemption-#{redemption.id}")
+      refute has_element?(view, "#admin-rewards-history button")
+      refute has_element?(view, "#admin-rewards-history [phx-click]")
     end
   end
 end

@@ -328,6 +328,26 @@ defmodule BearCub.Rewards do
     )
   end
 
+  @doc """
+  The redemption record (Story 07, D70): a pure read surface over rows
+  that already carry a verdict — approved (and possibly reversed since,
+  D59) or declined — reverse-chronological by the date that verdict
+  landed, bounded to `limit` (default the 50 stated on screen, D70).
+  Pending and lapsed rows carry no verdict yet, so the same predicate
+  excludes both without needing to tell them apart. Preloads `:kid` and
+  `:reward` — the reward row is never deleted (D68), so an archived or
+  renamed reward still joins under its current name (D60).
+  """
+  def list_redemption_history(limit \\ 50) do
+    Repo.all(
+      from r in Redemption,
+        where: not is_nil(r.approved_at) or not is_nil(r.declined_at),
+        order_by: [desc: fragment("COALESCE(?, ?)", r.approved_at, r.declined_at)],
+        limit: ^limit,
+        preload: [:kid, :reward]
+    )
+  end
+
   # Pending only — requested, no verdict yet, dated today. Lapse is
   # terminal at the write layer (D73): a lapsed row (no verdict, dated
   # before today) is refused here exactly like an already-answered one,

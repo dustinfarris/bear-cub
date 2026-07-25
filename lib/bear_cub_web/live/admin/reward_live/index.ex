@@ -113,13 +113,22 @@ defmodule BearCubWeb.Admin.RewardLive.Index do
         <.header>
           Rewards
           <:actions>
-            <.link
-              id="new-reward"
-              navigate={~p"/admin/rewards/new"}
-              class="text-sm font-semibold text-primary"
-            >
-              + Add
-            </.link>
+            <div class="flex items-center gap-4">
+              <.link
+                id="view-history"
+                navigate={~p"/admin/rewards/history"}
+                class="text-sm font-semibold text-base-content/60"
+              >
+                History
+              </.link>
+              <.link
+                id="new-reward"
+                navigate={~p"/admin/rewards/new"}
+                class="text-sm font-semibold text-primary"
+              >
+                + Add
+              </.link>
+            </div>
           </:actions>
         </.header>
 
