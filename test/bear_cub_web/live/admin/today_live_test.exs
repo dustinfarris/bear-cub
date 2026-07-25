@@ -8,6 +8,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
   alias BearCub.Chores
   alias BearCub.Chores.Completion
   alias BearCub.LocalTime
+  alias BearCub.Points
   alias BearCub.Repo
   alias BearCub.Routines
 
@@ -203,7 +204,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
       {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
       {:ok, view, _html} = live(conn, ~p"/admin")
 
-      before_points = Chores.points_total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
+      before_points = Points.total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
       assert has_element?(kiosk, "#points-badge-#{ctx.kid_a.id}", "#{before_points}")
       # kid_a's only active-routine chore is done, so the kiosk shows the
       # collapsed reveal band rather than the individual chore row
@@ -211,7 +212,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
 
       view |> element("#fail-chore-#{ctx.a_active.id}") |> render_click()
 
-      after_points = Chores.points_total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
+      after_points = Points.total(ctx.kid_a, DateTime.to_date(LocalTime.now()))
       assert after_points < before_points
       assert has_element?(kiosk, "#points-badge-#{ctx.kid_a.id}", "#{after_points}")
 

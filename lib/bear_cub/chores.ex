@@ -406,18 +406,18 @@ defmodule BearCub.Chores do
   end
 
   @doc """
-  The floored, cumulative all-time points total for `kid` as of
-  `local_date` (D41): `max(0, Σ routine-day contributions + Σ extra
-  contributions + Σ other_signed_inputs)`, purely derived from
-  `completions` — nothing stored, no reset job. Individual signed
-  contributions are never clamped; see `extra_contribution/2` and
-  `routine_day_contribution/3` to recover the raw signed sum (SC-4).
+  The *raw signed* cumulative all-time earnings for `kid` as of
+  `local_date` (D41, D57): `Σ routine-day contributions + Σ extra
+  contributions`, purely derived from `completions` — nothing stored, no
+  reset job. Unfloored and unclamped at every level: a run of fails puts
+  this below zero, and the D41 display floor is applied one level up, in
+  `BearCub.Points`, on the complete summation (SC-4).
 
-  `other_signed_inputs` is the D42 redemption seam: empty today (no
-  redemption spends exist yet), kept in the summation shape so a future
-  signed spend slots in without reshaping earnings.
+  This is the earnings half of the ledger only: `Chores` knows nothing of
+  the spend side (D57). The two halves are summed one level up, in
+  `BearCub.Points.balance/2`, which is what every caller reads.
   """
-  def points_total(%Kid{} = kid, %Date{} = local_date) do
+  def earnings(%Kid{} = kid, %Date{} = local_date) do
     extra_sum =
       Repo.all(
         from c in Completion,
@@ -443,9 +443,6 @@ defmodule BearCub.Chores do
         acc + routine_day_contribution(kid, routine, date)
       end)
 
-    # D42 seam: no redemption spends exist yet, so this is always 0 today.
-    other_signed_inputs = 0
-
-    max(0, extra_sum + routine_sum + other_signed_inputs)
+    extra_sum + routine_sum
   end
 end

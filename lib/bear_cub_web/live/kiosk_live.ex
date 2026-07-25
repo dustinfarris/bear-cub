@@ -5,6 +5,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Chores
   alias BearCub.LocalTime
   alias BearCub.Messages
+  alias BearCub.Points
   alias BearCub.Routines
 
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
@@ -222,7 +223,7 @@ defmodule BearCubWeb.KioskLive do
       # per-chore loop (D45, D46) — only relevant in the expanded rows state.
       routine_penalty?: state == :rows and Enum.any?(chore_rows, & &1.failed?),
       events: Calendars.today_events(kid.id, today),
-      points: Chores.points_total(kid, today)
+      points: Points.total(kid, today)
     }
 
     {column, pending_collapse}

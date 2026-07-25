@@ -590,102 +590,6 @@ defmodule BearCub.ChoresTest do
     end
   end
 
-  describe "points_total/2 (Story 02, D41)" do
-    import BearCub.ChoresFixtures
-
-    test "worked example: extra earn -> fail -> redo nets back to start (20 -> 25 -> 15 -> 20)" do
-      kid = kid_fixture()
-
-      baseline_chores =
-        for n <- 1..4, do: chore_fixture(kid, %{name: "Baseline #{n}", routine: nil, points: 5})
-
-      baseline_days = [~D[2026-07-01], ~D[2026-07-02], ~D[2026-07-03], ~D[2026-07-04]]
-
-      for {chore, day} <- Enum.zip(baseline_chores, baseline_days) do
-        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[08:00:00]), "kiosk")
-      end
-
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
-
-      extra = chore_fixture(kid, %{name: "Extra", routine: nil, points: 5})
-      {:ok, completion} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 25
-
-      fail_completion(completion, ~U[2026-07-10 15:00:00Z])
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 15
-
-      {:ok, _redo} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
-    end
-
-    test "floor case: the aggregate never shows negative though the true sum dips below zero (3 -> 8 -> 0 -> 3)" do
-      kid = kid_fixture()
-      baseline = chore_fixture(kid, %{name: "Baseline", routine: nil, points: 3})
-      {:ok, _} = Chores.complete_chore(baseline, la(~D[2026-07-01], ~T[08:00:00]), "kiosk")
-
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 3
-
-      chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
-      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 8
-
-      fail_completion(completion, ~U[2026-07-10 15:00:00Z])
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
-
-      {:ok, _redo} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 3
-    end
-
-    test "the floor applies to the aggregate only — the raw signed row stays recoverable (SC-4)" do
-      kid = kid_fixture()
-      chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
-      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
-      failed = fail_completion(completion, ~U[2026-07-10 15:00:00Z])
-
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
-      assert Chores.extra_contribution(failed, chore) == -5
-    end
-
-    test "the raw signed aggregate below zero is recoverable by composing the same pure functions (SC-4)" do
-      kid = kid_fixture()
-      small = chore_fixture(kid, %{name: "Small", routine: nil, points: 2})
-      big = chore_fixture(kid, %{name: "Big", routine: nil, points: 5})
-
-      {:ok, small_completion} =
-        Chores.complete_chore(small, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
-
-      {:ok, big_completion} =
-        Chores.complete_chore(big, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
-
-      failed_small = fail_completion(small_completion, ~U[2026-07-10 15:00:00Z])
-      failed_big = fail_completion(big_completion, ~U[2026-07-10 15:01:00Z])
-
-      raw_sum =
-        Chores.extra_contribution(failed_small, small) +
-          Chores.extra_contribution(failed_big, big)
-
-      assert raw_sum == -7
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
-    end
-
-    test "a completed routine-day counts toward the total alongside extras" do
-      kid = kid_fixture()
-      a = chore_fixture(kid, %{name: "A", routine: "morning"})
-      b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
-
-      assert Chores.points_total(kid, ~D[2026-07-10]) == Routines.bonus()
-    end
-
-    test "recomputes purely from completions — nothing stored, a kid with none scores zero" do
-      kid = kid_fixture()
-      _chore = chore_fixture(kid, %{name: "Five", routine: nil, points: 5})
-
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 0
-    end
-  end
-
   describe "on-behalf toggling" do
     import BearCub.ChoresFixtures
 
@@ -777,13 +681,13 @@ defmodule BearCub.ChoresTest do
 
       {:ok, _} = Chores.complete_chore(base, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 25
+      assert Chores.earnings(kid, ~D[2026-07-10]) == 25
 
       {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[08:05:00]))
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 15
+      assert Chores.earnings(kid, ~D[2026-07-10]) == 15
 
       {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:10:00]), "kiosk")
-      assert Chores.points_total(kid, ~D[2026-07-10]) == 20
+      assert Chores.earnings(kid, ~D[2026-07-10]) == 20
     end
   end
 
