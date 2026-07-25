@@ -19,6 +19,7 @@ defmodule BearCub.Points do
 
   alias BearCub.Chores
   alias BearCub.Chores.Kid
+  alias BearCub.Rewards
 
   @doc """
   The kid's raw signed balance as of `local_date` — may be negative
@@ -45,14 +46,17 @@ defmodule BearCub.Points do
   Every kid's raw signed balance as of `local_date`, keyed by kid id —
   the whole-render form (D57), rewritten in Story 02 (D72) as grouped
   aggregate queries rather than a per-kid loop over `Chores.earnings/2`:
-  O(1) queries for the entire roster, not O(kids × days). Nothing is
-  cached or memoized (D10) — every read recomputes from `completions`.
+  O(1) queries for the entire roster, not O(kids × days). Story 03 adds
+  the third leg, `Rewards.spend_totals_by_kid/1` (D72). Nothing is
+  cached or memoized (D10) — every read recomputes from `completions`
+  and `redemptions`.
   """
   def balances(%Date{} = local_date) do
     earnings = Chores.earnings_by_kid(local_date)
+    spends = Rewards.spend_totals_by_kid(local_date)
 
     Chores.list_kids()
-    |> Map.new(&{&1.id, Map.get(earnings, &1.id, 0) + spend_total(&1, local_date)})
+    |> Map.new(&{&1.id, Map.get(earnings, &1.id, 0) + Map.get(spends, &1.id, 0)})
   end
 
   @doc """
@@ -64,8 +68,4 @@ defmodule BearCub.Points do
     |> balances()
     |> Map.new(fn {kid_id, balance} -> {kid_id, max(0, balance)} end)
   end
-
-  # The D42 spend seam. Story 03 fills this in from `BearCub.Rewards`;
-  # until then no redemption rows exist and the term is structurally zero.
-  defp spend_total(%Kid{}, %Date{}), do: 0
 end

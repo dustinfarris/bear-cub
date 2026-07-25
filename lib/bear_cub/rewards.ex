@@ -1,0 +1,347 @@
+defmodule BearCub.Rewards do
+  @moduledoc """
+  The reward economy (D57): the catalog and the request / approve /
+  decline / direct-redeem / reverse write paths, plus the availability
+  derivation. Owns the `rewards` and `redemptions` tables and its own
+  PubSub topic; knows nothing of `BearCub.Chores` or `BearCub.Points` —
+  a caller at the boundary supplies whatever balance a write path needs
+  to check affordability against.
+  """
+
+  import Ecto.Query, warn: false
+
+  alias BearCub.Repo
+  alias BearCub.Chores.Kid
+  alias BearCub.Rewards.Redemption
+  alias BearCub.Rewards.Reward
+
+  @topic "rewards"
+
+  @doc """
+  Subscribes the caller to reward-domain changes (D71). Every successful
+  write in this context sends a payload-free `:rewards_changed`;
+  subscribers re-fetch rather than patching state from a payload.
+  """
+  def subscribe do
+    Phoenix.PubSub.subscribe(BearCub.PubSub, @topic)
+  end
+
+  defp broadcast_change({:ok, _} = result) do
+    Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :rewards_changed)
+    result
+  end
+
+  defp broadcast_change(result), do: result
+
+  ## Catalog
+
+  @doc """
+  The rewards on offer to `kid`: not retired, offered to any kid or to
+  this one, in parent-controlled order (SC-1, D58). `local_date` is
+  accepted for signature parity with the app's other "as of" reads;
+  archiving is not day-scoped (D68), so it goes unused here.
+  """
+  def list_rewards(%Kid{} = kid, %Date{} = _local_date) do
+    Repo.all(
+      from r in Reward,
+        where: is_nil(r.retired_at) and (is_nil(r.kid_id) or r.kid_id == ^kid.id),
+        order_by: [asc: r.position, asc: r.id]
+    )
+  end
+
+  @doc "Gets a single reward. Raises `Ecto.NoResultsError` if absent."
+  def get_reward!(id), do: Repo.get!(Reward, id)
+
+  @doc """
+  Creates a reward offered to `kid_or_nil` (`nil` = any kid), appended at
+  the end of the flat position list — a single bucket, no discriminator
+  to group by (D68). `kid_id` is set programmatically from the caller's
+  kid selection and never cast from `attrs` (D58), matching
+  `Chores.create_chore/2`.
+  """
+  def create_reward(kid_or_nil, attrs) do
+    %Reward{kid_id: kid_id_of(kid_or_nil)}
+    |> Reward.changeset(attrs)
+    |> Ecto.Changeset.put_change(:position, next_position())
+    |> Repo.insert()
+    |> broadcast_change()
+  end
+
+  @doc """
+  Updates a reward's fields and/or its audience. `kid_id` is set
+  programmatically from `kid_or_nil`, never cast from `attrs` (D58).
+  Reordering is the admin catalog story's job (D68), not this
+  function's — `position` is untouched here.
+  """
+  def update_reward(%Reward{} = reward, kid_or_nil, attrs) do
+    reward
+    |> Reward.changeset(attrs)
+    |> Ecto.Changeset.put_change(:kid_id, kid_id_of(kid_or_nil))
+    |> Repo.update()
+    |> broadcast_change()
+  end
+
+  @doc """
+  Archives `reward` (D68) — the only removal path: stamps `retired_at`
+  and removes it from `list_rewards/2`. The row and its redemptions are
+  never deleted.
+  """
+  def archive_reward(%Reward{} = reward, %DateTime{} = local_now) do
+    reward
+    |> Ecto.Changeset.change(retired_at: to_utc(local_now))
+    |> Repo.update()
+    |> broadcast_change()
+  end
+
+  def change_reward(%Reward{} = reward, attrs \\ %{}), do: Reward.changeset(reward, attrs)
+
+  defp kid_id_of(nil), do: nil
+  defp kid_id_of(%Kid{id: id}), do: id
+
+  defp next_position do
+    max_position = Repo.one(from r in Reward, select: max(r.position))
+    (max_position || -1) + 1
+  end
+
+  ## Redemptions — write paths (D59)
+
+  @doc """
+  Gets a single redemption. Raises `Ecto.NoResultsError` if absent.
+  """
+  def get_redemption!(id), do: Repo.get!(Redemption, id)
+
+  @doc """
+  The kid leg (SC-2): requests `reward` for `kid`, snapshotting its
+  current price at request time (D60). No affordability or availability
+  check happens here — that check is the kiosk's rendering rule (an
+  unaffordable or unavailable card is not tappable); the write path's
+  only guard is the one-open-request-per-day index (D61). A racing
+  duplicate hits that index and returns `{:error, changeset}`, which
+  callers treat as already-asked.
+  """
+  def request_redemption(%Kid{} = kid, %Reward{} = reward, %DateTime{} = local_now) do
+    %Redemption{kid_id: kid.id, reward_id: reward.id}
+    |> Redemption.changeset(%{
+      points: reward.points,
+      local_date: DateTime.to_date(local_now),
+      requested_at: to_utc(local_now),
+      source: "kiosk"
+    })
+    |> Repo.insert()
+    |> broadcast_change()
+  end
+
+  @doc """
+  The parent-direct leg (SC-2, D68): redeems `reward` for `kid`
+  immediately, with no prior request. This leg has no separate approval
+  step, so it is checked here and only here — affordability against
+  `balance` (the kid's current raw signed balance, supplied by the
+  caller through `BearCub.Points` at the boundary, per D57) and
+  availability (owned by this context), exactly the rule the kid leg is
+  bound by (D63), with no override. Returns `{:error, :unavailable}` or
+  `{:error, :unaffordable}` naming the failed check.
+  """
+  def direct_redeem(%Kid{} = kid, %Reward{} = reward, balance, %DateTime{} = local_now)
+      when is_integer(balance) do
+    with :ok <- check_availability(reward, kid.id, DateTime.to_date(local_now)),
+         :ok <- check_affordability(balance, reward.points) do
+      %Redemption{kid_id: kid.id, reward_id: reward.id}
+      |> Redemption.changeset(%{
+        points: reward.points,
+        local_date: DateTime.to_date(local_now),
+        approved_at: to_utc(local_now),
+        source: "admin"
+      })
+      |> Repo.insert()
+      |> broadcast_change()
+    end
+  end
+
+  @doc """
+  Approves an open request (the kid leg's second check, D63): stamps
+  `approved_at` after re-validating affordability and availability,
+  because both may have moved between ask and answer — including the
+  same-kid interleaving where a direct-redeem of the same reward lands
+  in between (D62). `balance` is the caller-supplied current raw signed
+  balance. Returns `{:error, :not_open}`, `{:error, :unavailable}`, or
+  `{:error, :unaffordable}` naming the failed check rather than silently
+  no-opping or stamping a second marker onto an already-answered row.
+  """
+  def approve_redemption(%Redemption{} = redemption, balance, %DateTime{} = local_now)
+      when is_integer(balance) do
+    reward = get_reward!(redemption.reward_id)
+    today = DateTime.to_date(local_now)
+
+    with :ok <- check_open(redemption, today),
+         :ok <- check_availability(reward, redemption.kid_id, today),
+         :ok <- check_affordability(balance, redemption.points) do
+      redemption
+      |> Ecto.Changeset.change(approved_at: to_utc(local_now))
+      |> Repo.update()
+      |> broadcast_change()
+    end
+  end
+
+  @doc """
+  Declines an open request: stamps `declined_at`. Contributes nothing
+  and costs nothing (D59) — no confirmation, no re-check needed. Returns
+  `{:error, :not_open}` for a request already answered *or already
+  lapsed* (D73), rather than stamping a second marker onto it.
+  """
+  def decline_redemption(%Redemption{} = redemption, %DateTime{} = local_now) do
+    with :ok <- check_open(redemption, DateTime.to_date(local_now)) do
+      redemption
+      |> Ecto.Changeset.change(declined_at: to_utc(local_now))
+      |> Repo.update()
+      |> broadcast_change()
+    end
+  end
+
+  @doc """
+  Reverses an approved, unreversed redemption (SC-8): stamps
+  `reversed_at`, which restores the kid's balance and the reward's
+  availability for free (D62) — the row is retained forever as the
+  trail (D59), never deleted or otherwise mutated. Returns
+  `{:error, :not_approved}` for a redemption that was never approved or
+  is already reversed.
+  """
+  def reverse_redemption(%Redemption{} = redemption, %DateTime{} = local_now) do
+    with :ok <- check_approved(redemption) do
+      redemption
+      |> Ecto.Changeset.change(reversed_at: to_utc(local_now))
+      |> Repo.update()
+      |> broadcast_change()
+    end
+  end
+
+  # Pending only — requested, no verdict yet, dated today. Lapse is
+  # terminal at the write layer (D73): a lapsed row (no verdict, dated
+  # before today) is refused here exactly like an already-answered one,
+  # both returning {:error, :not_open}. D61's index only ever bore on
+  # the one-open-request-per-day slot; it never meant a lapsed row stays
+  # answerable, and treating it as answerable would let a days-later
+  # approval land outside D69's day-scoped reversal window with no
+  # correction surface reaching it.
+  defp check_open(
+         %Redemption{
+           requested_at: at,
+           approved_at: nil,
+           declined_at: nil,
+           local_date: local_date
+         },
+         %Date{} = today
+       )
+       when not is_nil(at) and local_date == today,
+       do: :ok
+
+  defp check_open(%Redemption{}, %Date{}), do: {:error, :not_open}
+
+  defp check_approved(%Redemption{approved_at: at, reversed_at: nil}) when not is_nil(at),
+    do: :ok
+
+  defp check_approved(%Redemption{}), do: {:error, :not_approved}
+
+  ## Redemption state (D59) — derived from markers, never a status column
+
+  @doc "Requested today, no verdict yet."
+  def pending?(%Redemption{} = r, %Date{} = today),
+    do:
+      !!r.requested_at and is_nil(r.approved_at) and is_nil(r.declined_at) and
+        r.local_date == today
+
+  @doc "Requested on an earlier local day, still no verdict — never carries over (D61)."
+  def lapsed?(%Redemption{} = r, %Date{} = today),
+    do:
+      !!r.requested_at and is_nil(r.approved_at) and is_nil(r.declined_at) and
+        Date.compare(r.local_date, today) == :lt
+
+  @doc "Approved and not since reversed — the live spend."
+  def approved?(%Redemption{} = r), do: !!r.approved_at and is_nil(r.reversed_at)
+
+  @doc "Approved, then reversed."
+  def reversed?(%Redemption{} = r), do: !!r.approved_at and !!r.reversed_at
+
+  @doc "Declined by a parent."
+  def declined?(%Redemption{} = r), do: !!r.declined_at
+
+  @doc """
+  A redemption's points contribution (D59): marker-first, mirroring
+  `Chores.extra_contribution/2`'s `cond` exactly — a reversed row
+  contributes nothing (retained forever as the trail), an
+  approved-unreversed row is the spend, everything else (pending,
+  declined, lapsed) is zero.
+  """
+  def redemption_contribution(%Redemption{} = r) do
+    cond do
+      r.reversed_at -> 0
+      r.approved_at -> -r.points
+      true -> 0
+    end
+  end
+
+  ## Availability (D62) — fully derived, scoped per kid
+
+  @doc """
+  Whether `kid_id` may claim `reward` as of `local_date`: a one-time
+  reward is consumed by any unreversed approval this kid holds, on any
+  day; a repeatable reward is only on cooldown for an unreversed
+  approval dated `local_date`. Scoped per kid — a sibling's redemptions
+  never affect this (SC-5).
+  """
+  def available?(%Reward{repeatable: true} = reward, kid_id, %Date{} = local_date) do
+    not on_cooldown?(reward.id, kid_id, local_date)
+  end
+
+  def available?(%Reward{repeatable: false} = reward, kid_id, %Date{} = _local_date) do
+    not consumed?(reward.id, kid_id)
+  end
+
+  defp consumed?(reward_id, kid_id) do
+    reward_id |> spends_query(kid_id) |> Repo.exists?()
+  end
+
+  defp on_cooldown?(reward_id, kid_id, local_date) do
+    reward_id
+    |> spends_query(kid_id)
+    |> where([r], r.local_date == ^local_date)
+    |> Repo.exists?()
+  end
+
+  defp spends_query(reward_id, kid_id) do
+    from r in Redemption,
+      where:
+        r.reward_id == ^reward_id and r.kid_id == ^kid_id and not is_nil(r.approved_at) and
+          is_nil(r.reversed_at)
+  end
+
+  defp check_availability(reward, kid_id, local_date) do
+    if available?(reward, kid_id, local_date), do: :ok, else: {:error, :unavailable}
+  end
+
+  defp check_affordability(balance, price) do
+    if balance >= price, do: :ok, else: {:error, :unaffordable}
+  end
+
+  ## The redemptions leg of the points aggregate (D57, D72)
+
+  @doc """
+  Every kid's cumulative spend as of `local_date`, keyed by kid id — the
+  redemptions leg of `BearCub.Points.balances/1` (D72): one aggregate
+  over approved-and-unreversed rows, already negative (the D59
+  contribution), grouped by kid, so `Points` can add it to earnings
+  directly. Kids with no spends are absent from the result.
+  """
+  def spend_totals_by_kid(%Date{} = local_date) do
+    from(r in Redemption,
+      where: not is_nil(r.approved_at) and is_nil(r.reversed_at) and r.local_date <= ^local_date,
+      group_by: r.kid_id,
+      select: {r.kid_id, fragment("-SUM(?)", r.points)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp to_utc(%DateTime{} = local) do
+    local |> DateTime.shift_zone!("Etc/UTC") |> DateTime.truncate(:second)
+  end
+end
