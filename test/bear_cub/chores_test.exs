@@ -590,6 +590,79 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "earnings_by_kid/1 (Story 02, D72)" do
+    import BearCub.ChoresFixtures
+
+    defp count_queries(fun) do
+      test_pid = self()
+      handler_id = make_ref()
+
+      :telemetry.attach(
+        handler_id,
+        [:bear_cub, :repo, :query],
+        fn _event, _measurements, _metadata, _config -> send(test_pid, :query_executed) end,
+        nil
+      )
+
+      fun.()
+
+      :telemetry.detach(handler_id)
+      count_received_queries(0)
+    end
+
+    defp count_received_queries(count) do
+      receive do
+        :query_executed -> count_received_queries(count + 1)
+      after
+        0 -> count
+      end
+    end
+
+    test "matches earnings/2 for each kid, across the extras and routine-days legs" do
+      kid_a = kid_fixture(%{name: "Kid A", position: 0})
+      kid_b = kid_fixture(%{name: "Kid B", position: 1})
+
+      extra = chore_fixture(kid_a, %{name: "Extra", routine: nil, points: 6})
+      {:ok, _} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      a = chore_fixture(kid_b, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid_b, %{name: "B", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      earnings = Chores.earnings_by_kid(~D[2026-07-10])
+
+      assert earnings[kid_a.id] == Chores.earnings(kid_a, ~D[2026-07-10])
+      assert earnings[kid_b.id] == Chores.earnings(kid_b, ~D[2026-07-10])
+    end
+
+    test "a kid with no completions is absent from the map" do
+      kid = kid_fixture()
+      _chore = chore_fixture(kid, %{name: "Extra", routine: nil, points: 5})
+
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{}
+    end
+
+    test "the query count for a whole-render read does not grow with days of history (SC-9, D72)" do
+      kid = kid_fixture()
+      chore = chore_fixture(kid, %{name: "A", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-01], ~T[07:00:00]), "kiosk")
+
+      few_days_query_count = count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-01]) end)
+
+      for n <- 2..60 do
+        date = Date.add(~D[2026-07-01], n)
+        {:ok, _} = Chores.complete_chore(chore, la(date, ~T[07:00:00]), "kiosk")
+      end
+
+      many_days_query_count =
+        count_queries(fn -> Chores.earnings_by_kid(Date.add(~D[2026-07-01], 60)) end)
+
+      assert few_days_query_count == many_days_query_count
+    end
+  end
+
   describe "on-behalf toggling" do
     import BearCub.ChoresFixtures
 

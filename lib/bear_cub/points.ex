@@ -23,9 +23,13 @@ defmodule BearCub.Points do
   @doc """
   The kid's raw signed balance as of `local_date` — may be negative
   (SC-4). This is the affordability figure: a kid in the red can't buy.
+  Delegates to `balances/1` (Story 02, D72) for an ergonomic single-kid
+  entry point; the map is where the grouped-query work happens.
   """
   def balance(%Kid{} = kid, %Date{} = local_date) do
-    Chores.earnings(kid, local_date) + spend_total(kid, local_date)
+    local_date
+    |> balances()
+    |> Map.fetch!(kid.id)
   end
 
   @doc """
@@ -39,11 +43,16 @@ defmodule BearCub.Points do
 
   @doc """
   Every kid's raw signed balance as of `local_date`, keyed by kid id —
-  the whole-render form (D57).
+  the whole-render form (D57), rewritten in Story 02 (D72) as grouped
+  aggregate queries rather than a per-kid loop over `Chores.earnings/2`:
+  O(1) queries for the entire roster, not O(kids × days). Nothing is
+  cached or memoized (D10) — every read recomputes from `completions`.
   """
   def balances(%Date{} = local_date) do
+    earnings = Chores.earnings_by_kid(local_date)
+
     Chores.list_kids()
-    |> Map.new(&{&1.id, balance(&1, local_date)})
+    |> Map.new(&{&1.id, Map.get(earnings, &1.id, 0) + spend_total(&1, local_date)})
   end
 
   @doc """

@@ -445,4 +445,81 @@ defmodule BearCub.Chores do
 
     extra_sum + routine_sum
   end
+
+  @doc """
+  Every kid's raw signed earnings as of `local_date`, keyed by kid id
+  (Story 02, D72) — the grouped-query rewrite of `earnings/2`'s per-kid
+  loop, for whole-render reads. Two queries total, independent of how
+  many kids or days of history exist: one for the extras leg, one for
+  the routine-days leg (a per-`(kid_id, routine)` chore-count subquery
+  joined in SQL against the per-day aggregate). Kids with no completions
+  are absent from the result — `BearCub.Points.balances/1` merges in the
+  full roster.
+
+  Semantics are pointwise identical to `earnings/2` including roster
+  drift (D72): the chore-count leg counts the kid's *current* roster, not
+  the roster as of each historical routine-day, exactly as
+  `routine_day_contribution/3` does today.
+  """
+  def earnings_by_kid(%Date{} = local_date) do
+    Map.merge(extras_by_kid(local_date), routine_days_by_kid(local_date), fn _kid_id, e, r ->
+      e + r
+    end)
+  end
+
+  defp extras_by_kid(%Date{} = local_date) do
+    from(c in Completion,
+      join: ch in Chore,
+      on: ch.id == c.chore_id,
+      where: is_nil(ch.routine) and c.local_date <= ^local_date,
+      group_by: ch.kid_id,
+      select:
+        {ch.kid_id,
+         fragment(
+           "SUM(CASE WHEN ? IS NOT NULL THEN (0 - ?) WHEN ? IS NOT NULL THEN 0 ELSE ? END)",
+           c.failed_at,
+           ch.points,
+           c.undone_at,
+           ch.points
+         )}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp routine_days_by_kid(%Date{} = local_date) do
+    r = Routines.bonus()
+
+    chore_counts =
+      from(ch in Chore,
+        where: not is_nil(ch.routine),
+        group_by: [ch.kid_id, ch.routine],
+        select: %{kid_id: ch.kid_id, routine: ch.routine, chore_count: count(ch.id)}
+      )
+
+    from(c in Completion,
+      join: ch in Chore,
+      on: ch.id == c.chore_id,
+      join: cc in subquery(chore_counts),
+      on: cc.kid_id == ch.kid_id and cc.routine == ch.routine,
+      where: not is_nil(ch.routine) and c.local_date <= ^local_date,
+      group_by: [ch.kid_id, ch.routine, c.local_date, cc.chore_count],
+      select: %{
+        kid_id: ch.kid_id,
+        routine: ch.routine,
+        chore_count: cc.chore_count,
+        live_count:
+          fragment("COUNT(DISTINCT CASE WHEN ? IS NULL THEN ? END)", c.undone_at, ch.id),
+        any_failed: fragment("MAX(CASE WHEN ? IS NOT NULL THEN 1 ELSE 0 END)", c.failed_at)
+      }
+    )
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn row, acc ->
+      complete? = row.chore_count > 0 and row.live_count == row.chore_count
+      failed? = row.any_failed == 1
+      contribution = if(complete?, do: r, else: 0) + if failed?, do: -r, else: 0
+
+      Map.update(acc, row.kid_id, contribution, &(&1 + contribution))
+    end)
+  end
 end
