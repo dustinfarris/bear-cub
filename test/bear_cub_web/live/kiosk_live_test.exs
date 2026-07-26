@@ -1382,7 +1382,7 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
-  describe "kiosk reward shop (Story 05, D65-D67)" do
+  describe "kiosk reward shop (Story 05/08, D65-D67, D75-D77)" do
     alias BearCub.Chores
     alias BearCub.Rewards
 
@@ -1516,7 +1516,7 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}")
     end
 
-    test "row 3 — a pending request renders the pending glyph, untappable, and is not dimmed like rows 4-6",
+    test "row 3 — a pending request renders the pending glyph, tappable (its tap withdraws, D76), and is not dimmed like rows 4-6",
          %{conn: conn, kid_a: kid_a} do
       reward = reward_fixture(nil, %{name: "Bike", points: 10})
       {:ok, _} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
@@ -1525,7 +1525,12 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#gift-button-#{kid_a.id}") |> render_click()
 
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=pending]")
-      refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[phx-click]")
+
+      assert has_element?(
+               view,
+               "#reward-card-#{reward.id}-#{kid_a.id}[phx-click=withdraw-request]"
+             )
+
       # the design scopes the shared dim treatment to rows 4-6 (declined,
       # claimed, locked) only — pending carries its own =⏳= treatment,
       # the same glyph the banner button already shows, never dimmed
@@ -1544,6 +1549,13 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=declined]")
       refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[phx-click]")
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}.opacity-45")
+      # the declined ✕ carries color, not just glyph — an uncolored ✕
+      # reads as a close control (design-language dim+glyph Ruling,
+      # amended 2026-07-25)
+      assert has_element?(
+               view,
+               "#reward-card-#{reward.id}-#{kid_a.id} .hero-x-mark.text-error"
+             )
     end
 
     test "row 5 — a reward claimed today renders the claimed glyph, dimmed, untappable, and outranks unaffordable",
@@ -1561,6 +1573,12 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=claimed]")
       refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[phx-click]")
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}.opacity-45")
+      # the claimed check carries the same success green a completed
+      # extra's +N chip already carries
+      assert has_element?(
+               view,
+               "#reward-card-#{reward.id}-#{kid_a.id} .hero-check.text-success"
+             )
     end
 
     test "row 5 — a repeatable reward on cooldown yesterday is available again (not dimmed, not absent) today",
@@ -1615,7 +1633,7 @@ defmodule BearCubWeb.KioskLiveTest do
              )
     end
 
-    test "AC-10: tapping an available card asks in one tap — no confirmation — returns to the column immediately, and flips the banner to pending",
+    test "AC-10 (D75, supersedes the shipped instant return): tapping an available card asks in one tap — no confirmation — the shop stays open and the tapped card turns pending in place",
          %{conn: conn, kid_a: kid_a} do
       earn(kid_a, 10)
       reward = reward_fixture(nil, %{name: "Bike", points: 10})
@@ -1624,39 +1642,71 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#gift-button-#{kid_a.id}") |> render_click()
       view |> element("#reward-card-#{reward.id}-#{kid_a.id}") |> render_click()
 
-      refute has_element?(view, "#rewards-#{kid_a.id}")
-      assert has_element?(view, "#chores-#{kid_a.id}")
+      assert has_element?(view, "#rewards-#{kid_a.id}")
+      refute has_element?(view, "#chores-#{kid_a.id}")
+      assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=pending]")
       assert has_element?(view, "#gift-button-#{kid_a.id}", "⏳")
       assert Rewards.any_pending?(kid_a.id, DateTime.to_date(LocalTime.now()))
     end
 
-    test "AC-11: there is no kid-side withdraw control anywhere in the view",
+    test "AC-11 (D76, supersedes no-withdraw): a pending card's tap withdraws with no confirmation, returning to plain in the same render, shop still open",
          %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 10)
       reward = reward_fixture(nil, %{name: "Bike", points: 10})
       {:ok, _} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=pending]")
+      refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[data-confirm]")
 
-      refute render(view) =~ "withdraw"
-      refute has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}[phx-click]")
+      view |> element("#reward-card-#{reward.id}-#{kid_a.id}") |> render_click()
+
+      assert has_element?(view, "#rewards-#{kid_a.id}")
+
+      assert has_element?(
+               view,
+               "#reward-card-#{reward.id}-#{kid_a.id}[data-card-state=available]"
+             )
+
+      refute Rewards.any_pending?(kid_a.id, DateTime.to_date(LocalTime.now()))
     end
 
-    test "AC-12: the idle timer resets — a tap inside the view (re-tapping the gift button) cancels and re-arms it",
+    test "AC-12 (no longer driven through the gift button, which now closes the shop): the idle timer resets on an in-view request tap",
          %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 10)
+      reward = reward_fixture(nil, %{name: "Bike", points: 10})
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("#gift-button-#{kid_a.id}") |> render_click()
       first_ref = :sys.get_state(view.pid).socket.assigns.rewards_timers[kid_a.id]
       assert first_ref
 
-      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      view |> element("#reward-card-#{reward.id}-#{kid_a.id}") |> render_click()
       second_ref = :sys.get_state(view.pid).socket.assigns.rewards_timers[kid_a.id]
 
       assert second_ref
       refute second_ref == first_ref
       # the first timer was actually cancelled, not merely superseded —
       # a stray fire from it can't yank the column closed early
+      assert Process.read_timer(first_ref) == false
+    end
+
+    test "AC-12: the idle timer resets on an in-view withdraw tap too",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(nil, %{name: "Bike", points: 10})
+      {:ok, _} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      first_ref = :sys.get_state(view.pid).socket.assigns.rewards_timers[kid_a.id]
+      assert first_ref
+
+      view |> element("#reward-card-#{reward.id}-#{kid_a.id}") |> render_click()
+      second_ref = :sys.get_state(view.pid).socket.assigns.rewards_timers[kid_a.id]
+
+      assert second_ref
+      refute second_ref == first_ref
       assert Process.read_timer(first_ref) == false
     end
 
@@ -1740,6 +1790,98 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#reward-card-#{reward.id}-#{kid_a.id}")
 
       refute render(view) =~ "/admin"
+    end
+
+    test "the banner gift button toggles the shop closed on a second tap, whichever glyph it shows (D75)",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(nil, %{name: "Bike", points: 10})
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # idle glyph (🎁): open, then close
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#rewards-#{kid_a.id}")
+
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      refute has_element?(view, "#rewards-#{kid_a.id}")
+      assert has_element?(view, "#chores-#{kid_a.id}")
+
+      # pending glyph (⏳): open, then close — the toggle acts regardless
+      # of which glyph the button is showing
+      {:ok, _} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#gift-button-#{kid_a.id}", "⏳")
+      assert has_element?(view, "#rewards-#{kid_a.id}")
+
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      refute has_element?(view, "#rewards-#{kid_a.id}")
+      assert has_element?(view, "#chores-#{kid_a.id}")
+      assert has_element?(view, "#gift-button-#{kid_a.id}", "⏳")
+    end
+
+    test "a kid may hold several pending requests at once, and the banner shows ⏳ until every one clears (D77)",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 20)
+      reward_a = reward_fixture(nil, %{name: "Bike", points: 10})
+      reward_b = reward_fixture(nil, %{name: "Scooter", points: 10})
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      view |> element("#reward-card-#{reward_a.id}-#{kid_a.id}") |> render_click()
+      view |> element("#reward-card-#{reward_b.id}-#{kid_a.id}") |> render_click()
+
+      assert has_element?(
+               view,
+               "#reward-card-#{reward_a.id}-#{kid_a.id}[data-card-state=pending]"
+             )
+
+      assert has_element?(
+               view,
+               "#reward-card-#{reward_b.id}-#{kid_a.id}[data-card-state=pending]"
+             )
+
+      assert has_element?(view, "#gift-button-#{kid_a.id}", "⏳")
+
+      # withdrawing one leaves the banner pending — the other is still open
+      view |> element("#reward-card-#{reward_a.id}-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#gift-button-#{kid_a.id}", "⏳")
+
+      # withdrawing the last clears it
+      view |> element("#reward-card-#{reward_b.id}-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#gift-button-#{kid_a.id}", "🎁")
+    end
+
+    test "a pending ask locks a costlier sibling card the kid can no longer cover, and withdrawing unlocks it live (D77)",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 10)
+      cheap = reward_fixture(nil, %{name: "Sticker", points: 10})
+      costly = reward_fixture(nil, %{name: "Bike", points: 10})
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+
+      assert has_element?(
+               view,
+               "#reward-card-#{costly.id}-#{kid_a.id}[data-card-state=available]"
+             )
+
+      view |> element("#reward-card-#{cheap.id}-#{kid_a.id}") |> render_click()
+
+      assert has_element?(view, "#reward-card-#{cheap.id}-#{kid_a.id}[data-card-state=pending]")
+      assert has_element?(view, "#reward-card-#{costly.id}-#{kid_a.id}[data-card-state=locked]")
+      # the lock stays the whole explanation — no committed/deficit figure shown
+      refute render(view) =~ "−"
+
+      view |> element("#reward-card-#{cheap.id}-#{kid_a.id}") |> render_click()
+
+      assert has_element?(
+               view,
+               "#reward-card-#{cheap.id}-#{kid_a.id}[data-card-state=available]"
+             )
+
+      assert has_element?(
+               view,
+               "#reward-card-#{costly.id}-#{kid_a.id}[data-card-state=available]"
+             )
     end
   end
 end

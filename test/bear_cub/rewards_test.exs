@@ -178,26 +178,62 @@ defmodule BearCub.RewardsTest do
     end
   end
 
-  describe "one open request per kid per local day (D61)" do
-    test "a second request the same day errors; the next local day succeeds with yesterday's row untouched" do
+  describe "one open ask per kid per reward per local day (D77, supersedes D61)" do
+    test "a kid may hold several pending requests for different rewards the same day" do
       kid = kid_fixture()
       reward_a = reward_fixture(kid, %{name: "A"})
       reward_b = reward_fixture(kid, %{name: "B"})
 
       {:ok, first} = Rewards.request_redemption(kid, reward_a, la(~D[2026-07-10], ~T[08:00:00]))
 
+      {:ok, second} =
+        Rewards.request_redemption(kid, reward_b, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert Rewards.pending?(first, ~D[2026-07-10])
+      assert Rewards.pending?(second, ~D[2026-07-10])
+    end
+
+    test "a racing duplicate ask for the same reward on the same day errors" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+
+      {:ok, first} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
       assert {:error, %Ecto.Changeset{}} =
-               Rewards.request_redemption(kid, reward_b, la(~D[2026-07-10], ~T[09:00:00]))
-
-      {:ok, next_day} =
-        Rewards.request_redemption(kid, reward_b, la(~D[2026-07-11], ~T[08:00:00]))
-
-      assert next_day.local_date == ~D[2026-07-11]
+               Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[09:00:00]))
 
       unchanged = Rewards.get_redemption!(first.id)
       assert unchanged.requested_at == first.requested_at
       assert is_nil(unchanged.approved_at)
       assert is_nil(unchanged.declined_at)
+    end
+
+    test "lapse stays free under the re-keyed index: yesterday's unanswered request for a reward does not block today's ask for it" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+
+      {:ok, _lapsed} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, next_day} =
+        Rewards.request_redemption(kid, reward, la(~D[2026-07-11], ~T[08:00:00]))
+
+      assert next_day.local_date == ~D[2026-07-11]
+    end
+
+    test "withdrawing frees the index slot: request, withdraw, request the same reward again the same day succeeds with its own price snapshot" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 15})
+
+      {:ok, first} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, _} = Rewards.withdraw_redemption(first, la(~D[2026-07-10], ~T[08:30:00]))
+
+      {:ok, repriced} = Rewards.update_reward(reward, kid, %{points: 25})
+
+      {:ok, second} =
+        Rewards.request_redemption(kid, repriced, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert second.id != first.id
+      assert second.points == 25
     end
   end
 
@@ -300,10 +336,24 @@ defmodule BearCub.RewardsTest do
       {:ok, declined} = Rewards.decline_redemption(pending, la(~D[2026-07-10], ~T[09:00:00]))
       assert Rewards.declined?(declined)
     end
+
+    test "withdrawn?/1 reflects the fourth marker (D76), and pending?/lapsed? go false once it's set" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+      {:ok, r} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      refute Rewards.withdrawn?(r)
+
+      {:ok, withdrawn} = Rewards.withdraw_redemption(r, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert Rewards.withdrawn?(withdrawn)
+      refute Rewards.pending?(withdrawn, ~D[2026-07-10])
+      refute Rewards.lapsed?(withdrawn, ~D[2026-07-11])
+    end
   end
 
   describe "contribution is marker-first (D59)" do
-    test "reversed -> 0, approved -> -points, pending/declined/lapsed -> 0" do
+    test "reversed -> 0, approved -> -points, pending/declined/lapsed/withdrawn -> 0" do
       kid = kid_fixture()
 
       reward = reward_fixture(kid, %{points: 25, repeatable: false})
@@ -323,6 +373,16 @@ defmodule BearCub.RewardsTest do
       reward3 = reward_fixture(kid, %{points: 25})
       {:ok, lapsed} = Rewards.request_redemption(kid, reward3, la(~D[2026-07-10], ~T[08:00:00]))
       assert Rewards.redemption_contribution(lapsed) == 0
+
+      reward4 = reward_fixture(kid, %{points: 25})
+
+      {:ok, to_withdraw} =
+        Rewards.request_redemption(kid, reward4, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, withdrawn} =
+        Rewards.withdraw_redemption(to_withdraw, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert Rewards.redemption_contribution(withdrawn) == 0
     end
   end
 
@@ -495,6 +555,43 @@ defmodule BearCub.RewardsTest do
                Rewards.approve_redemption(pending, 100, la(~D[2026-07-10], ~T[09:00:00]))
     end
 
+    test "the same-kid interleaving still refuses with several asks open (D62, D77)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10, repeatable: false})
+      other_reward = reward_fixture(kid, %{name: "Other", points: 10})
+
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _sibling_ask} =
+        Rewards.request_redemption(kid, other_reward, la(~D[2026-07-10], ~T[08:05:00]))
+
+      {:ok, _direct} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert {:error, :unavailable} =
+               Rewards.approve_redemption(pending, 100, la(~D[2026-07-10], ~T[09:00:00]))
+    end
+
+    test "order-safe with several asks open: approving one can make a sibling ask's re-check fail as unaffordable (D77)" do
+      kid = kid_fixture()
+      reward_a = reward_fixture(kid, %{name: "A", points: 30})
+      reward_b = reward_fixture(kid, %{name: "B", points: 30})
+
+      {:ok, ask_a} = Rewards.request_redemption(kid, reward_a, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, ask_b} = Rewards.request_redemption(kid, reward_b, la(~D[2026-07-10], ~T[08:05:00]))
+
+      # both individually affordable against a true balance of 50, but not
+      # together — approving the first is expected to make the second's
+      # re-check fail, which is a named refusal rather than a defect
+      assert {:ok, _} = Rewards.approve_redemption(ask_a, 50, la(~D[2026-07-10], ~T[09:00:00]))
+
+      # the balance the caller supplies for the second approval already
+      # reflects the first spend, exactly as Points.balance/2 would report
+      assert {:error, :unaffordable} =
+               Rewards.approve_redemption(ask_b, 20, la(~D[2026-07-10], ~T[09:05:00]))
+
+      refute Rewards.approved?(Rewards.get_redemption!(ask_b.id))
+    end
+
     test "succeeds when both checks pass" do
       kid = kid_fixture()
       reward = reward_fixture(kid, %{points: 10})
@@ -616,6 +713,77 @@ defmodule BearCub.RewardsTest do
 
       refute Rewards.get_redemption!(pending.id).declined_at
     end
+
+    test "withdraw_redemption/2 stamps withdrawn_at on a pending request (D76)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, withdrawn} =
+        Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert withdrawn.withdrawn_at
+      assert withdrawn.requested_at == pending.requested_at
+    end
+
+    test "withdraw_redemption/2 refuses a request already approved" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, approved} = Rewards.approve_redemption(pending, 100, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert {:error, :not_open} =
+               Rewards.withdraw_redemption(approved, la(~D[2026-07-10], ~T[10:00:00]))
+
+      refute Rewards.get_redemption!(approved.id).withdrawn_at
+    end
+
+    test "withdraw_redemption/2 refuses a request already declined" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, declined} = Rewards.decline_redemption(pending, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert {:error, :not_open} =
+               Rewards.withdraw_redemption(declined, la(~D[2026-07-10], ~T[10:00:00]))
+
+      refute Rewards.get_redemption!(declined.id).withdrawn_at
+    end
+
+    test "withdraw_redemption/2 refuses a request that has lapsed" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:error, :not_open} =
+               Rewards.withdraw_redemption(pending, la(~D[2026-07-11], ~T[08:00:00]))
+
+      refute Rewards.get_redemption!(pending.id).withdrawn_at
+    end
+
+    test "approve_redemption/3 refuses a request already withdrawn (D76 mirrors D73's guard shape)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, withdrawn} = Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert {:error, :not_open} =
+               Rewards.approve_redemption(withdrawn, 100, la(~D[2026-07-10], ~T[09:00:00]))
+
+      refute Rewards.get_redemption!(withdrawn.id).approved_at
+    end
+
+    test "decline_redemption/2 refuses a request already withdrawn" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, withdrawn} = Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert {:error, :not_open} =
+               Rewards.decline_redemption(withdrawn, la(~D[2026-07-10], ~T[09:00:00]))
+
+      refute Rewards.get_redemption!(withdrawn.id).declined_at
+    end
   end
 
   describe "any_pending?/2 (Story 05 — the banner button's second state, D65)" do
@@ -647,15 +815,42 @@ defmodule BearCub.RewardsTest do
       refute Rewards.any_pending?(kid.id, ~D[2026-07-12])
       Rewards.get_redemption!(pending2.id)
     end
+
+    test "false once withdrawn (D76)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _} = Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-10])
+    end
+
+    test "true while any of several open requests remains, false only once every one clears (D77)" do
+      kid = kid_fixture()
+      reward_a = reward_fixture(kid, %{name: "A", points: 10})
+      reward_b = reward_fixture(kid, %{name: "B", points: 10})
+
+      {:ok, a} = Rewards.request_redemption(kid, reward_a, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, b} = Rewards.request_redemption(kid, reward_b, la(~D[2026-07-10], ~T[08:05:00]))
+
+      assert Rewards.any_pending?(kid.id, ~D[2026-07-10])
+
+      {:ok, _} = Rewards.decline_redemption(a, la(~D[2026-07-10], ~T[09:00:00]))
+      # b is still open
+      assert Rewards.any_pending?(kid.id, ~D[2026-07-10])
+
+      {:ok, _} = Rewards.withdraw_redemption(b, la(~D[2026-07-10], ~T[09:05:00]))
+      refute Rewards.any_pending?(kid.id, ~D[2026-07-10])
+    end
   end
 
-  describe "card_state/4 — the seven-row precedence table, first match wins (D66)" do
+  describe "card_state/5 — the seven-row precedence table, first match wins (D66, D77)" do
     test "row 1 — retired renders absent regardless of any other state" do
       kid = kid_fixture()
       reward = reward_fixture(kid, %{points: 10})
       {:ok, reward} = Rewards.archive_reward(reward, la(~D[2026-07-10], ~T[08:00:00]))
 
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :absent
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-10]) == :absent
     end
 
     test "row 2 — one-time consumed on an earlier day renders absent; today it renders claimed" do
@@ -663,8 +858,8 @@ defmodule BearCub.RewardsTest do
       reward = reward_fixture(kid, %{points: 10, repeatable: false})
       {:ok, _} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
 
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :claimed
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :absent
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-10]) == :claimed
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-11]) == :absent
     end
 
     test "row 3 — a pending request today renders pending, untappable by construction (no other state wins)" do
@@ -672,7 +867,17 @@ defmodule BearCub.RewardsTest do
       reward = reward_fixture(kid, %{points: 10})
       {:ok, _} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
 
-      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :pending
+      assert Rewards.card_state(reward, kid.id, 0, 10, ~D[2026-07-10]) == :pending
+    end
+
+    test "row 3 — a card whose own request is pending never self-locks, even against a reserve that would otherwise lock it (D77)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, _} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      # balance 10, pending_total 10 (this very ask) — row 6's formula
+      # would lock (10 - 10 < 10), but row 3 resolves first
+      assert Rewards.card_state(reward, kid.id, 10, 10, ~D[2026-07-10]) == :pending
     end
 
     test "row 4 — declined today renders declined, and doubles as the re-ask block" do
@@ -681,9 +886,9 @@ defmodule BearCub.RewardsTest do
       {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
       {:ok, _} = Rewards.decline_redemption(pending, la(~D[2026-07-10], ~T[09:00:00]))
 
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :declined
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-10]) == :declined
       # the next local day the decline no longer applies
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :available
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-11]) == :available
     end
 
     test "row 5 — claimed today outranks unaffordable (D66's own ordering note)" do
@@ -692,7 +897,7 @@ defmodule BearCub.RewardsTest do
       {:ok, _} = Rewards.direct_redeem(kid, reward, 50, la(~D[2026-07-10], ~T[08:00:00]))
 
       # balance has since dropped below the price, but claimed still wins
-      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :claimed
+      assert Rewards.card_state(reward, kid.id, 0, 0, ~D[2026-07-10]) == :claimed
     end
 
     test "row 5 — a repeatable reward is dimmed as claimed on cooldown day, available again next day" do
@@ -700,24 +905,103 @@ defmodule BearCub.RewardsTest do
       reward = reward_fixture(kid, %{points: 10, repeatable: true})
       {:ok, _} = Rewards.direct_redeem(kid, reward, 100, la(~D[2026-07-10], ~T[08:00:00]))
 
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-10]) == :claimed
-      assert Rewards.card_state(reward, kid.id, 100, ~D[2026-07-11]) == :available
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-10]) == :claimed
+      assert Rewards.card_state(reward, kid.id, 100, 0, ~D[2026-07-11]) == :available
     end
 
     test "row 6 — unaffordable against the raw signed balance renders locked, even at balance 0" do
       kid = kid_fixture()
       reward = reward_fixture(kid, %{points: 10})
 
-      assert Rewards.card_state(reward, kid.id, 0, ~D[2026-07-10]) == :locked
-      assert Rewards.card_state(reward, kid.id, -3, ~D[2026-07-10]) == :locked
-      assert Rewards.card_state(reward, kid.id, 9, ~D[2026-07-10]) == :locked
+      assert Rewards.card_state(reward, kid.id, 0, 0, ~D[2026-07-10]) == :locked
+      assert Rewards.card_state(reward, kid.id, -3, 0, ~D[2026-07-10]) == :locked
+      assert Rewards.card_state(reward, kid.id, 9, 0, ~D[2026-07-10]) == :locked
+    end
+
+    test "row 6 — reserve-aware: a sibling reward's pending commitment locks a card the raw balance alone would afford (D77)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+
+      # balance 10 affords the card outright, but 6 points are already
+      # reserved by another pending ask — 10 - 6 = 4 < 10
+      assert Rewards.card_state(reward, kid.id, 10, 6, ~D[2026-07-10]) == :locked
+      # freeing that reserve (e.g. a withdraw) unlocks it in the caller's
+      # next render — this function is pure, so a fresh pending_total of 0
+      # is exactly that unlocked read
+      assert Rewards.card_state(reward, kid.id, 10, 0, ~D[2026-07-10]) == :available
     end
 
     test "row 7 — otherwise a full-color, tappable card" do
       kid = kid_fixture()
       reward = reward_fixture(kid, %{points: 10})
 
-      assert Rewards.card_state(reward, kid.id, 10, ~D[2026-07-10]) == :available
+      assert Rewards.card_state(reward, kid.id, 10, 0, ~D[2026-07-10]) == :available
+    end
+
+    test "row 7 — a reserve that exactly consumes the remainder still leaves the reward affordable" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+
+      assert Rewards.card_state(reward, kid.id, 20, 10, ~D[2026-07-10]) == :available
+    end
+  end
+
+  describe "pending_total/2 — the reserve read for the kiosk lock condition (Story 08, D77)" do
+    test "sums this kid's pending requests' snapshot prices, day-scoped" do
+      kid = kid_fixture()
+      reward_a = reward_fixture(kid, %{name: "A", points: 10})
+      reward_b = reward_fixture(kid, %{name: "B", points: 25})
+
+      assert Rewards.pending_total(kid.id, ~D[2026-07-10]) == 0
+
+      {:ok, _} = Rewards.request_redemption(kid, reward_a, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, _} = Rewards.request_redemption(kid, reward_b, la(~D[2026-07-10], ~T[08:05:00]))
+
+      assert Rewards.pending_total(kid.id, ~D[2026-07-10]) == 35
+    end
+
+    test "excludes an answered, withdrawn, or lapsed row, and a sibling's requests" do
+      kid = kid_fixture()
+      other = sibling()
+      reward = reward_fixture(kid, %{points: 10})
+
+      {:ok, declined} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, _} = Rewards.decline_redemption(declined, la(~D[2026-07-10], ~T[08:30:00]))
+
+      {:ok, withdrawn} =
+        Rewards.request_redemption(
+          kid,
+          reward_fixture(kid, %{points: 10}),
+          la(~D[2026-07-10], ~T[08:00:00])
+        )
+
+      {:ok, _} = Rewards.withdraw_redemption(withdrawn, la(~D[2026-07-10], ~T[08:30:00]))
+
+      {:ok, _lapsed} =
+        Rewards.request_redemption(
+          kid,
+          reward_fixture(kid, %{points: 10}),
+          la(~D[2026-07-09], ~T[08:00:00])
+        )
+
+      {:ok, _sibling_pending} =
+        Rewards.request_redemption(
+          other,
+          reward_fixture(other, %{points: 10}),
+          la(~D[2026-07-10], ~T[08:00:00])
+        )
+
+      assert Rewards.pending_total(kid.id, ~D[2026-07-10]) == 0
+    end
+
+    test "snapshot price, not the reward's current price, is what's summed (D60)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid, %{points: 10})
+      {:ok, _} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      {:ok, _repriced} = Rewards.update_reward(reward, kid, %{points: 999})
+
+      assert Rewards.pending_total(kid.id, ~D[2026-07-10]) == 10
     end
   end
 
@@ -747,6 +1031,18 @@ defmodule BearCub.RewardsTest do
       {:ok, _lapsed} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
 
       assert Rewards.list_pending_redemptions(kid.id, ~D[2026-07-11]) == []
+    end
+
+    test "a withdrawn request drops out with no parent action needed (D76)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert [_] = Rewards.list_pending_redemptions(kid.id, ~D[2026-07-10])
+
+      {:ok, _} = Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
+
+      assert Rewards.list_pending_redemptions(kid.id, ~D[2026-07-10]) == []
     end
   end
 
@@ -813,6 +1109,15 @@ defmodule BearCub.RewardsTest do
 
       {:ok, _lapsed} =
         Rewards.request_redemption(kid, reward, la(~D[2026-07-09], ~T[08:00:00]))
+
+      assert Rewards.list_redemption_history() == []
+    end
+
+    test "omits a withdrawn request — an intention the child took back is not a redemption record (D76)" do
+      kid = kid_fixture()
+      reward = reward_fixture(kid)
+      {:ok, pending} = Rewards.request_redemption(kid, reward, la(~D[2026-07-10], ~T[08:00:00]))
+      {:ok, _} = Rewards.withdraw_redemption(pending, la(~D[2026-07-10], ~T[08:30:00]))
 
       assert Rewards.list_redemption_history() == []
     end
@@ -903,6 +1208,15 @@ defmodule BearCub.RewardsTest do
       assert_receive :rewards_changed
 
       {:ok, _} = Rewards.archive_reward(reward3, la(~D[2026-07-11], ~T[10:00:00]))
+      assert_receive :rewards_changed
+
+      {:ok, reward4} = Rewards.create_reward(kid, %{name: "D", icon: "🎁", points: 5})
+      assert_receive :rewards_changed
+
+      {:ok, pending4} = Rewards.request_redemption(kid, reward4, la(~D[2026-07-11], ~T[08:00:00]))
+      assert_receive :rewards_changed
+
+      {:ok, _} = Rewards.withdraw_redemption(pending4, la(~D[2026-07-11], ~T[08:30:00]))
       assert_receive :rewards_changed
     end
   end

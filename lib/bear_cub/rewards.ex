@@ -184,10 +184,11 @@ defmodule BearCub.Rewards do
   The kid leg (SC-2): requests `reward` for `kid`, snapshotting its
   current price at request time (D60). No affordability or availability
   check happens here — that check is the kiosk's rendering rule (an
-  unaffordable or unavailable card is not tappable); the write path's
-  only guard is the one-open-request-per-day index (D61). A racing
-  duplicate hits that index and returns `{:error, changeset}`, which
-  callers treat as already-asked.
+  unaffordable, unavailable, or already-pending card is not tappable);
+  the write path's only guard is the one-open-ask-per-kid-per-reward
+  index (D77, superseding D61's one-per-kid cap). A racing duplicate ask
+  for the same reward hits that index and returns `{:error, changeset}`,
+  which callers treat as already-asked.
   """
   def request_redemption(%Kid{} = kid, %Reward{} = reward, %DateTime{} = local_now) do
     %Redemption{kid_id: kid.id, reward_id: reward.id}
@@ -266,8 +267,9 @@ defmodule BearCub.Rewards do
   @doc """
   Declines an open request: stamps `declined_at`. Contributes nothing
   and costs nothing (D59) — no confirmation, no re-check needed. Returns
-  `{:error, :not_open}` for a request already answered *or already
-  lapsed* (D73), rather than stamping a second marker onto it.
+  `{:error, :not_open}` for a request already answered, already withdrawn
+  (D76), *or already lapsed* (D73), rather than stamping a second marker
+  onto it.
   """
   def decline_redemption(%Redemption{} = redemption, %DateTime{} = local_now) do
     with :ok <- check_open(redemption, DateTime.to_date(local_now)) do
@@ -276,6 +278,41 @@ defmodule BearCub.Rewards do
       |> Repo.update()
       |> broadcast_change()
     end
+  end
+
+  @doc """
+  The kid's own undo (D76): withdraws an open request, stamping
+  `withdrawn_at` — the fourth nullable marker, the same
+  `undone_at`/`failed_at`/`declined_at` pattern (D59), never a row
+  deletion. Pending-only: shares `check_open/2` with `approve_redemption/3`
+  and `decline_redemption/2`, so a row already answered, already
+  withdrawn, or lapsed is refused with the same `{:error, :not_open}`
+  family rather than stamping a second marker. No confirmation, no
+  re-check — asking again is the undo.
+  """
+  def withdraw_redemption(%Redemption{} = redemption, %DateTime{} = local_now) do
+    with :ok <- check_open(redemption, DateTime.to_date(local_now)) do
+      redemption
+      |> Ecto.Changeset.change(withdrawn_at: to_utc(local_now))
+      |> Repo.update()
+      |> broadcast_change()
+    end
+  end
+
+  @doc """
+  The open (pending, not lapsed) request for `kid_id` and `reward_id` as
+  of `local_date`, if any (Story 08) — the kiosk's lookup ahead of a
+  withdraw tap, mirroring how `request-reward` looks up its kid and
+  reward before calling the write path. `nil` if none.
+  """
+  def get_pending_redemption(kid_id, reward_id, %Date{} = local_date) do
+    Repo.one(
+      from r in Redemption,
+        where:
+          r.kid_id == ^kid_id and r.reward_id == ^reward_id and not is_nil(r.requested_at) and
+            is_nil(r.approved_at) and is_nil(r.declined_at) and is_nil(r.withdrawn_at) and
+            r.local_date == ^local_date
+    )
   end
 
   @doc """
@@ -307,7 +344,7 @@ defmodule BearCub.Rewards do
       from r in Redemption,
         where:
           r.kid_id == ^kid_id and not is_nil(r.requested_at) and is_nil(r.approved_at) and
-            is_nil(r.declined_at) and r.local_date == ^local_date,
+            is_nil(r.declined_at) and is_nil(r.withdrawn_at) and r.local_date == ^local_date,
         order_by: [asc: r.requested_at],
         preload: [:reward]
     )
@@ -348,11 +385,14 @@ defmodule BearCub.Rewards do
     )
   end
 
-  # Pending only — requested, no verdict yet, dated today. Lapse is
-  # terminal at the write layer (D73): a lapsed row (no verdict, dated
-  # before today) is refused here exactly like an already-answered one,
-  # both returning {:error, :not_open}. D61's index only ever bore on
-  # the one-open-request-per-day slot; it never meant a lapsed row stays
+  # Pending only — requested, no verdict yet, not withdrawn, dated today.
+  # One predicate, both directions (Story 08): approve_redemption/3 and
+  # decline_redemption/2 refuse a withdrawn row exactly as
+  # withdraw_redemption/2 refuses an answered one, all returning
+  # {:error, :not_open}. Lapse is terminal at the write layer (D73): a
+  # lapsed row (no verdict, dated before today) is refused here exactly
+  # like an already-answered one. D61's index only ever bore on the
+  # one-open-request-per-day slot; it never meant a lapsed row stays
   # answerable, and treating it as answerable would let a days-later
   # approval land outside D69's day-scoped reversal window with no
   # correction surface reaching it.
@@ -361,6 +401,7 @@ defmodule BearCub.Rewards do
            requested_at: at,
            approved_at: nil,
            declined_at: nil,
+           withdrawn_at: nil,
            local_date: local_date
          },
          %Date{} = today
@@ -376,31 +417,56 @@ defmodule BearCub.Rewards do
   defp check_approved(%Redemption{}), do: {:error, :not_approved}
 
   @doc """
-  Whether `kid_id` has an open request today, for any reward (Story 05,
-  D65) — the banner gift button's second state (=⏳=). Marker-derived,
-  day-scoped exactly like `pending?/2`, but not reward-scoped: only one
-  request can be open per kid per day (D61), so this is the whole check.
+  Whether `kid_id` has any open request today, across every reward (Story
+  05/08, D65/D77) — the banner gift button's second state (=⏳=).
+  Marker-derived, day-scoped exactly like `pending?/2`, and *not*
+  reward-scoped: several requests may be open at once (D77), so this
+  reports whether *any* remains rather than counting them.
   """
   def any_pending?(kid_id, %Date{} = local_date) do
     Repo.exists?(
       from r in Redemption,
         where:
           r.kid_id == ^kid_id and not is_nil(r.requested_at) and is_nil(r.approved_at) and
-            is_nil(r.declined_at) and r.local_date == ^local_date
+            is_nil(r.declined_at) and is_nil(r.withdrawn_at) and r.local_date == ^local_date
     )
   end
 
   @doc """
-  A reward card's state for `kid_id` as of `local_date` (Story 05, D66):
-  one ordered resolution, first match wins. `balance` is the kid's raw
-  signed balance (D63/D64), supplied by the caller through
-  `BearCub.Points` at the boundary. Rows 1 and 2 of the design's
-  precedence table both render nothing, so they collapse to `:absent`;
-  the remaining five distinct renderings are `:pending`, `:declined`,
+  This kid's pending requests' snapshot prices, summed as of
+  `local_date` (Story 08, D77) — the reserve `card_state/5`'s lock
+  condition subtracts from `balance`. *Pending* only: no verdict, not
+  withdrawn, `local_date == today` — never the un-day-scoped `open`
+  form. A lapsed row can never be approved (D73), so it commits nothing;
+  reserving against it would be a lock against a spend that cannot
+  happen. `Points.balance/2` is untouched by this — it is a rendering
+  read only (D63).
+  """
+  def pending_total(kid_id, %Date{} = local_date) do
+    Repo.aggregate(
+      from(r in Redemption,
+        where:
+          r.kid_id == ^kid_id and not is_nil(r.requested_at) and is_nil(r.approved_at) and
+            is_nil(r.declined_at) and is_nil(r.withdrawn_at) and r.local_date == ^local_date
+      ),
+      :sum,
+      :points
+    ) || 0
+  end
+
+  @doc """
+  A reward card's state for `kid_id` as of `local_date` (Story 05/08,
+  D66/D77): one ordered resolution, first match wins. `balance` is the
+  kid's raw signed balance (D63/D64) and `pending_total` is this kid's
+  reserve (`pending_total/2`), both supplied by the caller through
+  `BearCub.Points`/this context at the boundary, computed once per column
+  rather than once per card. Rows 1 and 2 of the design's precedence
+  table both render nothing, so they collapse to `:absent`; the
+  remaining five distinct renderings are `:pending`, `:declined`,
   `:claimed`, `:locked`, and `:available`.
   """
-  def card_state(%Reward{} = reward, kid_id, balance, %Date{} = local_date)
-      when is_integer(balance) do
+  def card_state(%Reward{} = reward, kid_id, balance, pending_total, %Date{} = local_date)
+      when is_integer(balance) and is_integer(pending_total) do
     cond do
       reward.retired_at ->
         :absent
@@ -417,7 +483,11 @@ defmodule BearCub.Rewards do
       on_cooldown?(reward.id, kid_id, local_date) ->
         :claimed
 
-      balance < reward.points ->
+      # Reserve-aware (D77): a pending ask on another reward already
+      # committed some of the balance, so the lock condition subtracts
+      # it. A card whose own request is pending never reaches here — the
+      # pending_today? clause above always resolves first.
+      balance - pending_total < reward.points ->
         :locked
 
       true ->
@@ -433,12 +503,7 @@ defmodule BearCub.Rewards do
   end
 
   defp pending_today?(reward_id, kid_id, local_date) do
-    Repo.exists?(
-      from r in Redemption,
-        where:
-          r.reward_id == ^reward_id and r.kid_id == ^kid_id and not is_nil(r.requested_at) and
-            is_nil(r.approved_at) and is_nil(r.declined_at) and r.local_date == ^local_date
-    )
+    !!get_pending_redemption(kid_id, reward_id, local_date)
   end
 
   defp declined_today?(reward_id, kid_id, local_date) do
@@ -452,17 +517,17 @@ defmodule BearCub.Rewards do
 
   ## Redemption state (D59) — derived from markers, never a status column
 
-  @doc "Requested today, no verdict yet."
+  @doc "Requested today, no verdict yet, not withdrawn (D76)."
   def pending?(%Redemption{} = r, %Date{} = today),
     do:
       !!r.requested_at and is_nil(r.approved_at) and is_nil(r.declined_at) and
-        r.local_date == today
+        is_nil(r.withdrawn_at) and r.local_date == today
 
-  @doc "Requested on an earlier local day, still no verdict — never carries over (D61)."
+  @doc "Requested on an earlier local day, still no verdict, not withdrawn — never carries over (D61)."
   def lapsed?(%Redemption{} = r, %Date{} = today),
     do:
       !!r.requested_at and is_nil(r.approved_at) and is_nil(r.declined_at) and
-        Date.compare(r.local_date, today) == :lt
+        is_nil(r.withdrawn_at) and Date.compare(r.local_date, today) == :lt
 
   @doc "Approved and not since reversed — the live spend."
   def approved?(%Redemption{} = r), do: !!r.approved_at and is_nil(r.reversed_at)
@@ -473,12 +538,15 @@ defmodule BearCub.Rewards do
   @doc "Declined by a parent."
   def declined?(%Redemption{} = r), do: !!r.declined_at
 
+  @doc "Withdrawn by the kid (D76)."
+  def withdrawn?(%Redemption{} = r), do: !!r.withdrawn_at
+
   @doc """
   A redemption's points contribution (D59): marker-first, mirroring
   `Chores.extra_contribution/2`'s `cond` exactly — a reversed row
   contributes nothing (retained forever as the trail), an
   approved-unreversed row is the spend, everything else (pending,
-  declined, lapsed) is zero.
+  declined, lapsed, withdrawn) is zero.
   """
   def redemption_contribution(%Redemption{} = r) do
     cond do

@@ -10,6 +10,7 @@ defmodule BearCub.Rewards.Redemption do
     field :requested_at, :utc_datetime
     field :approved_at, :utc_datetime
     field :declined_at, :utc_datetime
+    field :withdrawn_at, :utc_datetime
     field :reversed_at, :utc_datetime
     field :source, :string
 
@@ -21,10 +22,10 @@ defmodule BearCub.Rewards.Redemption do
 
   @doc """
   The row-creation changeset — the kid leg sets `requested_at`, the
-  parent-direct leg sets `approved_at` (D60); `declined_at`/`reversed_at`
-  are never cast here, matching `Completion`'s `undone_at`/`failed_at`
-  treatment — those markers are stamped directly by the write paths that
-  own them.
+  parent-direct leg sets `approved_at` (D60); `declined_at`/`withdrawn_at`/
+  `reversed_at` are never cast here, matching `Completion`'s `undone_at`/
+  `failed_at` treatment — those markers are stamped directly by the write
+  paths that own them.
   """
   def changeset(redemption, attrs) do
     redemption
@@ -34,12 +35,15 @@ defmodule BearCub.Rewards.Redemption do
     |> assoc_constraint(:kid)
     |> assoc_constraint(:reward)
     # SQLite's own UNIQUE-violation message carries only the column list,
-    # never the real index name (`redemptions_one_pending_per_kid`) —
+    # never the real index name (`redemptions_one_open_per_kid_reward`) —
     # ecto_sqlite3's `to_constraints/2` always resynthesizes the ecto
     # naming-convention name from those columns to match against, so the
     # constraint name here must equal that convention rather than the
     # migration's DDL name (the same shape `Completion`'s own
-    # `unique_constraint/2` already relies on).
-    |> unique_constraint([:kid_id, :local_date], name: :redemptions_kid_id_local_date_index)
+    # `unique_constraint/2` already relies on). Re-keyed alongside the
+    # index itself (D77) — the synthesized name moves with the column list.
+    |> unique_constraint([:kid_id, :reward_id, :local_date],
+      name: :redemptions_kid_id_reward_id_local_date_index
+    )
   end
 end

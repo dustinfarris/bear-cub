@@ -322,6 +322,28 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
       assert has_element?(view, "#request-#{request.id}", "Bike")
     end
 
+    test "cross-surface: a kiosk withdraw drops the request from the admin queue with no parent action (D76)",
+         %{conn: conn, kid_a: kid_a} do
+      earn(kid_a, 10)
+      reward = reward_fixture(kid_a, %{name: "Bike", points: 10})
+      {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
+
+      {:ok, kiosk, _html} = live(Phoenix.ConnTest.build_conn(), ~p"/")
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#request-#{request.id}", "Bike")
+
+      kiosk
+      |> element("#gift-button-#{kid_a.id}")
+      |> render_click()
+
+      kiosk
+      |> element("#reward-card-#{reward.id}-#{kid_a.id}")
+      |> render_click()
+
+      refute has_element?(view, "#request-#{request.id}")
+    end
+
     test "cross-surface: approving moves the kiosk's points badge and flips the gift button back to the idle glyph",
          %{conn: conn, kid_a: kid_a} do
       earn(kid_a, 20)

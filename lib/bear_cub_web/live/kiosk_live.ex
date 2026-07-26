@@ -79,16 +79,23 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:expanded, expanded) |> load(LocalTime.now())}
   end
 
-  # Opens the reward shop (Story 05, D65): `:rewards` is a socket-level
-  # MapSet of kid ids, exactly like `@expanded` — never persisted. Arms the
-  # idle-auto-return timer for this kid.
+  # The gift button toggles the shop (Story 08, D75): opens it when closed,
+  # closes it when open, in either glyph state. `:rewards` is a
+  # socket-level MapSet of kid ids, exactly like `@expanded` — never
+  # persisted.
   def handle_event("open-shop", %{"kid-id" => id}, socket) do
     kid_id = String.to_integer(id)
 
     socket =
-      socket
-      |> assign(:rewards, MapSet.put(socket.assigns.rewards, kid_id))
-      |> arm_rewards_idle_timer(kid_id)
+      if MapSet.member?(socket.assigns.rewards, kid_id) do
+        socket
+        |> cancel_rewards_idle_timer(kid_id)
+        |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
+      else
+        socket
+        |> assign(:rewards, MapSet.put(socket.assigns.rewards, kid_id))
+        |> arm_rewards_idle_timer(kid_id)
+      end
 
     {:noreply, load(socket, LocalTime.now())}
   end
@@ -106,11 +113,14 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
-  # One tap to ask (D65, D63): no affordability/availability/audience check
-  # here — the card's own tappability (derived by `Rewards.card_state/4`)
-  # is the whole guard, and a race that hits the one-open-request index
-  # (D61) is treated as already-asked, per `request_redemption/3`'s own
-  # doc. The view returns to the normal column immediately either way.
+  # One tap to ask (D65, D63, D75): no affordability/availability/audience
+  # check here — the card's own tappability (derived by
+  # `Rewards.card_state/5`) is the whole guard, and a race that hits the
+  # duplicate-ask index (D77) is treated as already-asked, per
+  # `request_redemption/3`'s own doc. The shop stays open (D75): the
+  # tapped card transitions in place to its pending rendering on the next
+  # `load/2`, so this is an in-view tap that resets the idle timer rather
+  # than one that closes the view.
   def handle_event("request-reward", %{"kid-id" => id, "reward-id" => reward_id}, socket) do
     now = LocalTime.now()
     kid_id = String.to_integer(id)
@@ -123,10 +133,27 @@ defmodule BearCubWeb.KioskLive do
         :ok
     end
 
-    socket =
-      socket
-      |> cancel_rewards_idle_timer(kid_id)
-      |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
+    socket = arm_rewards_idle_timer(socket, kid_id)
+
+    {:noreply, load(socket, now)}
+  end
+
+  # One tap to take it back (D76): withdraws the kid's own pending request
+  # for this reward, with no confirmation — re-asking is the undo. The
+  # shop stays open and the card falls back to its plain state on the
+  # next `load/2`; this is also an in-view tap and resets the idle timer.
+  def handle_event("withdraw-request", %{"kid-id" => id, "reward-id" => reward_id}, socket) do
+    now = LocalTime.now()
+    kid_id = String.to_integer(id)
+    reward_id = String.to_integer(reward_id)
+    today = DateTime.to_date(now)
+
+    case Rewards.get_pending_redemption(kid_id, reward_id, today) do
+      nil -> :ok
+      redemption -> Rewards.withdraw_redemption(redemption, now)
+    end
+
+    socket = arm_rewards_idle_timer(socket, kid_id)
 
     {:noreply, load(socket, now)}
   end
@@ -338,17 +365,27 @@ defmodule BearCubWeb.KioskLive do
   end
 
   # Reward cards, in catalog order, resolved through the seven-row
-  # precedence table (D66) and filtered to what's actually rendered —
+  # precedence table (D66/D77) and filtered to what's actually rendered —
   # rows 1 and 2 render nothing, so an `:absent` card never reaches the
-  # template at all.
+  # template at all. `pending_total` (D77's reserve) is hoisted here once
+  # per column, exactly as `balance` already is.
   defp build_catalog(kid, today) do
     balance = Points.balance(kid, today)
+    pending_total = Rewards.pending_total(kid.id, today)
 
     kid
     |> Rewards.list_rewards(today)
-    |> Enum.map(&%{reward: &1, state: Rewards.card_state(&1, kid.id, balance, today)})
+    |> Enum.map(
+      &%{reward: &1, state: Rewards.card_state(&1, kid.id, balance, pending_total, today)}
+    )
     |> Enum.reject(&(&1.state == :absent))
   end
+
+  # A card's tap either asks or takes the ask back (D76) — row 3's own
+  # tap is a withdraw, never a re-ask, since asking again is the undo.
+  defp reward_card_click(:available), do: "request-reward"
+  defp reward_card_click(:pending), do: "withdraw-request"
+  defp reward_card_click(_), do: nil
 
   # A chore/extra reads "failed and not yet redone" (warning shown) only
   # while it has no live completion — once redone, `done?` flips true and
@@ -657,10 +694,12 @@ defmodule BearCubWeb.KioskLive do
             </ul>
           </div>
 
-          <%!-- Reward shop (Story 05, D65-D67): one tap to ask, no modal —
-               the seven-row precedence table (D66) is the whole guard, so
-               an unaffordable/unavailable/claimed/declined card carries no
-               phx-click at all and is inert under a tap. --%>
+          <%!-- Reward shop (Story 05/08, D65-D67, D75-D77): one tap to ask,
+               one tap to take it back — no modal, no confirmation either
+               way — the seven-row precedence table (D66/D77) is the whole
+               guard, so an unaffordable/unavailable/claimed/declined card
+               carries no phx-click at all and is inert under a tap; a
+               pending card's phx-click withdraws rather than re-asking. --%>
           <div
             :if={state == :rewards}
             id={"rewards-#{kid.id}"}
@@ -687,14 +726,17 @@ defmodule BearCubWeb.KioskLive do
                 :for={%{reward: reward, state: card_state} <- catalog}
                 id={"reward-card-#{reward.id}-#{kid.id}"}
                 data-card-state={card_state}
-                phx-click={if card_state == :available, do: "request-reward"}
+                phx-click={reward_card_click(card_state)}
                 phx-value-kid-id={kid.id}
                 phx-value-reward-id={reward.id}
                 phx-throttle="1000"
                 class={
                   [
                     "flex h-24 items-center gap-5 px-6 transition-all",
-                    card_state == :available && "cursor-pointer active:scale-[0.99]",
+                    # Pending (row 3) is tappable too — its tap withdraws
+                    # (D76) — so it shares the tappable treatment with
+                    # available (row 7).
+                    card_state in [:available, :pending] && "cursor-pointer active:scale-[0.99]",
                     # Rows 4-6 (declined/claimed/locked) share one dim
                     # treatment (D66) — pending (row 3) is its own untappable
                     # treatment, carrying the banner's own =⏳= glyph rather
@@ -711,12 +753,18 @@ defmodule BearCubWeb.KioskLive do
                   {reward.points}
                 </span>
                 <span :if={card_state == :pending} class="text-3xl leading-none">⏳</span>
+                <%!-- Declined/claimed carry color, not just glyph (design-
+                     language dim+glyph Ruling, amended 2026-07-25): an
+                     uncolored ✕ reads as a close control on a surface that
+                     has one, so declined is error red; claimed is success
+                     green, the same family the +N chip carries. Locked
+                     stays neutral — it is a state, not a verdict. --%>
                 <.icon
                   :if={card_state == :declined}
                   name="hero-x-mark"
-                  class="size-9 text-base-content/60"
+                  class="size-9 text-error"
                 />
-                <.icon :if={card_state == :claimed} name="hero-check" class="size-9" />
+                <.icon :if={card_state == :claimed} name="hero-check" class="size-9 text-success" />
                 <.icon
                   :if={card_state == :locked}
                   name="hero-lock-closed"
