@@ -21,6 +21,17 @@ Triage [2026-07-14 Tue]: promote — initiative-scale. Two things for the brains
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points).
 
 Done [2026-07-24 Fri]: initiative shipped — all 10 stories closed, Batch 1 gate closed [2026-07-18]. Marked at backlog review.
+* DONE [#A] Rewards / redemption system :promote:
+:PROPERTIES:
+:CREATED:  [2026-07-18 Sat 23:35]
+:END:
+Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
+
+Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
+
+Claimed [2026-07-25 Sat]: into initiative docs/2026-07-25-rewards-redemption/ (Rewards / Redemption).
+
+Done [2026-07-25 Sat]: initiative shipped — 9 stories closed (01 points foundation, 02 aggregate rewrite, 03 rewards domain, 04 admin catalog, 05 kiosk shop, 06 approval queue, 07 history view, 08 request lifecycle, 09 admin wording/balance — the last two inserted by a pre-gate localhost QA round that minted D75–D77), Batch 1 gate closed [2026-07-25 Sat] with a PASSED on-device checklist on the deployed kiosk hardware. Marked at initiative close.
 * DONE Remove ~BearCub.MigrationTestRepo~ and the remaining migration-execution test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]

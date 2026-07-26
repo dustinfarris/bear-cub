@@ -5,13 +5,55 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODAY [#A] Rewards / redemption system :promote:
+* Roster drift (D72) — ~chores.inserted_at~-bounded roster handles additions but not deletions
 :PROPERTIES:
-:CREATED:  [2026-07-18 Sat 23:35]
+:CREATED:  [2026-07-25 Sat 22:40]
 :END:
-Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
+~routine_day_contribution/3~ (now composed into ~Chores.routine_days_by_kid/1~, the rewards/redemption Story 02 grouped-query rewrite) evaluates historical routine-days against the kid's *current* chore roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping historical ~+R~; deleting one can retroactively complete past days and grant points never earned. Pinned as-is by Story 01 and preserved unchanged by Story 02 (D72) — this ships today and predates the redemption work, which only raises the stakes (a roster edit can now move a balance after a spend, potentially into debt with no fail involved). Needs its own ruling: a ~chores.inserted_at~-bounded roster (scoring a historical day against the roster live *on that day*, not today's) would handle additions correctly but not deletions, since a deleted chore leaves no row left to bound against. Not designed for in the rewards/redemption initiative.
 
-Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01/02 discovery, D72).
+* Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+Considered and deliberately not designed for in rewards/redemption (DESIGN.org "Out of Scope for This Design"): the app records that a redemption *happened*, not that the parent actually delivered it. At two-kid scale the verbal channel covers it, and deferral is structurally free — a nullable ~fulfilled_at~ marker plus one admin control later is a trivially additive oneshot. Act only if field evidence surfaces (a double-buy or a forgot-to-buy) that the verbal channel isn't catching.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section and DESIGN.org's Out of Scope section.
+* History pagination (D70) — backlog seed if the 50-row bound ever bites
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
+* Wall-clock-derived date argument in ~today_live_test.exs~ (rewards/redemption Story 01)
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+A pre-existing test in ~test/bear_cub_web/live/admin/today_live_test.exs~ (/"a fail live-updates the kiosk: the chore reverts and the points badge drops"/) passes ~DateTime.to_date(LocalTime.now())~ as its local date rather than a fixed value — Story 01 only swapped the module name reference on that line, without changing the wall-clock read. Not a ~docs/learnings.org~ [2026-07-17] violation — the test does pin ~:routine_windows~, which is what that learning requires — but the date argument itself still tracks whichever local date the run happens to land on. A test-hygiene seed: apply the [2026-07-17] discipline to the date argument the learning didn't originally reach.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
+* No automated guard on the ~Chores~ ⇏ ~Rewards~ dependency direction (rewards/redemption Story 01)
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+CLAUDE.md treats ~Chores~ ⇏ ~Rewards~ as a design invariant alongside the older ~Chores~ ⇏ ~Calendars~ one, and D57 rests on it: the moment ~Chores~ imports ~Rewards~, a rewards failure can reach the chore path. Today it holds by convention and by ~grep~ at review time only — nothing fails automatically if a future session wires the two together. A durable guard (a boundary test, or a compile-time check over the module's references) needs its own ruling on instrument and placement, and it applies equally to the older ~Calendars~ invariant, not just this one.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
+* ~mix ecto.reset~ seeds the test database when run under ~MIX_ENV=test~ :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+The ~ecto.reset~ alias (~mix.exs~) chains ~ecto.drop~ → ~ecto.setup~, and ~ecto.setup~ unconditionally runs ~priv/repo/seeds.exs~ — there is no ~MIX_ENV~ guard distinguishing "reset my dev sandbox" from "reset the test database a suite is about to run against." Run against ~MIX_ENV=test~, it permanently inserts the placeholder kid/chore rows directly into the test db file, outside any ~Ecto.Adapters.SQL.Sandbox~ transaction — the seeded rows survive every subsequent ~mix test~ invocation until the file is manually dropped and recreated without seeding (~MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate~, skipping ~ecto.setup~'s seed step). Discovered when rewards/redemption Story 02's own verification loop hit this by accident (a run of failures — leaked kid/chore rows, id drift, a "fresh production database" test finding kids present — reproduced identically against a ~git stash~ of pre-story code, ruling out the rewrite as cause). A repo-tooling oneshot: guard ~ecto.setup~'s seed step on ~Mix.env() == :dev~, or split ~ecto.setup~ into seeding and non-seeding variants. Touches shared tooling (~mix.exs~), not any one story's code.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 02 discovery).
+* Late-approval same-day balance-read characteristic (D72-class, narrowed by D73)
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
 * TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 20:44]
@@ -91,6 +133,16 @@ guideline. Pre-existing pattern — Morning/Evening already did this before
 Story 03; Extras just mirrors it. Consistent with the rest of the
 admin/kiosk codebase at family-scale list sizes (single-digit item counts).
 Act only if that scale assumption changes.
+
+Also observed from the rewards/redemption initiative (Story 05,
+2026-07-25) — ~KioskLive~'s reward list, and the sibling chore/extras/events
+lists it's modeled after (~lib/bear_cub_web/live/kiosk_live.ex~), render the
+same way. Same class, a different LiveView; not introduced by Story 05,
+which only carried the existing pattern forward. Folded in here rather
+than duplicated, per the same discipline the Exqlite teardown-noise entry
+above already follows.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 05 discovery).
 * TODO [#C] animation for hiding/showing routine chores :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:58]

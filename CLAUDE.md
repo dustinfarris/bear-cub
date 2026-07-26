@@ -1,6 +1,6 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
-Active initiative: docs/2026-07-25-rewards-redemption/
+Active initiative: none
 
 ## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 
@@ -38,6 +38,8 @@ Closed / historical — record for each initiative's era, superseded wherever a 
 - `docs/2026-07-11-extras/DESIGN.org` — Extras schema, topology, `* Decision Log` (D-entries D27–D38)
 - `docs/2026-07-15-gamification-points/PRD.org` — Gamification: Points requirements, success criteria
 - `docs/2026-07-15-gamification-points/DESIGN.org` — Points derivation, fail-on-inspection, `* Decision Log` (D-entries D39–D55)
+- `docs/2026-07-25-rewards-redemption/PRD.org` — Rewards / Redemption requirements, success criteria
+- `docs/2026-07-25-rewards-redemption/DESIGN.org` — Rewards/redemptions schema, kiosk shop, approval queue, `* Decision Log` (D-entries D57–D77)
 
 When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 
