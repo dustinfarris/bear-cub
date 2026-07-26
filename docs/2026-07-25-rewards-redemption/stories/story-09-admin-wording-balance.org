@@ -1,0 +1,82 @@
+#+title: Story 09 — Admin wording and balance placement: Redeem, labeled balances, the kid band
+#+date: 2026-07-25
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope.
+
+** ~/admin/rewards~ — the catalog
+
+Direct-redeem lives here: a per-reward action opening a kid picker *scoped to the reward's audience* — showing the true signed balance of each kid the reward is offered to, never every kid regardless of ~kid_id~ — then a ~data-confirm~ guard, then the spend. Same affordability, availability, and audience rules as the kid leg — no override (SC-2, SC-4, D74).
+
+The picker's per-kid figure is *labeled as that kid's balance* (=balance N ★=), never a bare number beside a name: on a row whose other number is a price, an unlabeled figure reads as a second price rather than as what the child has.
+
+The action is worded *Redeem*, not "Give" — on the button, in its ~data-confirm~, and in the success flash. A direct-redeem spends the child's own points on their behalf; "give" describes a gift, which is the one thing this action is not, and the same wording carries to the approval control on ~Admin.TodayLive~.
+
+** ~Admin.TodayLive~ — the approval queue and reversal
+
+A per-kid *Requests* section alongside the existing Extras section, in today's stacked layout. Today is where a parent already looks, and a request is a day-shaped object — the same shape as everything else on that screen.
+
+The kid's *true signed balance* rides the kid's own header band — ★ plus the signed figure, always visible, whether or not that kid has any requests today. It belongs to the child, not to any one ask: a kid may hold several open requests (D77), which would otherwise repeat the same number down the list, and a parent looking at a debt needs to see it whether or not a request happens to be waiting. A permanently visible negative number on this surface is correct and intended (D64).
+
+Each pending request then shows the reward's icon and name and its snapshot price — the price only, no per-request balance line — with:
+
+- *Approve* — ~data-confirm~ guarded (D53: points-affecting, and permanent from tomorrow onward, since the reversal control is day-scoped), worded *Redeem* like the direct-redeem control it mirrors. Re-validates affordability *and* availability before stamping ~approved_at~; a failed re-check tells the parent which check failed rather than silently no-opping. With several asks open, approving one can legitimately make another's re-check fail as unaffordable — the refusal display already covers it (D77).
+- *Decline* — no confirmation. It costs nothing, contributes 0, and its own day-scoping is the undo.
+
+** Balances in admin
+
+Every admin surface that shows a balance shows the *true signed* figure, negative included (see Key Behaviors → hidden debt).
+
+** From Hidden debt: bounded, and made visible to the party who can act
+
+The resolution is not to hide less on the kiosk but to hide nothing in admin:
+
+- *Kiosk keeps the floor* (D41, D43). The *lock glyph on an unaffordable card is the pre-reader-legible explanation* — a child who cannot read a negative number can read a lock. No number is needed for the child to act correctly (SC-3, SC-6).
+- *Admin displays the true signed balance*, negative and all, wherever it shows a balance (the approval queue's per-kid header band, the direct-redeem picker). The parent is a reader, not a pre-reader, and is the only party who can act on debt.
+
+** Decision Log entry in scope
+
+- *[[file:../../decisions.org::#d64][D64]] (2026-07-25) — Redemption widens hidden debt: the kiosk keeps the floor and explains with a lock glyph; every admin balance shows the true signed figure:* A child at true balance 2 who then takes a fail sits at true −3 while the badge honestly shows 0. Redemption does not create this — D41 accepted it explicitly ("two kids both showing 0 may have different true standings") — but it *widens* it, because a spend is now a routine way to arrive near the floor, so the trade-off is re-ruled here rather than silently inherited. No spend-time guard can close it: affordability (D63) already guarantees a spend never drives the balance below zero, so all residual debt comes from fails *after* a spend, by construction outside any spend-time check. The resolution is not to hide less on the kiosk but to hide nothing in admin. The kiosk keeps the floor (D41, D43) and the *lock glyph on an unaffordable card is the pre-reader-legible explanation* — a child who cannot read a negative number can read a lock, and needs no number to act correctly. Admin displays the true signed balance, negative included, wherever it shows one (approval queue, direct-redeem picker, history), because the parent is a reader and the only party who can act on debt. Rejected — surfacing the true negative on the kiosk: contradicts D41/D43's floor and shows a pre-reader a number they cannot act on. Rejected — floored balances in admin for consistency with the kiosk: hides the only signal the party who can act on it needs. Settles rewards/SC-3, rewards/SC-4, rewards/SC-6. → rewards/Key Behaviors (hidden debt), rewards/Screens (kiosk card states, balances in admin).
+
+** Advisory in scope
+
+- *[2026-07-25 Sat 20:41] §~Admin.TodayLive~ — the balance no longer rides each request row.* This document previously specified that "each pending request shows the reward's icon and name, its snapshot price, *and the kid's true signed balance*," and Story 06 shipped it that way (=N pts · balance N= on every request row). Do not restore the per-request balance line: with several asks open at once (D77) it repeats one number down the list, and it makes a kid's standing visible only when that kid happens to have a request waiting — the opposite of what a parent looking for debt needs. The balance moved up to the kid's own header band, ★ plus the true signed figure, always rendered. Where this document still says every admin balance is the true signed figure, that is unchanged and still binding (D64) — only the placement moved. No D-entry: a placement correction, not a judgment about what admin shows.
+
+* User Story
+
+As a parent on my phone, I need each child's standing shown once where I can always see it, and the spend controls to say what they actually do, so that I can tell a price from a balance at a glance and never read "give" for an action that is spending my child's own points.
+
+* Acceptance Criteria
+
+** [ ] The direct-redeem action reads *Redeem* everywhere it appears on ~/admin/rewards~ — the picker button, its ~data-confirm~ text, and the success flash — with no remaining "Give" wording. (SC-2, D68)
+** [ ] The approve control on ~Admin.TodayLive~ reads *Redeem* in its ~data-confirm~ text, matching the direct-redeem control it mirrors. (SC-2, D53, D69)
+** [ ] The direct-redeem picker's per-kid figure is labeled as that kid's balance (=balance N ★=), distinguishable at a glance from the reward's price on the same row. (SC-4, D64, D68)
+** [ ] Each kid's header band on ~Admin.TodayLive~ shows ★ plus that kid's balance, rendered whether or not the kid has any requests, extras, or redemptions today. (SC-4, D64, the [2026-07-25 Sat 20:41] balance-placement advisory)
+** [ ] The balance shown in both places is the true signed figure from ~Points.balance/2~, negative included and never floored. (SC-3, SC-4, D64)
+** [ ] A pending request row on ~Admin.TodayLive~ shows the reward's icon, name, and snapshot price only — the per-request balance line is gone. (SC-4, the [2026-07-25 Sat 20:41] balance-placement advisory)
+** [ ] No domain function, write path, or query changes in this story: approve, decline, direct-redeem, and reverse behave exactly as they did, and their refusal messages still name which check failed. (SC-2, SC-4, D63, D74)
+** [ ] The kiosk is untouched: it keeps the D41/D43 floor and shows no negative number, and no admin wording or balance treatment leaks into it. (SC-3, SC-6, D41, D43, D64)
+** [ ] LiveView integration tests cover the *Redeem* wording on all four surfaces, the labeled picker balance, the always-rendered kid-band balance including a negative one, and the absence of the per-request balance line — with ~:routine_windows~ pinned. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth; DESIGN.org is broader context.
+
+- Depends on Story 04 (the picker and its flashes) and Story 06 (the queue rows and the approve confirm). Independent of Story 08 — the two touch different files and may land in either order, though 08 lands first per the Plan's ordering.
+- Scope is UI, copy, and tests only. ~BearCub.Rewards~ and ~BearCub.Points~ are not edited; ~Admin.TodayLive~'s ~load/2~ already computes ~balance: Points.balance(kid, today)~ per card, so the kid band consumes an assign that exists rather than adding a read.
+- Four wording sites, all string literals: the picker button label and its ~data-confirm~ plus the success flash in ~lib/bear_cub_web/live/admin/reward_live/index.ex~, and the approve ~data-confirm~ in ~lib/bear_cub_web/live/admin/today_live.ex~. Grep for =Give= and =Gave= to confirm none survive.
+- The two refusal flashes on the direct-redeem path ("can't afford", "already claimed", "isn't offered to") are not "Give" wording and are out of scope — do not reword them.
+- The kid band already carries the kid's name on a kid-color background; the balance joins it on the same band. Keep the name's existing treatment, and give the balance a stable DOM id so a test can assert the figure and its sign directly.
+- A negative balance renders as a negative number, deliberately — the test asserting it is the point of D64, not an edge case to guard against.
+- Conventions in force for this story: kid names never enter git (public repo) — use fixtures, never real names, in tests and comments; every test pins ~:routine_windows~ and exercises rollover by passing a different local date, never by mocking a clock; DOM ids are stable and tests assert against elements, never raw HTML; code comments cite the D-number they implement; never run ~mix ecto.reset~ under ~MIX_ENV=test~ (it seeds the test database outside the sandbox — see the Plan's Deferred section).
+- ~docs/design-language.org~ governs the kids' view only; both screens here are admin, so no Ruling is owed or implied by this story.

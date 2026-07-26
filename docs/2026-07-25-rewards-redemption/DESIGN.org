@@ -165,7 +165,7 @@ Notes on the ordering and the choices:
 - *Consumed one-time rewards show as claimed for the rest of the local day, then disappear.* A child who saved 500 for the ATM toy should not watch it vanish the instant it is granted — that reads as a bug rather than a triumph. Showing "claimed" permanently is the other failure: dead cards would accumulate forever in a catalog a pre-reader scans by glance.
 - *Repeatable rewards on cooldown are dimmed, not hidden* — a catalog that changes shape day to day with no visible reason is the least explicable thing a shelf can do.
 - *Row 4 doubles as the re-ask block.* A declined row does not occupy the open-ask index slot for its reward (it has ~declined_at~ set), so without this rendering rule a child could re-tap the same reward immediately and re-queue it indefinitely. Deriving "declined for this reward today" and rendering it untappable closes the loop with no new storage — the D55 day-scope pattern. A *withdrawn* row is deliberately not blocked the same way: withdrawing is the child's own correction, and re-asking is exactly what makes it costless (D76).
-- *Row 6 is reserve-aware* (D77). The lock condition subtracts what this kid has already committed to in open requests, so a kid may hold several asks at once but never asks for more than their points cover. The subtraction is a rendering rule only: the ledger is untouched, a pending row still contributes 0, and the banner badge keeps showing the true floored total (Key Behaviors → affordability). A card whose own request is pending never self-locks, because row 3 resolves before row 6.
+- *Row 6 is reserve-aware* (D77). The lock condition subtracts what this kid has already committed to in *today's pending* requests, so a kid may hold several asks at once but never asks for more than their points cover. The subtraction is a rendering rule only: the ledger is untouched, a pending row still contributes 0, and the banner badge keeps showing the true floored total (Key Behaviors → affordability). A card whose own request is pending never self-locks, because row 3 resolves before row 6.
 
 ** Kiosk — night (D56)
 
@@ -294,13 +294,13 @@ Checked twice:
 
 Pending requests *contribute nothing to the ledger*. A pending row contributes 0 to the balance and has no effect on the total or on the badge, and there is *no domain hold*: escrowing a pending price against the balance itself would create two balances (true and available) that the always-visible badge (D43) cannot show at once. That rejection stands (D63) and is not what the rule below is.
 
-What the kiosk *renders* is reserve-aware (D77). A kid may hold several open requests at once, bounded by a rule that lives entirely in the card-state derivation:
+What the kiosk *renders* is reserve-aware (D77). A kid may hold several pending requests at once, bounded by a rule that lives entirely in the card-state derivation:
 
 #+begin_src
 locked?  =  Points.balance(kid, today) − Rewards.pending_total(kid, today)  <  reward.points
 #+end_src
 
-~pending_total/2~ sums this kid's open requests' snapshot prices; ~Points.balance/2~ is untouched by it. So a child can ask for several things their points cover, and the moment the set would exceed what they have, the remaining cards lock with the same glyph they already use for "not enough" — the pre-reader-legible explanation D64 relies on, needing no number. The badge keeps showing the true floored total, never an available-after-commitments figure.
+~pending_total/2~ sums this kid's *pending* requests' snapshot prices — no verdict, not withdrawn, and ~local_date == today~ — never the un-day-scoped ~open~ form. A lapsed row can never be approved (D73), so it commits nothing, and reserving against a spend that cannot happen would be a phantom lock; yesterday's slate clears everywhere at rollover (SC-6), and the affordability rule is not the one place it should linger. ~Points.balance/2~ is untouched by it. So a child can ask for several things their points cover, and the moment the set would exceed what they have, the remaining cards lock with the same glyph they already use for "not enough" — the pre-reader-legible explanation D64 relies on, needing no number. The badge keeps showing the true floored total, never an available-after-commitments figure.
 
 The race this closes — a child piling up mutually exclusive asks the parent must then decline for money the child was never shown — is closed at the point the child acts. The approval-time re-check remains the backstop and is order-safe: approving one ask can make another's re-check fail as unaffordable, which is expected and already surfaces as a named refusal.
 
@@ -433,3 +433,9 @@ This document twice said the locked, claimed, and declined cards "share one dim 
 /Sections affected: §~Admin.TodayLive~ — the approval queue and reversal/
 
 This document previously specified that "each pending request shows the reward's icon and name, its snapshot price, *and the kid's true signed balance*," and Story 06 shipped it that way (=N pts · balance N= on every request row). Do not restore the per-request balance line: with several asks open at once (D77) it repeats one number down the list, and it makes a kid's standing visible only when that kid happens to have a request waiting — the opposite of what a parent looking for debt needs. The balance moved up to the kid's own header band, ★ plus the true signed figure, always rendered. Where this document still says every admin balance is the true signed figure, that is unchanged and still binding (D64) — only the placement moved. No D-entry: a placement correction, not a judgment about what admin shows.
+
+** [2026-07-25 Sat 21:00] §Affordability — ~pending_total/2~ sums *pending*, not *open*, requests
+
+/Sections affected: §Key Behaviors — affordability; §Kiosk — card states (row 6 note)/
+
+As first written this round, the prose beneath the reserve formula said ~pending_total/2~ "sums this kid's *open* requests' snapshot prices," and the row 6 note said the lock "subtracts what this kid has already committed to in open requests." Read against this document's own predicate block, ~open~ is the un-day-scoped form — requested, no verdict, not withdrawn, *any* date — so that wording would have had yesterday's lapsed ask keep locking today's cards. Do not implement it that way, and do not restore the wording: [[file:../decisions.org::#d77][D77]] says *pending* in as many words, and a lapsed row can never be approved ([[file:../decisions.org::#d73][D73]]), so reserving against it is a lock against a spend that cannot happen. Yesterday's slate clears everywhere at rollover (SC-6); the affordability rule is not the one place it should linger. No D-entry: a same-round internal inconsistency corrected toward the D-entry's own language, not a new judgment.
