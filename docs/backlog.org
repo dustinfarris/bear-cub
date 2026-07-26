@@ -5,6 +5,10 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO The extra chores need to show how many points they're worth.
+:PROPERTIES:
+:CREATED:  [2026-07-26 Sun 14:18]
+:END:
 * TODO parents can give points to a kid for some reason on the fly
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 13:09]
