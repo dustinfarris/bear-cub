@@ -51,22 +51,76 @@ As a parent on my phone, I need each child's standing shown once where I can alw
 
 * Acceptance Criteria
 
-** [ ] The direct-redeem action reads *Redeem* everywhere it appears on ~/admin/rewards~ — the picker button, its ~data-confirm~ text, and the success flash — with no remaining "Give" wording. (SC-2, D68)
-** [ ] The approve control on ~Admin.TodayLive~ reads *Redeem* in its ~data-confirm~ text, matching the direct-redeem control it mirrors. (SC-2, D53, D69)
-** [ ] The direct-redeem picker's per-kid figure is labeled as that kid's balance (=balance N ★=), distinguishable at a glance from the reward's price on the same row. (SC-4, D64, D68)
-** [ ] Each kid's header band on ~Admin.TodayLive~ shows ★ plus that kid's balance, rendered whether or not the kid has any requests, extras, or redemptions today. (SC-4, D64, the [2026-07-25 Sat 20:41] balance-placement advisory)
-** [ ] The balance shown in both places is the true signed figure from ~Points.balance/2~, negative included and never floored. (SC-3, SC-4, D64)
-** [ ] A pending request row on ~Admin.TodayLive~ shows the reward's icon, name, and snapshot price only — the per-request balance line is gone. (SC-4, the [2026-07-25 Sat 20:41] balance-placement advisory)
-** [ ] No domain function, write path, or query changes in this story: approve, decline, direct-redeem, and reverse behave exactly as they did, and their refusal messages still name which check failed. (SC-2, SC-4, D63, D74)
-** [ ] The kiosk is untouched: it keeps the D41/D43 floor and shows no negative number, and no admin wording or balance treatment leaks into it. (SC-3, SC-6, D41, D43, D64)
-** [ ] LiveView integration tests cover the *Redeem* wording on all four surfaces, the labeled picker balance, the always-rendered kid-band balance including a negative one, and the absence of the per-request balance line — with ~:routine_windows~ pinned. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+** [X] The direct-redeem action reads *Redeem* everywhere it appears on ~/admin/rewards~ — the picker button, its ~data-confirm~ text, and the success flash — with no remaining "Give" wording. (SC-2, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~lib/bear_cub_web/live/admin/reward_live/index.ex~: the picker button reads =Redeem= (line 251), its ~data-confirm~ reads ~"Redeem "#{@reward.name}" (#{@reward.points} pts) for #{kid.name}?"~ (line 248), and the success flash reads ~"Redeemed "#{reward.name}" for #{kid.name}"~ (line 64). New test ="reads Redeem everywhere on this surface — button, confirm, and flash, no Give (D64, D68)"= (~test/bear_cub_web/live/admin/reward_live_test.exs~ lines 150-170) asserts all three plus ~refute html =~ "Give"~ / ~"Gave"~; ran green. A repo-wide ~grep~ for ~\bGive\b\|\bGave\b~ across ~lib/bear_cub_web/live/admin/~ and ~test/bear_cub_web/live/admin/~ returns only a code comment and the negative test assertions themselves — no user-facing wording survives.
+:END:
+** [X] The approve control on ~Admin.TodayLive~ reads *Redeem* in its ~data-confirm~ text, matching the direct-redeem control it mirrors. (SC-2, D53, D69)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~lib/bear_cub_web/live/admin/today_live.ex~ line 384: ~data-confirm={"Redeem "#{@request.reward.name}" for #{@request.points} points?"}~. New assertion in the existing ="approve is data-confirm guarded..."= test (~test/bear_cub_web/live/admin/today_live_test.exs~ lines 206-211) checks ~confirm_html =~ "data-confirm=\"Redeem"~ and ~refute confirm_html =~ "Give"~; ran green. Both confirms lead with =Redeem= as the AC requires; their full phrasing differs slightly in structure (one names the kid, the other doesn't, since the approve card is already scoped to one kid) — a wording-consistency judgment call, not a defect, since "matching" reads as the verb, not a literal string match.
+:END:
+** [X] The direct-redeem picker's per-kid figure is labeled as that kid's balance (=balance N ★=), distinguishable at a glance from the reward's price on the same row. (SC-4, D64, D68)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~lib/bear_cub_web/live/admin/reward_live/index.ex~ lines 239-241 render ~<span id={"redeem-balance-#{@reward.id}-#{kid.id}"}>balance {Map.get(@balances, kid.id, 0)} ★</span>~ — the literal =balance N ★= form the design excerpt specifies, replacing the old bare-number-plus-"pts" rendering that read as a second price. Test ="opens a kid picker showing each kid's true signed balance, negative included"= (~reward_live_test.exs~ lines 110-138) asserts ~has_element?(view, "#redeem-balance-#{reward.id}-#{kid_a.id}", "balance #{balance}")~ against a negative balance (forced via a failed extra); ran green.
+:END:
+** [X] Each kid's header band on ~Admin.TodayLive~ shows ★ plus that kid's balance, rendered whether or not the kid has any requests, extras, or redemptions today. (SC-4, D64, the [2026-07-25 Sat 20:41] balance-placement advisory)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~lib/bear_cub_web/live/admin/today_live.ex~ lines 220-227 add ~<span id={"today-balance-#{kid.id}"}>★ {balance}</span>~ inside the kid's ~<header>~, unconditional — not gated behind any ~:if~ on requests/extras/redemptions being present. New test ="the kid's header band shows the true signed balance, negative included, whether or not the kid has requests, extras, or redemptions (D64, placement advisory)"= (~today_live_test.exs~ lines 183-194) asserts ~#today-balance-#{kid_a.id}~ shows =-40= (a kid with a fail-penalty and a pending request) and ~#today-balance-#{kid_b.id}~ shows =0= for a kid with zero requests/extras/redemptions in the fixture; ran green.
+:END:
+** [X] The balance shown in both places is the true signed figure from ~Points.balance/2~, negative included and never floored. (SC-3, SC-4, D64)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  Both surfaces read the unfloored figure: ~reward_live/index.ex~ line 103 assigns ~balances: Points.balances(today)~ (the per-kid ~Points.balance/2~ map, ~lib/bear_cub/points.ex~ lines 30-34 — no ~max(0, …)~); ~today_live.ex~ line 174 assigns ~balance: Points.balance(kid, today)~ per card. Neither touched file calls ~Points.total/2~ (the floored function, ~points.ex~ lines 37-43) — confirmed by ~grep -n "Points\.total" lib/bear_cub_web/live/admin/reward_live/index.ex lib/bear_cub_web/live/admin/today_live.ex~, zero hits. The negative-balance assertions on both prior ACs (=-40= on the kid band, a negative figure in the picker) exercise this directly.
+:END:
+** [X] A pending request row on ~Admin.TodayLive~ shows the reward's icon, name, and snapshot price only — the per-request balance line is gone. (SC-4, the [2026-07-25 Sat 20:41] balance-placement advisory)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~today_live.ex~'s ~request_row/1~ (lines 356-386) now renders only ~{@request.points} pts~; the ~attr :balance~ and the ~· balance {@balance}~ fragment were removed (~git diff~ confirms the old line ~{@request.points} pts · balance {@balance}~ became ~{@request.points} pts~). Updated test ="a pending request shows the reward's icon, name, and snapshot price only — no per-request balance line"= (~today_live_test.exs~ lines 168-181) asserts the icon/name/price are present and ~refute has_element?(view, "#request-#{request.id}", "-40")~ with a =-40= balance actually in play for that kid; ran green.
+:END:
+** [X] No domain function, write path, or query changes in this story: approve, decline, direct-redeem, and reverse behave exactly as they did, and their refusal messages still name which check failed. (SC-2, SC-4, D63, D74)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~git diff --stat~ against the working tree touches exactly ~lib/bear_cub_web/live/admin/reward_live/index.ex~, ~lib/bear_cub_web/live/admin/today_live.ex~, and their two test files — zero files under ~lib/bear_cub/~. ~git diff HEAD -- lib/bear_cub/rewards.ex lib/bear_cub/points.ex~ is empty. The three refusal flashes ("can't afford…", "has already claimed…", "isn't offered to…") are byte-identical before and after in both touched files (outside every diff hunk). Every pre-existing refusal test in both files (unaffordable, already-claimed, not-offered, and the same-kid-interleaving availability case) passed unchanged.
+:END:
+** [X] The kiosk is untouched: it keeps the D41/D43 floor and shows no negative number, and no admin wording or balance treatment leaks into it. (SC-3, SC-6, D41, D43, D64)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  ~git diff HEAD -- lib/bear_cub_web/live/kiosk_live.ex~ is empty — the file is byte-for-byte unmodified by this story. Its badge assign is ~Points.total(kid, today)~ (the floored function, never ~Points.balance~), and it renders no ★-balance band and no "Redeem"/"balance N ★" wording — none of this story's changes touch it.
+:END:
+** [X] LiveView integration tests cover the *Redeem* wording on all four surfaces, the labeled picker balance, the always-rendered kid-band balance including a negative one, and the absence of the per-request balance line — with ~:routine_windows~ pinned. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:45] \\
+  All five coverage clauses are met by the tests cited in the ACs above (all ran green): the four-surface *Redeem* wording (~reward_live_test.exs~ lines 150-170, ~today_live_test.exs~ lines 206-211), the labeled picker balance (~reward_live_test.exs~ lines 110-138), the always-rendered kid-band balance including =-40= (~today_live_test.exs~ lines 183-194), and the absent per-request balance line (~today_live_test.exs~ lines 168-181). \\
+  *~:routine_windows~ pinning, adjudicated rather than approximated:* the new ~today_live_test.exs~ assertions sit inside the ="approval queue and reversal"= ~describe~ block, whose block-level ~setup~ (lines 147-152) already calls ~pin_active_routine(active)~ — pinned, per convention. The new ~reward_live_test.exs~ assertions do not pin ~:routine_windows~ at all, and neither does any other test in that file. This is *vacuous, not a gap*: ~BearCubWeb.Admin.RewardLive.Index~ makes no call into ~BearCub.Routines~ anywhere (it aliases only ~Chores~, ~LocalTime~, ~Points~, and ~Rewards~), so no rendered content in that LiveView depends on which routine window is active — the exact reason ~docs/learnings.org~'s [2026-07-17] entry names ~KioskLiveTest~, ~Admin.TodayLiveTest~, and ~Admin.ChoreLiveTest~ but not ~RewardLive~. Same reasoning class as Story 01's AC-3 disposition (PLAN.org): the clause has no applicable target in this file, so it is met vacuously rather than deferred.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:49] \\
+  All 9 ACs above are ~[X]~ with LOGBOOK evidence, independently re-verified by a DoD-verification subagent that re-ran the cited greps and tests rather than trusting the AC-verification pass's claims. No AC required deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:49] \\
+  ~mix test test/bear_cub_web/live/admin/reward_live_test.exs test/bear_cub_web/live/admin/today_live_test.exs~ — 58 passed, 0 failures, reproduced by both the implementing session and the DoD-verification subagent.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:49] \\
+  ~<.icon>~ used throughout, no raw ~Heroicons~ calls; no deprecated ~live_redirect~/~live_patch~ or ~phx-update="append"~/~"prepend"~; every function component (~reward_row~, ~chore_row~, ~request_row~, ~redemption_row~) carries ~attr~ declarations; stable, deterministic DOM ids throughout (~redeem-balance-#{@reward.id}-#{kid.id}~, ~today-balance-#{kid.id}~); ~mix format --check-formatted~ clean on both touched files. \\
+  *One gap the DoD-verification subagent caught and closed, not shipped wrong:* the story's own Technical Notes convention ("code comments cite the D-number they implement") was honored on the flash-message change but not on the two balance-display render sites themselves. Closed by adding a ~<%!-- --%>~ comment citing D64/D68 above the picker's balance span (~reward_live/index.ex~) and one citing D64 and the placement advisory above the kid-band balance span (~today_live.ex~); ~mix precommit~ re-run clean afterward, 470 passed.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:49] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exits 0, clean, 470 passed (up from Story 08's 468 — this story's two new tests), reproduced by both the implementing session and the DoD-verification subagent across two separate runs (before and after the D-number-comment fix above). The lone ~Exqlite.Connection … disconnected~ ~[error]~ line is the accepted, pre-existing sandbox-teardown noise (Plan's Deferred section).
+:END:
 
 * Technical Notes
 
