@@ -129,7 +129,12 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
 
       assert has_element?(view, "#redeem-picker-#{reward.id}")
       assert has_element?(view, "#redeem-picker-#{reward.id}", "Kid A")
-      assert has_element?(view, "#redeem-picker-#{reward.id}", Integer.to_string(balance))
+      # labeled as a balance, not a bare figure beside a price (D64, D68)
+      assert has_element?(
+               view,
+               "#redeem-balance-#{reward.id}-#{kid_a.id}",
+               "balance #{balance}"
+             )
     end
 
     test "is data-confirm guarded before the spend lands", %{conn: conn, kid_a: kid_a} do
@@ -140,6 +145,28 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
 
       html = view |> element("#confirm-redeem-#{reward.id}-#{kid_a.id}") |> render()
       assert html =~ "data-confirm"
+    end
+
+    test "reads Redeem everywhere on this surface — button, confirm, and flash, no Give (D64, D68)",
+         %{conn: conn, kid_a: kid_a} do
+      reward = reward_fixture(nil, %{name: "Bike", icon: "🚲", points: 10})
+      earned = chore_fixture(kid_a, %{points: 50, routine: nil})
+      {:ok, _} = BearCub.Chores.complete_chore(earned, LocalTime.now(), "admin")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/rewards")
+      view |> element("#redeem-reward-#{reward.id}") |> render_click()
+
+      button_html = view |> element("#confirm-redeem-#{reward.id}-#{kid_a.id}") |> render()
+      assert button_html =~ "Redeem"
+      assert button_html =~ "data-confirm=\"Redeem"
+
+      view |> element("#confirm-redeem-#{reward.id}-#{kid_a.id}") |> render_click()
+
+      assert has_element?(view, "#flash-info", "Redeemed")
+
+      html = render(view)
+      refute html =~ "Give"
+      refute html =~ "Gave"
     end
 
     test "a successful direct-redeem lowers the kid's balance and drops live on the connected kiosk without a reload",

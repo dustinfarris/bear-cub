@@ -165,7 +165,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
       :ok
     end
 
-    test "a pending request shows the reward's icon, name, snapshot price, and the kid's true signed balance",
+    test "a pending request shows the reward's icon, name, and snapshot price only — no per-request balance line",
          %{conn: conn, kid_a: kid_a} do
       reward = reward_fixture(kid_a, %{name: "Movie Night", icon: "🎬", points: 30})
       {:ok, request} = Rewards.request_redemption(kid_a, reward, LocalTime.now())
@@ -176,8 +176,21 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
       assert has_element?(view, "#request-#{request.id}", "🎬")
       assert has_element?(view, "#request-#{request.id}", "Movie Night")
       assert has_element?(view, "#request-#{request.id}", "30")
-      # true signed balance is -40, never floored to 0 (D64)
-      assert has_element?(view, "#request-#{request.id}", "-40")
+      # the balance moved up to the kid's header band (D64, placement advisory)
+      refute has_element?(view, "#request-#{request.id}", "-40")
+    end
+
+    test "the kid's header band shows the true signed balance, negative included, whether or not the kid has requests, extras, or redemptions (D64, placement advisory)",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      fail_for_penalty(kid_a, 40)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#today-balance-#{kid_a.id}", "★")
+      assert has_element?(view, "#today-balance-#{kid_a.id}", "-40")
+      # kid_b has no requests, extras, or redemptions today — balance still renders
+      assert has_element?(view, "#today-balance-#{kid_b.id}", "★")
+      assert has_element?(view, "#today-balance-#{kid_b.id}", "0")
     end
 
     test "the queue never shows a request left unanswered from an earlier day (SC-6, D61, D73)",
@@ -199,6 +212,10 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin")
 
       assert has_element?(view, "#approve-request-#{request.id}[data-confirm]")
+      # worded Redeem, matching the direct-redeem control it mirrors (D53, D69)
+      confirm_html = view |> element("#approve-request-#{request.id}") |> render()
+      assert confirm_html =~ "data-confirm=\"Redeem"
+      refute confirm_html =~ "Give"
 
       view |> element("#approve-request-#{request.id}") |> render_click()
 

@@ -59,7 +59,9 @@ defmodule BearCubWeb.Admin.RewardLive.Index do
           {:noreply,
            socket
            |> assign(:redeeming, nil)
-           |> put_flash(:info, "Gave “#{reward.name}” to #{kid.name}")
+           # worded Redeem, not Give — a direct-redeem spends the kid's own
+           # points on their behalf, it isn't a gift (D64, D68)
+           |> put_flash(:info, "Redeemed “#{reward.name}” for #{kid.name}")
            |> load()}
 
         {:error, :unaffordable} ->
@@ -232,24 +234,22 @@ defmodule BearCubWeb.Admin.RewardLive.Index do
           id={"redeem-reward-#{@reward.id}-kid-#{kid.id}"}
           class="flex items-center justify-between gap-3 px-4 py-2"
         >
+          <%!-- labeled as a balance, never a bare number beside a price (D64, D68) --%>
           <span class="min-w-0 flex-1 truncate">
             {kid.name} —
-            <span id={"redeem-balance-#{@reward.id}-#{kid.id}"}>{Map.get(
-              @balances,
-              kid.id,
-              0
-            )}</span>
-            pts
+            <span id={"redeem-balance-#{@reward.id}-#{kid.id}"}>
+              balance {Map.get(@balances, kid.id, 0)} ★
+            </span>
           </span>
           <button
             id={"confirm-redeem-#{@reward.id}-#{kid.id}"}
             phx-click="redeem"
             phx-value-reward-id={@reward.id}
             phx-value-kid-id={kid.id}
-            data-confirm={"Give “#{@reward.name}” to #{kid.name} for #{@reward.points} points?"}
+            data-confirm={"Redeem “#{@reward.name}” (#{@reward.points} pts) for #{kid.name}?"}
             class="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-content transition active:scale-95"
           >
-            Give
+            Redeem
           </button>
         </div>
       </div>

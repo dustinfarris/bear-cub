@@ -218,6 +218,14 @@ defmodule BearCubWeb.Admin.TodayLive do
             style={"background-color: #{kid.color}"}
           >
             <h2 class="text-xl font-bold text-white drop-shadow-sm">{kid.name}</h2>
+            <%!-- true signed balance, always visible, negative included (D64, the
+                 [2026-07-25 Sat 20:41] balance-placement advisory) --%>
+            <span
+              id={"today-balance-#{kid.id}"}
+              class="text-lg font-bold tabular-nums text-white drop-shadow-sm"
+            >
+              ★ {balance}
+            </span>
           </header>
 
           <div :for={section <- sections} class="border-t border-base-200 first:border-t-0">
@@ -270,7 +278,7 @@ defmodule BearCubWeb.Admin.TodayLive do
               id={"requests-#{kid.id}"}
               class="divide-y divide-base-200 border-t border-base-200"
             >
-              <.request_row :for={request <- requests} request={request} balance={balance} />
+              <.request_row :for={request <- requests} request={request} />
               <li :if={requests == []} class="px-5 py-3 text-sm text-base-content/40">
                 No requests
               </li>
@@ -346,13 +354,13 @@ defmodule BearCubWeb.Admin.TodayLive do
   end
 
   attr :request, :map, required: true
-  attr :balance, :integer, required: true
 
   # Requests section (Story 06, D69): approve re-checks affordability and
   # availability server-side and is data-confirm guarded (points-affecting,
   # permanent from tomorrow since reversal is day-scoped, D53); decline
   # carries no confirmation — it costs nothing and its own day-scoping is
-  # the undo.
+  # the undo. The kid's balance rides the header band, not this row (D64,
+  # the [2026-07-25 Sat 20:41] balance-placement advisory).
   defp request_row(assigns) do
     ~H"""
     <li id={"request-#{@request.id}"} class="flex items-center gap-3 px-5 py-3">
@@ -360,7 +368,7 @@ defmodule BearCubWeb.Admin.TodayLive do
       <div class="min-w-0 flex-1">
         <p class="truncate font-medium">{@request.reward.name}</p>
         <p class="text-sm text-base-content/60">
-          {@request.points} pts · balance {@balance}
+          {@request.points} pts
         </p>
       </div>
       <button
@@ -375,7 +383,7 @@ defmodule BearCubWeb.Admin.TodayLive do
         id={"approve-request-#{@request.id}"}
         phx-click="approve-request"
         phx-value-request-id={@request.id}
-        data-confirm={"Give “#{@request.reward.name}” for #{@request.points} points?"}
+        data-confirm={"Redeem “#{@request.reward.name}” for #{@request.points} points?"}
         class="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-content"
       >
         Approve
