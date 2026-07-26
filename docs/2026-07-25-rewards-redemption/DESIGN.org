@@ -15,7 +15,7 @@ Two new tables carry it — ~rewards~ and ~redemptions~ — and nothing about ~c
 
 Redemption also makes the points total load-bearing: it is read on every reward-card render, on every tap that checks affordability, and on every admin balance display. The shipped ~points_total/2~ issues on the order of one query per routine-day of history, which is why PRD SC-9 requires the check be cheap and /stay/ cheap as months accumulate. The deferred aggregate rewrite is therefore claimed here as a batch member and lands early, before affordability depends on it — as a pure performance refactor with semantics provably unchanged.
 
-Everything the kid sees stays pre-reader legible: a locked card, a claimed card, and a declined card share one dim treatment and differ only by glyph, so a child learns three glyphs against one layout rather than three layouts (SC-6). The kiosk keeps the zero floor and never shows a negative number; the /admin/ surfaces show the true signed balance, negative and all, because the parent is the only party who can act on debt.
+Everything the kid sees stays pre-reader legible: a locked card, a claimed card, and a declined card share one dim treatment and differ only by glyph and glyph color, so a child learns three signs against one layout rather than three layouts (SC-6). The kiosk keeps the zero floor and never shows a negative number; the /admin/ surfaces show the true signed balance, negative and all, because the parent is the only party who can act on debt.
 
 ** Context this design builds on (restated, self-contained)
 
@@ -73,6 +73,7 @@ A one-time reward offered to *both* kids ("your own bike" — each of them may e
 | ~requested_at~ | ~utc_datetime~, NULL | NULL = parent direct-redeem (no kid request)          |
 | ~approved_at~  | ~utc_datetime~, NULL |                                                       |
 | ~declined_at~  | ~utc_datetime~, NULL |                                                       |
+| ~withdrawn_at~ | ~utc_datetime~, NULL | the kid-side withdraw marker (D76)                    |
 | ~reversed_at~  | ~utc_datetime~, NULL | the reversal marker                                   |
 | ~source~       | string, NOT NULL     | ="kiosk"= / ="admin"=, mirroring ~completions.source~  |
 
@@ -81,18 +82,22 @@ Contribution is marker-first, mirroring the shipped ~extra_contribution/2~ ~cond
 #+begin_src
 reversed_at set  ->  0        (reversed; row retained forever as the trail)
 approved_at set  -> −points   (the spend)
-otherwise        ->  0        (pending, declined, or lapsed)
+otherwise        ->  0        (pending, declined, withdrawn, or lapsed)
 #+end_src
 
-State is derived from nullable timestamp markers, *never a status column* — D10's posture and the ~undone_at~ / ~failed_at~ precedent:
+State is derived from nullable timestamp markers, *never a status column* — D10's posture and the ~undone_at~ / ~failed_at~ precedent. ~withdrawn_at~ is the fourth marker and takes the same shape as the other three: a withdrawn row is retained forever, contributes 0, and is invisible to ~pending?~ (D76):
 
 #+begin_src
-pending?   = requested_at && !approved_at && !declined_at && local_date == today
-lapsed?    = requested_at && !approved_at && !declined_at && local_date <  today
+open       = requested_at && !approved_at && !declined_at && !withdrawn_at
+pending?   = open && local_date == today
+lapsed?    = open && local_date <  today
 approved?  = approved_at  && !reversed_at
 reversed?  = approved_at  &&  reversed_at
 declined?  = declined_at
+withdrawn? = withdrawn_at
 #+end_src
+
+The write paths guard on ~open~ plus ~local_date == today~ in both directions: ~withdraw~ refuses a row already approved or declined, and ~approve~ / ~decline~ refuse a row already withdrawn, all returning the ~{:error, :not_open}~ family — the same guard shape lapse already gets (D73).
 
 The price snapshot is *non-negotiable*. The total is cumulative all-time and purely derived, so reading a live ~rewards.points~ at derivation time would make history mutable: a parent raising a reward's price would retroactively deepen every past spend of it and silently move a child's balance, potentially into debt after the fact. The snapshot is taken at *request* time for the kid leg — that is the deal the child was shown — and at redeem time for the parent-direct leg (SC-7).
 
@@ -101,15 +106,20 @@ A ~reward_name~ snapshot is deliberately *not* taken: reward rows are kept forev
 ** Indexes
 
 #+begin_src sql
--- one open request per kid per local day
-CREATE UNIQUE INDEX redemptions_one_pending_per_kid
-  ON redemptions (kid_id, local_date)
-  WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL;
+-- one open request per kid per reward per local day (D77)
+CREATE UNIQUE INDEX redemptions_one_open_per_kid_reward
+  ON redemptions (kid_id, reward_id, local_date)
+  WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL
+    AND withdrawn_at IS NULL;
 #+end_src
 
 The same partial-unique-index technique the shipped ~completions (chore_id, local_date) WHERE undone_at IS NULL~ index already uses. Including ~local_date~ in the key is what makes lapse *free*: yesterday's unanswered request cannot block today's, with no job and no cleanup (SC-6).
 
+The key carries a ~reward_id~ component, so what it constrains is *duplicate open asks for the same reward*, never how many rewards a kid may have open at once (D77) — a kid may hold several pending requests, bounded by the rendering reserve rule in Key Behaviors → affordability rather than by this index. Same-reward duplicates are already impossible through the UI, since a pending card's tap is a withdraw (D76); the index is there to catch a race, exactly the posture the one-open-request index took before it.
+
 A racing duplicate hits the index and returns ~{:error, changeset}~, which callers treat as already-asked — the same posture ~complete_chore/3~ takes on a racing double-tap.
+
+Because SQLite cannot alter an index in place, the migration *drops the old index and creates the new one*; it is a replacement, not an added constraint.
 
 Supporting indexes on ~redemptions (reward_id)~ and ~(kid_id, local_date)~ serve the availability and balance reads.
 
@@ -125,7 +135,9 @@ Because ~:rewards~ replaces the routine region rather than sitting beside it, *t
 
 The banner becomes ~[completion icon] NAME [★ points] [🎁]~ — the gift button grouped with the points badge on the right, because the badge and the shop are the same economy and read as one unit.
 
-The button has exactly *two* states: =🎁= idle, and =⏳= while this kid has a pending request today. A verdict returns it to =🎁=.
+The button has exactly *two* states: =🎁= idle, and =⏳= while this kid has *any* open request today. It returns to =🎁= once none remains — by verdict, by withdraw (D76), or by lapse; with several asks open at once (D77) a single verdict does not necessarily clear it.
+
+The button is also the shop's *toggle*: tapping it while the shop is already open closes the column back to normal, whichever glyph it is showing (D75). It is always tappable, and its glyph reports the request state rather than gating the tap.
 
 Decline visibility is *in-shop only*: the declined glyph rides the card (precedence row 4) and is there whenever the child next looks, while the banner returns to =🎁=. An approval needs no banner state either — it drops the always-visible points badge by the reward's price, the most legible ambient signal the kiosk has.
 
@@ -135,23 +147,25 @@ The points badge's own tap gesture stays *unbound* — the gift button is a dist
 
 Verdict states and availability states are the same kind of thing — derived from redemption markers plus ~local_date == today~ — so they resolve in one ordered table rather than two overlapping systems. Evaluated top-down, first match wins:
 
-| # | condition                                                        | rendering               | tappable |
-|---+------------------------------------------------------------------+-------------------------+----------|
-| 1 | ~retired_at~ set                                                 | absent                  | —        |
-| 2 | one-time, this kid consumed it, and that redemption is not today | absent                  | —        |
-| 3 | this kid has a pending request for this reward today             | =⏳= pending treatment  | no       |
-| 4 | this kid was declined for this reward today                      | dim + declined glyph    | no       |
-| 5 | this kid claimed this reward today                               | dim + check glyph       | no       |
-| 6 | ~Points.balance(kid, today) < reward.points~                     | dim + lock glyph        | no       |
-| 7 | otherwise                                                        | full-color card         | *yes*    |
+| # | condition                                                        | rendering               | tappable          |
+|---+------------------------------------------------------------------+-------------------------+-------------------|
+| 1 | ~retired_at~ set                                                 | absent                  | —                 |
+| 2 | one-time, this kid consumed it, and that redemption is not today | absent                  | —                 |
+| 3 | this kid has a pending request for this reward today             | =⏳= pending treatment  | *yes* — withdraws |
+| 4 | this kid was declined for this reward today                      | dim + red ✕ glyph       | no                |
+| 5 | this kid claimed this reward today                               | dim + green check glyph | no                |
+| 6 | ~balance − pending_total(kid, today) < reward.points~            | dim + lock glyph        | no                |
+| 7 | otherwise                                                        | full-color card         | *yes* — asks      |
 
 Notes on the ordering and the choices:
 
+- *Row 3 is the withdraw tap* (D76). A pending card is full-color and tappable, and its tap takes the request back rather than re-asking — no confirmation, since asking again is the undo. The card falls straight back to its plain state (row 7, or row 6 if the withdrawn commitment was what a sibling card's lock depended on).
 - *Claimed (5) outranks unaffordable (6)* — after a spend the balance is usually below the price again, and "you got this today" is strictly more informative than "you can't afford this".
-- *Rows 4–6 share one dim treatment and differ only by glyph* — declined, check (claimed today), lock (can't afford). A pre-reader learns three glyphs against *one* layout rather than three layouts, and the pending row's =⏳= is the same glyph already carried by the banner button. Extending the existing "not now" vocabulary costs no new visual grammar (SC-6).
+- *Rows 4–6 share one dim treatment and differ only by glyph and glyph color* — a red ✕ (declined), a green check (claimed today), a lock (can't afford). A pre-reader learns three signs against *one* layout rather than three layouts, and the pending row's =⏳= is the same glyph already carried by the banner button. Extending the existing "not now" vocabulary costs no new visual grammar (SC-6). The colors are load-bearing rather than decorative: an uncolored ✕ reads as a close control on a surface that has one, and the claimed check earns the same success green a done chore row already carries.
 - *Consumed one-time rewards show as claimed for the rest of the local day, then disappear.* A child who saved 500 for the ATM toy should not watch it vanish the instant it is granted — that reads as a bug rather than a triumph. Showing "claimed" permanently is the other failure: dead cards would accumulate forever in a catalog a pre-reader scans by glance.
 - *Repeatable rewards on cooldown are dimmed, not hidden* — a catalog that changes shape day to day with no visible reason is the least explicable thing a shelf can do.
-- *Row 4 doubles as the re-ask block.* A declined row does not occupy the one-open-request index slot (it has ~declined_at~ set), so without this rendering rule a child could re-tap the same reward immediately and re-queue it indefinitely. Deriving "declined for this reward today" and rendering it untappable closes the loop with no new storage — the D55 day-scope pattern.
+- *Row 4 doubles as the re-ask block.* A declined row does not occupy the open-ask index slot for its reward (it has ~declined_at~ set), so without this rendering rule a child could re-tap the same reward immediately and re-queue it indefinitely. Deriving "declined for this reward today" and rendering it untappable closes the loop with no new storage — the D55 day-scope pattern. A *withdrawn* row is deliberately not blocked the same way: withdrawing is the child's own correction, and re-asking is exactly what makes it costless (D76).
+- *Row 6 is reserve-aware* (D77). The lock condition subtracts what this kid has already committed to in open requests, so a kid may hold several asks at once but never asks for more than their points cover. The subtraction is a rendering rule only: the ledger is untouched, a pending row still contributes 0, and the banner badge keeps showing the true floored total (Key Behaviors → affordability). A card whose own request is pending never self-locks, because row 3 resolves before row 6.
 
 ** Kiosk — night (D56)
 
@@ -171,16 +185,22 @@ Removal is *archive, never delete*: ~retired_at~ is the only removal affordance 
 
 Direct-redeem lives here: a per-reward action opening a kid picker *scoped to the reward's audience* — showing the true signed balance of each kid the reward is offered to, never every kid regardless of ~kid_id~ — then a ~data-confirm~ guard, then the spend. Same affordability, availability, and audience rules as the kid leg — no override (SC-2, SC-4, D74).
 
+The picker's per-kid figure is *labeled as that kid's balance* (=balance N ★=), never a bare number beside a name: on a row whose other number is a price, an unlabeled figure reads as a second price rather than as what the child has.
+
+The action is worded *Redeem*, not "Give" — on the button, in its ~data-confirm~, and in the success flash. A direct-redeem spends the child's own points on their behalf; "give" describes a gift, which is the one thing this action is not, and the same wording carries to the approval control on ~Admin.TodayLive~.
+
 ** ~Admin.TodayLive~ — the approval queue and reversal
 
 A per-kid *Requests* section alongside the existing Extras section, in today's stacked layout. Today is where a parent already looks, and a request is a day-shaped object — the same shape as everything else on that screen.
 
-Each pending request shows the reward's icon and name, its snapshot price, and the kid's true signed balance, with:
+The kid's *true signed balance* rides the kid's own header band — ★ plus the signed figure, always visible, whether or not that kid has any requests today. It belongs to the child, not to any one ask: a kid may hold several open requests (D77), which would otherwise repeat the same number down the list, and a parent looking at a debt needs to see it whether or not a request happens to be waiting. A permanently visible negative number on this surface is correct and intended (D64).
 
-- *Approve* — ~data-confirm~ guarded (D53: points-affecting, and permanent from tomorrow onward, since the reversal control is day-scoped). Re-validates affordability *and* availability before stamping ~approved_at~; a failed re-check tells the parent which check failed rather than silently no-opping.
+Each pending request then shows the reward's icon and name and its snapshot price — the price only, no per-request balance line — with:
+
+- *Approve* — ~data-confirm~ guarded (D53: points-affecting, and permanent from tomorrow onward, since the reversal control is day-scoped), worded *Redeem* like the direct-redeem control it mirrors. Re-validates affordability *and* availability before stamping ~approved_at~; a failed re-check tells the parent which check failed rather than silently no-opping. With several asks open, approving one can legitimately make another's re-check fail as unaffordable — the refusal display already covers it (D77).
 - *Decline* — no confirmation. It costs nothing, contributes 0, and its own day-scoping is the undo.
 
-Lapsed rows *never surface in the queue*. The queue reads pending rows only — ~requested_at~ set, no verdict, and ~local_date == today~. Yesterday's unanswered ask is invisible here by the same predicate that makes it invisible on the kiosk, with nothing to clean up (SC-6).
+Lapsed and withdrawn rows *never surface in the queue*. The queue reads open rows only — ~requested_at~ set, no verdict, not withdrawn, and ~local_date == today~. Yesterday's unanswered ask is invisible here by the same predicate that makes it invisible on the kiosk, with nothing to clean up (SC-6); a request the child takes back drops out of the queue live on the ~rewards~ broadcast, needing no parent action at all (D76).
 
 Lapse is *terminal*, not merely display-hidden (D73): ~approve_redemption/3~ and ~decline_redemption/2~ refuse a lapsed row exactly as they refuse an already-answered one, both returning ~{:error, :not_open}~ — a lapsed request cannot be revived by a write path called directly, only by the queue simply never offering it.
 
@@ -193,7 +213,7 @@ A parent must be able to answer "did this child redeem this reward?" days later 
 It is *one flat reverse-chronological list*, its own route, linked from ~/admin/rewards~. Each row: date, kid (name + color chip), reward icon + name, snapshot price, and state (approved / reversed / declined). A reversed row renders its price struck through with a "reversed" marker and the reversal's date — this is where a reversal stays legible days later.
 
 - At family scale — two kids, a handful of rewards, a few redemptions a week — one list beats per-kid or per-reward views: no navigation, no filter UI, and the whole record fits on a phone screen. Per-kid grouping can be added later if the list ever gets long enough to need it.
-- *Shows approved, reversed, and declined; omits lapsed.* A never-answered ask is an abandoned intention, not history, and including it would bury real redemptions in noise.
+- *Shows approved, reversed, and declined; omits lapsed and withdrawn.* A never-answered ask is an abandoned intention, not history, and a withdrawn one is an intention the child took back (D76); including either would bury real redemptions in noise.
 - *Archived rewards still appear* with their name and icon — the row is retained, and only the catalog and picker filter on ~retired_at~.
 - *Bounded, visibly.* The list shows the 50 most recent entries with no pagination, and *says so on screen* — a silent truncation would read as "this is everything" when it is not. At the stated family volume 50 entries spans months, comfortably covering SC-7's "days afterward" horizon; pagination is a backlog seed if it ever bites.
 
@@ -249,13 +269,13 @@ One uniform scope, one mental model: *every availability question is asked about
 
 A reversal *restores availability for free*. Both predicates exclude reversed rows, so a parent reversing a redemption returns a one-time reward to that child's catalog and clears a repeatable reward's cooldown, with no extra code path (SC-8).
 
-Pending requests *do not consume*. A pending row has no ~approved_at~, so it is invisible to both predicates. Under per-kid scoping there is *no cross-kid race to close*: two kids holding pending requests for the same reward is simply two independent asks, and both may legitimately be approved.
+Pending requests *do not consume*. A pending row has no ~approved_at~, so it is invisible to both predicates — as is a withdrawn one, which never had one either (D76). Under per-kid scoping there is *no cross-kid race to close*: two kids holding pending requests for the same reward is simply two independent asks, and both may legitimately be approved.
 
 A *same-kid* interleaving does remain possible, and it is why the approval-time re-check validates availability as well as affordability: a child asks for a reward on the kiosk, the parent direct-redeems that same reward for that same child from admin, and then approves the still-open request — which would claim a one-time reward twice, or a repeatable one twice in a day. The re-check catches it and tells the parent which check failed.
 
 Card state is *always evaluated for the kid whose column it is*. With both predicates per-kid this is trivially true rather than an invariant needing maintenance: nothing on a child's shelf can change because of something the sibling did.
 
-The one-open-request index *does not interact with any of this*. Its key is ~(kid_id, local_date)~ with no reward component, so it constrains *how many asks a kid has open*, never *which reward they may ask for*. Repeatability, kid scoping, and the open-request cap are three independent constraints.
+The open-request index *does not interact with any of this*. Its key is ~(kid_id, reward_id, local_date)~ (D77), so it forbids a *second simultaneous ask for the same reward on the same day* and nothing else — it never decides whether a reward is claimable, which is availability's job. Repeatability, kid scoping, and the duplicate-ask guard remain three independent constraints; how many rewards a kid may have open at once is decided by neither, but by the reserve-aware rendering rule below.
 
 ** Affordability — strict on both legs
 
@@ -269,10 +289,20 @@ The *true signed sum*, never the floored display figure — D41 pre-authorizes t
 
 Checked twice:
 
-1. *At request time* (kiosk) — an unaffordable reward renders visibly locked and is not tappable, so the check is a rendering rule before it is a validation.
-2. *At approval time* (admin) — affordability *and* availability are re-validated, because the balance and the catalog both move between ask and answer.
+1. *At request time* (kiosk) — an unaffordable reward renders visibly locked and is not tappable, so the check is a rendering rule before it is a validation. That rendering rule is the reserve-aware form below, which is stricter than this one, never looser.
+2. *At approval time* (admin) — affordability *and* availability are re-validated, because the balance and the catalog both move between ask and answer. This is the domain gate, and it stays the only one.
 
-Pending requests *contribute nothing*. A pending request contributes 0 to the balance and has no effect on the total, the badge, or affordability. There is no reserve or hold: escrowing a pending request's price against the balance would create two balances (true and available) that the always-visible badge (D43) cannot show at once. The race it would close — a child asking for two things they can only afford one of — is closed instead by the approval-time re-check plus the one-open-request-per-kid index, at zero display cost.
+Pending requests *contribute nothing to the ledger*. A pending row contributes 0 to the balance and has no effect on the total or on the badge, and there is *no domain hold*: escrowing a pending price against the balance itself would create two balances (true and available) that the always-visible badge (D43) cannot show at once. That rejection stands (D63) and is not what the rule below is.
+
+What the kiosk *renders* is reserve-aware (D77). A kid may hold several open requests at once, bounded by a rule that lives entirely in the card-state derivation:
+
+#+begin_src
+locked?  =  Points.balance(kid, today) − Rewards.pending_total(kid, today)  <  reward.points
+#+end_src
+
+~pending_total/2~ sums this kid's open requests' snapshot prices; ~Points.balance/2~ is untouched by it. So a child can ask for several things their points cover, and the moment the set would exceed what they have, the remaining cards lock with the same glyph they already use for "not enough" — the pre-reader-legible explanation D64 relies on, needing no number. The badge keeps showing the true floored total, never an available-after-commitments figure.
+
+The race this closes — a child piling up mutually exclusive asks the parent must then decline for money the child was never shown — is closed at the point the child acts. The approval-time re-check remains the backstop and is order-safe: approving one ask can make another's re-check fail as unaffordable, which is expected and already surfaces as a named refusal.
 
 ** Hidden debt: bounded, and made visible to the party who can act
 
@@ -283,17 +313,17 @@ No spend-time guard can close it. Affordability already guarantees a spend never
 The resolution is not to hide less on the kiosk but to hide nothing in admin:
 
 - *Kiosk keeps the floor* (D41, D43). The *lock glyph on an unaffordable card is the pre-reader-legible explanation* — a child who cannot read a negative number can read a lock. No number is needed for the child to act correctly (SC-3, SC-6).
-- *Admin displays the true signed balance*, negative and all, wherever it shows a balance (the approval queue, the direct-redeem picker, the history view). The parent is a reader, not a pre-reader, and is the only party who can act on debt.
+- *Admin displays the true signed balance*, negative and all, wherever it shows a balance (the approval queue's per-kid header band, the direct-redeem picker). The parent is a reader, not a pre-reader, and is the only party who can act on debt.
 
 ** Kiosk interaction
 
 One tap to ask — *no modal, no confirmation*, with ~phx-throttle~ matching the shipped chore row. This is the deliberate contrast to D53: D53 guards actions that are *irreversible* and punitive, and a request is neither — the parent gate *is* the protection, and a mistaken ask costs a decline. A confirmation dialog is also the wrong instrument on this surface, since a pre-reader cannot read it.
 
-No kid-side withdraw. The escapes are the parent's decline and the overnight lapse.
+One tap to take it back, too (D76): tapping a pending card *withdraws* the request, with no confirmation, because re-asking is the undo. The other escapes — the parent's decline and the overnight lapse — remain.
 
-Dismiss and idle auto-return: an explicit ✕ closes the view. In addition, an idle timer returns the column to its normal state if the child wanders off — a ~Process.send_after~ armed on open, reset on each tap inside the view, and cancelled on dismiss. The duration is a module constant tuned at the on-device gate, exactly as ~@collapse_delay_ms~ (currently 400ms) is; this design deliberately does not pin a number, though ~30s is the starting guess.
+Dismiss and idle auto-return: the view closes three ways (D75) — an explicit ✕, the banner gift button used as a toggle, and an idle timer that returns the column to its normal state if the child wanders off. The timer is a ~Process.send_after~ armed on open, reset on each tap inside the view (a request and a withdraw are both in-view taps and both reset it), and cancelled on dismiss. The duration is a module constant tuned at the on-device gate, exactly as ~@collapse_delay_ms~ (currently 400ms) is; this design deliberately does not pin a number, though ~30s is the starting guess.
 
-After a successful request the view returns to the normal column immediately and the banner button flips to =⏳=, so the pending state lives where the child can see it without standing in the shop.
+Feedback stays *at the point of action* (D75). After a successful request the view does *not* return to the normal column: the tapped card transitions in place to its pending rendering (row 3), which is the acknowledgment, and the shop stays open so the child can keep looking or take the ask back. The banner button flips to =⏳= as well, but as ambient state rather than as the only feedback. Because a request no longer closes the view, the idle timer is the ordinary way a shop left open ends.
 
 State is *ephemeral*: ~:rewards~ membership is a socket-level ~MapSet~ of kid ids, exactly like the shipped ~@expanded~ — never persisted, cleared by the timer, and cleared on the routine boundary re-render.
 
@@ -327,9 +357,9 @@ The pinning tests *must include a roster-drift case* — a routine-day evaluated
 
 Per repo convention, LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
 
-- *Unit* — redemption contribution across all marker combinations; the pending / lapsed / approved / reversed / declined derivations; one-time consumption and repeatable cooldown, both at per-kid scope — including a sibling's redemption of the same reward leaving this kid's card untouched, and the reversal-restores-availability path; affordability against a negative true balance; and the ~Points.balances~ aggregate *pinned against the current per-kid implementation*, including the roster-drift case.
+- *Unit* — redemption contribution across all marker combinations; the pending / lapsed / approved / reversed / declined / withdrawn derivations, including withdraw's own state guard in both directions (withdraw refused on an answered row, approve/decline refused on a withdrawn one); ~pending_total/2~ and the reserve-aware lock condition, including several open asks at once and the re-keyed duplicate-ask index; one-time consumption and repeatable cooldown, both at per-kid scope — including a sibling's redemption of the same reward leaving this kid's card untouched, and the reversal-restores-availability path; affordability against a negative true balance; and the ~Points.balances~ aggregate *pinned against the current per-kid implementation*, including the roster-drift case.
 
-- *LiveView integration* — kiosk: open, dismiss, idle auto-return, request, and each of the seven card states; admin: approve, decline, direct-redeem, reverse, archive-hides-from-catalog-but-not-history, and the approval-time re-check failing on both affordability and availability; cross-surface PubSub: a kiosk request appearing in the admin queue, and an approval moving the kiosk badge.
+- *LiveView integration* — kiosk: open, dismiss (✕ and the banner toggle), idle auto-return, request-stays-in-shop with the card turning pending in place, withdraw returning the card to its plain state, and each of the seven card states; admin: approve, decline, direct-redeem, reverse, archive-hides-from-catalog-but-not-history, and the approval-time re-check failing on both affordability and availability; cross-surface PubSub: a kiosk request appearing in the admin queue, and an approval moving the kiosk badge.
 
 - *Time* — every test pins ~:routine_windows~ per ~docs/learnings.org~ [2026-07-17] rather than inheriting the wall clock, and all new derivations take a local-date argument. Day-rollover behavior (lapse, cooldown reset, verdict-state expiry) is tested by *passing a different local date*, never by mocking a clock.
 
@@ -345,7 +375,7 @@ Per the PRD's Out of Scope, restated as design boundaries:
 - *A points-stats view for the kids, and the skip-a-chore admin action* — not claimed, and not designed for. Neither is precluded: the points badge's own tap gesture stays unbound, and nothing in the redemption derivation constrains what a "skipped" chore could contribute, since redemptions sum into the signed-inputs term independently of how earnings are derived.
 - *Notifications of any kind* when a request is made or answered. The parent-notification backlog entry is separately ruled and unclaimed.
 - *Roster drift* — surfaced above; semantics unchanged in the rewrite, captured as its own backlog entry at initiative close.
-- *Not built:* reward categories or tags; per-kid pricing of a shared reward; scheduled or expiring rewards; a wishlist or savings-goal concept; kid-side withdrawal of a request; pagination or filtering in history; hard deletion of rewards.
+- *Not built:* reward categories or tags; per-kid pricing of a shared reward; scheduled or expiring rewards; a wishlist or savings-goal concept; pagination or filtering in history; hard deletion of rewards. (Kid-side withdrawal *is* built — see Key Behaviors → kiosk interaction, D76.)
 
 * Decision Log
 
@@ -373,3 +403,33 @@ The initial Story 03 close shipped ~approve_redemption/3~ and ~decline_redemptio
 /Sections affected: §~/admin/rewards~ — the catalog/
 
 The initial Story 04 close shipped the direct-redeem kid picker listing *every* kid regardless of a kid-scoped reward's ~kid_id~, and neither ~direct_redeem/4~ nor ~approve_redemption/3~ checked audience at all — the domain permitted redeeming a kid-scoped reward for the wrong kid, with the mismatch swept to the backlog as an untriaged, unruled discovery. If you're reading old excerpts, story fixtures, or code referencing "showing each kid's true signed balance" as *every* kid in the picker, that's stale: the picker now filters to the reward's audience via ~Rewards.offered?/2~, and both write paths refuse a non-audience kid with ~{:error, :not_offered}~. Rationale: [[file:../decisions.org::#d74][D74]].
+
+** [2026-07-25 Sat 20:40] §Kiosk interaction — a successful request no longer returns the column to its normal state (D75)
+
+/Sections affected: §Key Behaviors — kiosk interaction; §Kiosk — the banner button/
+
+This document previously specified that "after a successful request the view returns to the normal column immediately and the banner button flips to =⏳=, so the pending state lives where the child can see it without standing in the shop" — the instant return Story 05 shipped, where ~request-reward~ removes the kid from the ~:rewards~ ~MapSet~ and the banner glyph is the whole acknowledgment. Do not reintroduce it, even though it looks like the safer default on a shared fridge tablet (it guarantees the column goes back to chores with no further tap): the idle timer already guarantees that, and localhost QA found the banner =⏳= too weak a signal on a surface the child was just moved away from. The shop now stays open and the tapped card turns pending in place. The banner button also became an open/close toggle in the same ruling — a passage that previously described it only as the opener. Rationale: [[file:../decisions.org::#d75][D75]].
+
+** [2026-07-25 Sat 20:41] §Key Behaviors, §Data Model, §Out of Scope — "no kid-side withdraw" no longer holds (D76)
+
+/Sections affected: §Key Behaviors — kiosk interaction; §Data Model (~redemptions~, indexes); §Kiosk — card states; §Out of Scope/
+
+This document previously stated flatly "No kid-side withdraw. The escapes are the parent's decline and the overnight lapse," listed "kid-side withdrawal of a request" among the things deliberately *not built*, and gave ~redemptions~ three markers (~approved_at~ / ~declined_at~ / ~reversed_at~) beside ~requested_at~ — so a pending card was untappable (precedence row 3, "tappable: no"). Do not reinstate that position on the ground that a fourth marker and a fourth state cost pre-reader legibility, which is the argument that carried it originally: localhost QA showed a mis-tap stranding the child with an ask they cannot retract and the parent with a queue row to dispose of on their behalf. A fourth nullable marker ~withdrawn_at~ now exists, a pending card's tap withdraws, and withdrawn rows are excluded by ~pending?~ everywhere — queue, kiosk, and history alike. If you are reading old excerpts, story fixtures, migrations, or code that treat the pending card as inert or the marker set as three-plus-one, they are stale. Rationale: [[file:../decisions.org::#d76][D76]].
+
+** [2026-07-25 Sat 20:41] §Data Model, §Key Behaviors — one open request per kid per day is overturned, and the index is re-keyed (D77)
+
+/Sections affected: §Data Model — indexes; §Key Behaviors — availability, affordability; §Kiosk — card states (row 6); §Kiosk — the banner button/
+
+This document previously capped a child at *one* open ask per local day, enforced by ~CREATE UNIQUE INDEX redemptions_one_pending_per_kid ON redemptions (kid_id, local_date) WHERE requested_at IS NOT NULL AND approved_at IS NULL AND declined_at IS NULL~ — an index whose key deliberately had *no reward component*, described here as constraining "how many asks a kid has open, never which reward they may ask for." Three superseded claims rode on it and are the trap: that the two-asks-they-can-only-afford-one-of race is "closed by the approval-time re-check plus the one-open-request-per-kid index, at zero display cost"; that the kiosk lock condition is the bare ~Points.balance(kid, today) < reward.points~; and that "a verdict returns [the banner button] to =🎁=", which held only while at most one ask could be open. The index is now keyed ~(kid_id, reward_id, local_date)~ with a fourth NULL condition on ~withdrawn_at~, and it is a *replacement* — a drop-and-recreate migration, since SQLite cannot alter an index in place; do not write a migration that merely adds one. What did *not* change, and should not be re-argued: a pending row still contributes 0 and no domain hold escrows anything against the balance — that rejection stands (D63); the new bound is a rendering rule in the card-state derivation only. Rationale: [[file:../decisions.org::#d77][D77]].
+
+** [2026-07-25 Sat 20:41] §Overview, §Kiosk card states — the three dim rows no longer "differ only by glyph"
+
+/Sections affected: §Overview; §Kiosk — card states, one precedence table/
+
+This document twice said the locked, claimed, and declined cards "share one dim treatment and differ only by glyph," and Story 05 shipped that literally: all three glyphs rendered in the same muted ~text-base-content/60~ / inherited color. Do not strip the colors back out in the name of that phrasing — it is superseded, not merely elaborated. Declined now renders its ~hero-x-mark~ in error red and claimed its ~hero-check~ in success green, because on a surface that carries a ✕ close control an uncolored ✕ reads as "close", not as "no". The lock keeps the neutral treatment. No D-entry: this is polish riding on the existing dim+glyph ruling, whose own "do not add a fourth dim-state glyph or split the shared dim treatment without a ruling" clause is what required a ruling here — issued and dated in ~docs/design-language.org~.
+
+** [2026-07-25 Sat 20:41] §~Admin.TodayLive~ — the balance no longer rides each request row
+
+/Sections affected: §~Admin.TodayLive~ — the approval queue and reversal/
+
+This document previously specified that "each pending request shows the reward's icon and name, its snapshot price, *and the kid's true signed balance*," and Story 06 shipped it that way (=N pts · balance N= on every request row). Do not restore the per-request balance line: with several asks open at once (D77) it repeats one number down the list, and it makes a kid's standing visible only when that kid happens to have a request waiting — the opposite of what a parent looking for debt needs. The balance moved up to the kid's own header band, ★ plus the true signed figure, always rendered. Where this document still says every admin balance is the true signed figure, that is unchanged and still binding (D64) — only the placement moved. No D-entry: a placement correction, not a judgment about what admin shows.
