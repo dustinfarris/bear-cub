@@ -50,6 +50,10 @@ defmodule BearCubWeb do
     quote do
       use Phoenix.LiveView
 
+      # Every LiveView, not a live_session: the router has none, and a
+      # client on a stale bundle is stale on whichever page it is showing.
+      on_mount BearCubWeb.StaticChanged
+
       unquote(html_helpers())
     end
   end

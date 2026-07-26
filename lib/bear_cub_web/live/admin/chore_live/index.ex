@@ -59,7 +59,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:chores}>
+    <Layouts.admin flash={@flash} active={:chores} static_reload_href={@static_reload_href}>
       <div id="admin-chores" class="mx-auto max-w-md px-4 py-6">
         <.header>Chores</.header>
 

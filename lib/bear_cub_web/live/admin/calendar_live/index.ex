@@ -27,7 +27,7 @@ defmodule BearCubWeb.Admin.CalendarLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:calendars}>
+    <Layouts.admin flash={@flash} active={:calendars} static_reload_href={@static_reload_href}>
       <div id="admin-calendars" class="mx-auto max-w-md px-4 py-6">
         <.header>
           Calendars

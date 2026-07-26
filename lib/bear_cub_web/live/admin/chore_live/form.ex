@@ -83,7 +83,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:chores}>
+    <Layouts.admin flash={@flash} active={:chores} static_reload_href={@static_reload_href}>
       <div id="admin-chore-form" class="mx-auto max-w-md px-4 py-6">
         <.header>
           {@page_title}

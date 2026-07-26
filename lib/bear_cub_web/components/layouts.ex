@@ -97,10 +97,28 @@ defmodule BearCubWeb.Layouts do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :active, :atom, required: true, values: [:today, :chores, :kids, :calendars, :rewards]
+
+  attr :static_reload_href, :string,
+    default: nil,
+    doc: "set by BearCubWeb.StaticChanged when this client is on a stale asset bundle"
+
   slot :inner_block, required: true
 
   def admin(assigns) do
     ~H"""
+    <%!-- A deploy leaves an open admin page patching new markup into an old
+          stylesheet (see BearCubWeb.StaticChanged). Offered, not forced: a
+          parent may be mid-form, and a plain href reloads without needing
+          anything from the stale bundle's JS. --%>
+    <div
+      :if={@static_reload_href}
+      id="static-reload"
+      class="sticky top-0 z-50 flex items-center justify-between gap-3 bg-warning px-4 py-2 text-sm text-warning-content"
+    >
+      <span>Bear Cub was updated.</span>
+      <a href={@static_reload_href} class="font-semibold underline underline-offset-2">Reload</a>
+    </div>
+
     <main class="min-h-dvh bg-base-200 pb-24">
       {render_slot(@inner_block)}
     </main>

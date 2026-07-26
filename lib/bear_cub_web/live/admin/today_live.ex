@@ -195,7 +195,7 @@ defmodule BearCubWeb.Admin.TodayLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:today}>
+    <Layouts.admin flash={@flash} active={:today} static_reload_href={@static_reload_href}>
       <div id="admin-today" class="mx-auto max-w-md space-y-6 px-4 py-6">
         <.header>Today</.header>
 

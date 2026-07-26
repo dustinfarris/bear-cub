@@ -81,7 +81,7 @@ defmodule BearCubWeb.Admin.CalendarLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:calendars}>
+    <Layouts.admin flash={@flash} active={:calendars} static_reload_href={@static_reload_href}>
       <div id="admin-calendar-form" class="mx-auto max-w-md px-4 py-6">
         <.header>{@page_title}</.header>
 

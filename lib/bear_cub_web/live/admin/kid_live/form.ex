@@ -44,7 +44,7 @@ defmodule BearCubWeb.Admin.KidLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.admin flash={@flash} active={:kids}>
+    <Layouts.admin flash={@flash} active={:kids} static_reload_href={@static_reload_href}>
       <div id="admin-kid-form" class="mx-auto max-w-md px-4 py-6">
         <.header>{@page_title}</.header>
 

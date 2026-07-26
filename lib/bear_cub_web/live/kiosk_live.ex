@@ -23,6 +23,18 @@ defmodule BearCubWeb.KioskLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # A deploy leaves the tablet patching new markup into a document whose
+    # stylesheet predates it (see BearCubWeb.StaticChanged). Reload rather
+    # than render into it: an unstyled kiosk is nobody's job to notice, and
+    # there is no in-progress work here to protect.
+    if socket.assigns.static_changed? do
+      {:ok, redirect(socket, to: ~p"/")}
+    else
+      mount_kiosk(socket)
+    end
+  end
+
+  defp mount_kiosk(socket) do
     if connected?(socket) do
       Chores.subscribe()
       Calendars.subscribe()
