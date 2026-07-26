@@ -189,34 +189,134 @@ As a child at the kiosk, I need the shelf to answer me where I tapped — showin
 
 * Acceptance Criteria
 
-** [ ] A successful request leaves the shop open: the tapped card transitions in place to its pending rendering, and the column does not return to the routine view. (SC-2, SC-6, D75)
-** [ ] The shop closes three ways and only three ways — the explicit ✕, the banner gift button tapped while the shop is open (whichever glyph it shows), and the idle timer. (SC-6, D75)
-** [ ] Tapping a pending card withdraws that request, with no confirmation, and the card returns to its plain state in the same render. (SC-6, D76)
-** [ ] A withdrawn request is refused by approve and decline with the ~{:error, :not_open}~ family, and withdraw is refused on a row already approved or declined with the same family. (SC-6, D76, D73)
-** [ ] A withdrawn row is retained forever, contributes 0 to the balance, and is invisible to ~pending?~ — so it is absent from the kiosk's pending rendering, from the admin queue, and from the redemption history. (SC-6, SC-7, D76, D70)
-** [ ] A withdrawn request drops out of a connected admin queue with no parent action, on the existing payload-free ~rewards~ broadcast. (SC-2, D76, D71)
-** [ ] A kid may hold several pending requests at once when their points cover the whole set, and the banner button shows =⏳= while any request is open — returning to =🎁= only once none remains, whether cleared by verdict, withdraw, or lapse. (SC-6, D77, D75)
-** [ ] A reward card locks when ~balance − pending_total(kid, today) < reward.points~: a pending ask locks costlier cards the kid can no longer cover, and withdrawing that ask unlocks them in the same render. (SC-4, SC-6, D77)
-** [ ] A card whose own request is pending renders as pending, never as locked — row 3 resolves before row 6. (SC-6, D66, D77)
-** [ ] The lock stays the whole explanation on the kiosk: no balance, deficit, or committed-points figure is ever shown to the child, and the points badge keeps showing the true floored total rather than a balance net of commitments. (SC-3, SC-4, SC-6, D63, D64, D77)
-** [ ] The declined ✕ renders in the error color and the claimed check in the success color, both keeping the shared dim treatment; the lock keeps its neutral treatment. (SC-6, ~docs/design-language.org~ dim+glyph Ruling as amended [2026-07-25])
-** [ ] ~redemptions~ carries a nullable ~withdrawn_at~ column, and the partial unique index is *replaced* — the old one-open-per-kid index is dropped and ~(kid_id, reward_id, local_date)~ created in its place, conditioned on ~requested_at~ set and all three of ~approved_at~ / ~declined_at~ / ~withdrawn_at~ NULL. (SC-6, D76, D77)
-** [ ] Withdrawing frees the index slot: request → withdraw → request the same reward again on the same day succeeds, and the second row takes its own price snapshot. (SC-6, SC-7, D60, D76, D77)
-** [ ] A racing duplicate ask for the same reward on the same day hits the new index and returns ~{:error, changeset}~, which the caller treats as already-asked. (SC-6, D77)
-** [ ] Lapse stays free under the re-keyed index: yesterday's unanswered request for a reward does not block today's ask for that same reward, with no job and no cleanup. (SC-6, D61, D77)
-** [ ] The approval-time re-check remains the only domain gate and is order-safe: with several asks open, approving one can make another's re-check fail as unaffordable, and that refusal names which check failed. (SC-4, D63, D77)
-** [ ] The D62 same-kid interleaving still refuses: a kiosk ask, a parent direct-redeem of the same reward for the same child, then approving the still-open request fails the availability re-check — re-verified with several asks open. (SC-5, D62, D63)
-** [ ] The Story-01 pinning suite (~test/bear_cub/points_test.exs~) passes *unmodified*: nothing in this story touches ledger semantics, and a pending request still contributes 0 to ~Points.balance/2~. (SC-9, D72, D77)
-** [ ] The Story-05 kiosk tests that assert the superseded instant-return, the absent withdraw control, and the untappable pending card are *updated* to the D75/D76 behavior and cited in their own comments as a re-ruled behavior change, not pin drift — the distinction being that these assertions pinned a design position that has since been overruled, where the Story-01 suite pins semantics that have not moved. (D75, D76, and the [2026-07-25 Sat 20:40] / [20:41] advisories)
-** [ ] The Story-05 idle-timer reset test no longer drives its in-view tap through the gift button, which now closes the shop; a card tap (request or withdraw) is the in-view tap that resets the timer. (D75)
-** [ ] LiveView integration tests cover the stay-in-shop pending transition, the banner toggle close, withdraw returning the card to plain, the reserve lock and its live unlock on withdraw, and multi-request — with ~:routine_windows~ pinned and day-dependent states exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+** [X] A successful request leaves the shop open: the tapped card transitions in place to its pending rendering, and the column does not return to the routine view. (SC-2, SC-6, D75)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~handle_event("request-reward", ...)~ (~lib/bear_cub_web/live/kiosk_live.ex~) no longer deletes the kid from the ~:rewards~ ~MapSet~ — it only resets the idle timer. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "AC-10 (D75, supersedes the shipped instant return): tapping an available card asks in one tap...the shop stays open and the tapped card turns pending in place", which asserts ~#rewards-{kid.id}~ is still present and the tapped card reads ~data-card-state=pending~ after the tap.
+:END:
+** [X] The shop closes three ways and only three ways — the explicit ✕, the banner gift button tapped while the shop is open (whichever glyph it shows), and the idle timer. (SC-6, D75)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~dismiss-shop~ (✕), the re-worked ~open-shop~ (banner toggle), and the existing ~{:rewards_idle, kid_id}~ handler are the three closers; no other event clears ~:rewards~. Verified by ~kiosk_live_test.exs~ "the banner gift button toggles the shop closed on a second tap, whichever glyph it shows (D75)" (covers both the =🎁= and =⏳= glyph states), plus the pre-existing ~AC-12a~ (✕) and ~AC-12b~ (idle) tests, both still green.
+:END:
+** [X] Tapping a pending card withdraws that request, with no confirmation, and the card returns to its plain state in the same render. (SC-6, D76)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  The reward card's ~phx-click~ now dispatches through ~reward_card_click/1~ (~kiosk_live.ex~): ~:pending~ → ~"withdraw-request"~, handled by the new ~handle_event("withdraw-request", ...)~, which calls ~Rewards.withdraw_redemption/2~ with no confirmation dialog anywhere in the markup. Verified by ~kiosk_live_test.exs~ "AC-11 (D76, supersedes no-withdraw): a pending card's tap withdraws with no confirmation, returning to plain in the same render, shop still open" — asserts no ~[data-confirm]~ on the card and ~data-card-state=available~ in the same render after the tap.
+:END:
+** [X] A withdrawn request is refused by approve and decline with the ~{:error, :not_open}~ family, and withdraw is refused on a row already approved or declined with the same family. (SC-6, D76, D73)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~check_open/2~ (~lib/bear_cub/rewards.ex~) now includes ~withdrawn_at: nil~ in its pattern match and is shared unchanged by ~approve_redemption/3~, ~decline_redemption/2~, and the new ~withdraw_redemption/2~ — one predicate, both directions per the Technical Notes. Verified by six tests in ~test/bear_cub/rewards_test.exs~'s "write paths refuse to act on the wrong state" describe block: withdraw stamps on a pending row; withdraw refused on an already-approved row; withdraw refused on an already-declined row; withdraw refused on a lapsed row; approve refused on a withdrawn row; decline refused on a withdrawn row. All assert the ~{:error, :not_open}~ shape and that no marker was stamped.
+:END:
+** [X] A withdrawn row is retained forever, contributes 0 to the balance, and is invisible to ~pending?~ — so it is absent from the kiosk's pending rendering, from the admin queue, and from the redemption history. (SC-6, SC-7, D76, D70)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~withdraw_redemption/2~ only ever stamps ~withdrawn_at~ via ~Ecto.Changeset.change~ — never a delete. ~redemption_contribution/1~'s ~cond~ needed no code change: a withdrawn row falls to the existing ~true -> 0~ branch (both ~reversed_at~ and ~approved_at~ are nil), pinned by a new case in ~rewards_test.exs~'s "contribution is marker-first" test. ~pending?/2~ now requires ~is_nil(r.withdrawn_at)~, pinned by "withdrawn?/1 reflects the fourth marker (D76), and pending?/lapsed? go false once it's set". Absence from the kiosk: card falls back through ~card_state/5~ to ~:available~/~:locked~ once withdrawn (proven by the AC-11 test above and the reserve-unlock test). Absence from the admin queue: ~list_pending_redemptions/2~ now excludes ~withdrawn_at~, pinned by "a withdrawn request drops out with no parent action needed (D76)". Absence from history: ~list_redemption_history/1~'s predicate (verdict markers only) already excluded it structurally, pinned explicitly by the new test "omits a withdrawn request — an intention the child took back is not a redemption record (D76)".
+:END:
+** [X] A withdrawn request drops out of a connected admin queue with no parent action, on the existing payload-free ~rewards~ broadcast. (SC-2, D76, D71)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~withdraw_redemption/2~ pipes through the existing ~broadcast_change/1~ exactly like every other write path — no new PubSub topic or subscriber. Verified end to end by ~test/bear_cub_web/live/admin/today_live_test.exs~ "cross-surface: a kiosk withdraw drops the request from the admin queue with no parent action (D76)": a connected admin view sees the request, a second connected kiosk process withdraws it via the UI, and the admin view's ~#request-{id}~ row disappears with no admin-side action.
+:END:
+** [X] A kid may hold several pending requests at once when their points cover the whole set, and the banner button shows =⏳= while any request is open — returning to =🎁= only once none remains, whether cleared by verdict, withdraw, or lapse. (SC-6, D77, D75)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  The unique index is re-keyed to ~(kid_id, reward_id, local_date)~ (migration below), so two different rewards can both be pending the same day; ~any_pending?/2~ is reward-agnostic (was already, now also excludes withdrawn). Verified at the domain layer by ~rewards_test.exs~ "true while any of several open requests remains, false only once every one clears (D77)" (covers decline and withdraw as the two ways to clear one of several) and at the LiveView layer by ~kiosk_live_test.exs~ "a kid may hold several pending requests at once, and the banner shows ⏳ until every one clears (D77)".
+:END:
+** [X] A reward card locks when ~balance − pending_total(kid, today) < reward.points~: a pending ask locks costlier cards the kid can no longer cover, and withdrawing that ask unlocks them in the same render. (SC-4, SC-6, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~Rewards.pending_total/2~ (new) sums this kid's pending-today snapshot prices; ~card_state/4~ became ~card_state/5~, taking ~pending_total~ and applying exactly this formula on its row-6 branch. Verified at the domain layer by ~rewards_test.exs~ "row 6 — reserve-aware: a sibling reward's pending commitment locks a card the raw balance alone would afford (D77)" and at the LiveView layer by ~kiosk_live_test.exs~ "a pending ask locks a costlier sibling card the kid can no longer cover, and withdrawing unlocks it live (D77)", which asks for a cheap reward, observes a costlier sibling card flip to ~locked~, then withdraws and observes it flip back to ~available~ in the same render.
+:END:
+** [X] A card whose own request is pending renders as pending, never as locked — row 3 resolves before row 6. (SC-6, D66, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~card_state/5~'s ~cond~ keeps the ~pending_today?~ clause ahead of the reserve-lock clause, unchanged in ordering from Story 05. Verified by ~rewards_test.exs~ "row 3 — a card whose own request is pending never self-locks, even against a reserve that would otherwise lock it (D77)", which passes ~balance == pending_total == reward.points~ (a case the row-6 formula would lock) and asserts ~:pending~ still wins.
+:END:
+** [X] The lock stays the whole explanation on the kiosk: no balance, deficit, or committed-points figure is ever shown to the child, and the points badge keeps showing the true floored total rather than a balance net of commitments. (SC-3, SC-4, SC-6, D63, D64, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~pending_total/2~ is consumed only inside ~card_state/5~'s boolean comparison — it is never rendered, and the banner points badge still reads ~Points.total/2~ (the D41-floored true total), untouched by this story. Verified by ~kiosk_live_test.exs~'s new reserve-lock test, which asserts ~refute render(view) =~ "−"~ on a column holding a locked card, alongside the pre-existing row-6 test's identical assertion for the single-reward case.
+:END:
+** [X] The declined ✕ renders in the error color and the claimed check in the success color, both keeping the shared dim treatment; the lock keeps its neutral treatment. (SC-6, ~docs/design-language.org~ dim+glyph Ruling as amended [2026-07-25])
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  Caught NOT MET by the first story-verifier audit — Story 05's shipped markup pre-dated the amended design-language Ruling and had never been updated to it (declined was ~text-base-content/60~, claimed had no color class at all). Fixed in ~kiosk_live.ex~: declined's ~hero-x-mark~ now carries ~text-error~, claimed's ~hero-check~ now carries ~text-success~; lock's ~hero-lock-closed~ is untouched (~text-base-content/60~); the shared ~opacity-45~ dim wrapper on rows 4-6 is untouched. Verified by two new assertions in ~kiosk_live_test.exs~'s existing "row 4"/"row 5" tests (~.hero-x-mark.text-error~ and ~.hero-check.text-success~ respectively), confirmed correct and complete by a second story-verifier pass.
+:END:
+** [X] ~redemptions~ carries a nullable ~withdrawn_at~ column, and the partial unique index is *replaced* — the old one-open-per-kid index is dropped and ~(kid_id, reward_id, local_date)~ created in its place, conditioned on ~requested_at~ set and all three of ~approved_at~ / ~declined_at~ / ~withdrawn_at~ NULL. (SC-6, D76, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~priv/repo/migrations/20260726041025_withdraw_and_rekey_open_request_index.exs~: adds ~withdrawn_at~ (nullable ~utc_datetime~), drops ~redemptions_one_pending_per_kid~, creates ~redemptions_one_open_per_kid_reward~ on ~(kid_id, reward_id, local_date)~ with the four-marker WHERE clause verbatim from the Design excerpt. Ran clean against both dev and test databases (~mix ecto.migrate~, ~MIX_ENV=test mix ecto.migrate~).
+:END:
+** [X] Withdrawing frees the index slot: request → withdraw → request the same reward again on the same day succeeds, and the second row takes its own price snapshot. (SC-6, SC-7, D60, D76, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  Verified by ~rewards_test.exs~ "withdrawing frees the index slot: request, withdraw, request the same reward again the same day succeeds with its own price snapshot", which re-prices the reward between the withdraw and the second ask and asserts the second row's ~points~ reflects the new price, not the first row's snapshot.
+:END:
+** [X] A racing duplicate ask for the same reward on the same day hits the new index and returns ~{:error, changeset}~, which the caller treats as already-asked. (SC-6, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  Verified by ~rewards_test.exs~ "a racing duplicate ask for the same reward on the same day errors" — passing confirms the ~unique_constraint([:kid_id, :reward_id, :local_date], name: :redemptions_kid_id_reward_id_local_date_index)~ in ~Redemption.changeset/2~ matches the name ~ecto_sqlite3~ actually synthesizes from the column list; a name mismatch would have crashed the insert instead of returning ~{:error, changeset}~.
+:END:
+** [X] Lapse stays free under the re-keyed index: yesterday's unanswered request for a reward does not block today's ask for that same reward, with no job and no cleanup. (SC-6, D61, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  Verified by ~rewards_test.exs~ "lapse stays free under the re-keyed index: yesterday's unanswered request for a reward does not block today's ask for it" — no undo, no job, just a second insert the day after.
+:END:
+** [X] The approval-time re-check remains the only domain gate and is order-safe: with several asks open, approving one can make another's re-check fail as unaffordable, and that refusal names which check failed. (SC-4, D63, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  No change to ~approve_redemption/3~'s own logic was needed — the caller (admin) already re-reads ~Points.balance/2~ fresh per approval, so a first approval's spend is reflected in the balance argument passed to a sibling's approval. Verified by the new ~rewards_test.exs~ test "order-safe with several asks open: approving one can make a sibling ask's re-check fail as unaffordable (D77)", which approves one of two affordable-individually-not-together asks and asserts the second's re-check returns ~{:error, :unaffordable}~ against the post-spend balance.
+:END:
+** [X] The D62 same-kid interleaving still refuses: a kiosk ask, a parent direct-redeem of the same reward for the same child, then approving the still-open request fails the availability re-check — re-verified with several asks open. (SC-5, D62, D63)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  Verified by the new ~rewards_test.exs~ test "the same-kid interleaving still refuses with several asks open (D62, D77)" — a sibling pending ask for a different reward is held open throughout, and the original interleaving assertion (~{:error, :unavailable}~) still holds unchanged.
+:END:
+** [X] The Story-01 pinning suite (~test/bear_cub/points_test.exs~) passes *unmodified*: nothing in this story touches ledger semantics, and a pending request still contributes 0 to ~Points.balance/2~. (SC-9, D72, D77)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~git diff -- test/bear_cub/points_test.exs~ returns zero lines — the file was never touched this story. The full suite run (~mix test~, 468 passed) includes its 27 tests passing unchanged, confirmed by both story-verifier audits.
+:END:
+** [X] The Story-05 kiosk tests that assert the superseded instant-return, the absent withdraw control, and the untappable pending card are *updated* to the D75/D76 behavior and cited in their own comments as a re-ruled behavior change, not pin drift — the distinction being that these assertions pinned a design position that has since been overruled, where the Story-01 suite pins semantics that have not moved. (D75, D76, and the [2026-07-25 Sat 20:40] / [20:41] advisories)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  ~kiosk_live_test.exs~'s former "AC-10"/"AC-11"/row-3 tests are rewritten in place (not left stale) with names that cite the supersession directly: "AC-10 (D75, supersedes the shipped instant return): ..." and "AC-11 (D76, supersedes no-withdraw): ...", and row 3's test name now reads "...tappable (its tap withdraws, D76)...". This distinguishes them from the Story-01 suite, which required zero changes because its pins never moved.
+:END:
+** [X] The Story-05 idle-timer reset test no longer drives its in-view tap through the gift button, which now closes the shop; a card tap (request or withdraw) is the in-view tap that resets the timer. (D75)
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  The former single "AC-12" test (which tapped the gift button twice) is split into two: "AC-12 (no longer driven through the gift button, which now closes the shop): the idle timer resets on an in-view request tap" and "AC-12: the idle timer resets on an in-view withdraw tap too" — both drive the reset via a ~#reward-card-...~ element, matching the Technical Notes' instruction verbatim.
+:END:
+** [X] LiveView integration tests cover the stay-in-shop pending transition, the banner toggle close, withdraw returning the card to plain, the reserve lock and its live unlock on withdraw, and multi-request — with ~:routine_windows~ pinned and day-dependent states exercised by passing a different local date. (repo convention, design §Testing, ~docs/learnings.org~ [2026-07-17])
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:28] \\
+  All five behaviors present in ~kiosk_live_test.exs~: stay-in-shop (AC-10 test), banner toggle close (new dedicated test), withdraw-to-plain (AC-11 test), reserve lock + live unlock (new dedicated test), multi-request (new dedicated test). ~:routine_windows~ pinned via ~morning_active()~/~on_exit~ in the describe block's ~setup~, inherited by every test in it; day-dependent states (e.g. cooldown-yesterday-is-available-today) already used the ~yesterday()~ helper pattern from Story 05, extended rather than replaced.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:32] \\
+  All 21 ~** [X]~ checkboxes above carry their own LOGBOOK evidence entry; none deferred. Confirmed by a dedicated DoD-verification subagent pass cross-checking every checkbox state against the file.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:32] \\
+  ~mix test~ run twice consecutively by the DoD-verification subagent: 468 passed both times (stable, no test-db pollution). Scoped run of the four touched test files (~test/bear_cub/rewards_test.exs~, ~test/bear_cub_web/live/kiosk_live_test.exs~, ~test/bear_cub_web/live/admin/today_live_test.exs~, plus the untouched ~test/bear_cub/points_test.exs~ pinning suite): 246 passed.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:32] \\
+  Reviewed by the DoD-verification subagent against the diffs of ~lib/bear_cub/rewards.ex~, ~lib/bear_cub/rewards/redemption.ex~, ~lib/bear_cub_web/live/kiosk_live.ex~: no struct map-access, no ~String.to_atom~ on user input, D-number-cited comments throughout, marker-derived state with no status column and no row deletion (~withdraw_redemption/2~ only stamps ~withdrawn_at~), ~:routine_windows~ pinned in every new/updated test's ~setup~, ~mix format --check-formatted~ clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-07-25 Sat 21:32] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exits 0, 468 passed, 0 failures. Reproduced independently by this session and by the DoD-verification subagent.
+:END:
 
 * Technical Notes
 
