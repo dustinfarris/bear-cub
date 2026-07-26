@@ -5,19 +5,19 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO Ollie idea: "Streaks" like completing your Morning Routine every day
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 20:44]
-:END:
-
-e.g. "You've completed your morning routine 7 days in a row!"
-* TODO [#A] Rewards / redemption system :promote:
+* TODAY [#A] Rewards / redemption system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
 Out of scope for the gamification-points initiative (DESIGN.org "Out of Scope for This Design"): no store, spending flow, or streaks were built. The points total is deliberately shaped as ~max(0, completions_earnings + other_signed_inputs)~, with ~other_signed_inputs~ empty today (D42) — so a future redemption spend (a negative, non-completion signed input) slots into the existing summation without reshaping the earnings derivation. The seam is real but unexercised; building redemption is future initiative-scale work.
 
 Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/DESIGN.org's Out of Scope section, per its initiative-close sweep instruction.
+* TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 20:44]
+:END:
+
+e.g. "You've completed your morning routine 7 days in a row!"
 * TODO [#B] admin "quick add" extra chore from Today view :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
@@ -35,21 +35,17 @@ Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state al
 Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
 
 Ruled [2026-07-24 Fri]: ntfy push, per-chore granularity for now — customization (batching, quiet hours, per-kid settings) possible later, not in scope. Collapses to oneshot, #B: a Req POST per completion event, topic/server via ~runtime.exs~ env config. Treat the topic URL like the ICS URLs — never in git, never logged. Self-hosted ntfy vs ntfy.sh is an implementation-time deployment choice (NixOS module side).
-* TODO ~points_total/2~ N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
+* TODO [#B] ~points_total/2~ N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
-~points_total/2~ (~lib/bear_cub/chores.ex~, Story 02) issues one query for distinct ~(routine, local_date)~ pairs, then one ~routine_day_contribution/3~ call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every ~:chores_changed~ re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows.
-
-Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery).
-
-Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points becoming load-bearing. Claim candidate for the rewards/redemption initiative (the Rewards entry above), which is exactly what would make the total load-bearing; size it there, not here.
-* TODO Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
+~points_total/2~ (~lib/bear_cub/chores.ex~, Story 02) issues one query for distinct ~(routine, local_date)~ pairs, then one ~routine_day_contribution/3~ call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every ~:chores_changed~ re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows. Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery). Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points becoming load-bearing. Claim candidate for the rewards/redemption initiative (the Rewards entry above), which is exactly what would make the total load-bearing; size it there, not here.
+* TODO [#B] Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
 :END:
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — not a clean oneshot because it needs a points-semantics ruling first (does a skipped chore earn its points? count toward the routine bonus? interacts with D10 derived day state and the D40/D41 contribution shapes). Settle the ruling in the rewards/redemption brainstorm, then size.
-* TODO Ollie idea: tapping on the points should show you daily points progress and stats on your points
+* TODO [#B] Ollie idea: tapping on the points should show you daily points progress and stats on your points
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:02]
 :END:
