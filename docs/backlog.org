@@ -5,6 +5,12 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO Ollie idea: "Streaks" like completing your Morning Routine every day
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 20:44]
+:END:
+
+e.g. "You've completed your morning routine 7 days in a row!"
 * TODO [#A] Rewards / redemption system :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
