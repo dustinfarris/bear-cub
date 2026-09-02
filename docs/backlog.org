@@ -5,6 +5,15 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO "Good standing" indicator
+:PROPERTIES:
+:CREATED:  [2026-09-01 Tue 17:07]
+:END:
+Need a highly visible indicator showing that a child has both
+1. Completed the previous evening's routine
+2. Completed this morning's routine
+
+This will be used to allow or restrict certain activities like screen time or other treats.  It should be shown upon completion of the morning routine, if the conditions are met (previous evening's routine was also completed).  It needs to be large and visible from a distance on the kiosk.
 * TODO The extra chores need to show how many points they're worth.
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 14:18]
