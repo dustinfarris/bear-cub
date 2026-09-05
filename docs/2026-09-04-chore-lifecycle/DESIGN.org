@@ -47,7 +47,7 @@ field :recurring?, :boolean, source: :is_recurring, default: false
 
 *Hazard.* A raw ~fragment(...)~ bypasses that translation and must spell ~is_recurring~. ~extras_by_kid/1~ already contains such a fragment, so any future reference to the flag from inside one is a live trap.
 
-~active_from~ and ~archived_on~ are *local dates, not UTC timestamps*: they are compared against ~completions.local_date~ inside the points derivation, and mixing the two date spaces there is exactly how day-edge bugs get in. This is a deliberate divergence from the ~rewards.retired_at~ sibling, which is a UTC timestamp — rewards never compare their marker against a historical date. Both fields are set by the context from the local datetime the caller already passes; the standing "all time logic takes a local datetime argument" invariant holds, with no clock read in domain code.
+~active_from~ and ~archived_on~ are *local dates, not UTC timestamps*: they are compared against ~completions.local_date~ inside the points derivation, and mixing the two date spaces there is exactly how day-edge bugs get in. This is a deliberate divergence from the ~rewards.retired_at~ sibling, which is a UTC timestamp — rewards never compare their marker against a historical date. Both fields are set by the context from a local datetime the caller passes: ~archive_chore/2~ takes one as ~complete_chore/3~ and ~archive_reward/2~ already do, and ~create_chore/2~ gains one, becoming ~create_chore/3~ ([[file:../decisions.org::#d86][D86]]). The standing "all time logic takes a local datetime argument" invariant holds, with no clock read in domain code.
 
 The column is ~archived_on~, not ~retired_at~: "retired" is already taken in chore vocabulary for the *derived* state of a one-off extra completed on a prior day (D28/D29), and that meaning survives this change. Rewards' own function is already ~archive_reward/2~ despite its ~retired_at~ column, so "archive" is the verb the repo actually uses; chores take the verb and name the column to match.
 
@@ -84,7 +84,7 @@ It binds to the virtual ~shows_in~ field — values =morning= / =evening= / =ext
 
 *Create path (narrowing D36).* The Morning and Evening "+ Add" links still hide the select and file the chore into the tapped bucket. The *Extras* "+ Add" link now shows the select, so a repeating extra can be created in one step rather than create-then-edit.
 
-*Reclassification lock.* The select is editable only while the chore has zero completion rows. Once any completion row exists — including undone and failed ones — it locks, with a hint to archive the chore and create a new one. See §Key Behaviors / Reclassification.
+*Reclassification lock.* The *routine bucket* is editable only while the chore has zero completion rows. Once any completion row exists — including undone and failed ones — a bucket change is refused, with a hint to archive the chore and create a new one. The =extra= ↔ =extra_daily= toggle is *not* locked: recurrence is read only by ~list_extras/2~ for the day being displayed and never by the points derivation, so flipping it rewrites no past day ([[file:../decisions.org::#d85][D85]]). See §Key Behaviors / Reclassification.
 
 ** Kiosk — extras
 
@@ -92,7 +92,7 @@ Unchanged. Recurring extras are revealed after the morning routine completes whi
 
 An archived chore's card disappears live on the next ~:chores_changed~ broadcast, through machinery that already exists.
 
-Rationale: [[file:../decisions.org::#d78][D78]], [[file:../decisions.org::#d82][D82]], [[file:../decisions.org::#d83][D83]], [[file:../decisions.org::#d84][D84]].
+Rationale: [[file:../decisions.org::#d78][D78]], [[file:../decisions.org::#d82][D82]], [[file:../decisions.org::#d83][D83]], [[file:../decisions.org::#d84][D84]], [[file:../decisions.org::#d85][D85]].
 
 * Key Behaviors
 
@@ -177,7 +177,9 @@ Flipping ~recurring?~ *on* for an already-retired extra resurrects it. That is i
 
 ~routine~ itself is not date-bounded. Reclassifying a chore morning → evening rewrites which chores were required in the *past* for both buckets — the same class of retroactive rewrite this design removes from delete. Extras ↔ routine moves are worse, because the point shape changes too (per-row versus bonus).
 
-*Reclassification is allowed only while a chore has no completions.* The "Shows in" select stays editable for a chore with zero completion rows — the "I filed it in the wrong bucket" case, where there is nothing to rewrite — and locks once *any* completion row exists, with a hint to archive it and create a new one. "Any" includes undone and failed rows, since rows are never deleted (mvp/FR-17) and an undone row still evidences that the chore was live in that bucket on that day. A cheap existence check enforces it.
+*A bucket change is allowed only while a chore has no completions.* The "Shows in" select's routine bucket stays editable for a chore with zero completion rows — the "I filed it in the wrong bucket" case, where there is nothing to rewrite — and locks once *any* completion row exists, with a hint to archive it and create a new one. "Any" includes undone and failed rows, since rows are never deleted (mvp/FR-17) and an undone row still evidences that the chore was live in that bucket on that day. A cheap existence check enforces it.
+
+*The recurrence toggle is not locked.* Moving an extra between =extra= and =extra_daily= is not a reclassification in this sense: recurrence is read only by ~list_extras/2~, for the day being displayed, and never by ~extra_contribution/2~, ~earnings/2~ or ~extras_by_kid/1~ — so no historical day is scored differently for it, and there is nothing to rewrite. Locking it would also close both of §Recurring extras' two exits, leaving archive as a recurring extra's only end, and would forbid the resurrection D82 states as intended. Rationale: [[file:../decisions.org::#d85][D85]].
 
 ** Migration and backfill
 
@@ -209,7 +211,7 @@ Per the mvp DESIGN's testing strategy (mvp/§11) and the repo's TDD conventions,
 
 *Recurring extras*: a recurring extra completed yesterday still lists today; a one-off one does not; done-today lingers for both; undo returns either to outstanding; earnings across two days equals 2× points.
 
-*Changeset*: ~shows_in~ round-trips all four values; a non-nil ~routine~ forces ~recurring?: false~; reclassification is refused once completions exist.
+*Changeset*: ~shows_in~ round-trips all four values; a non-nil ~routine~ forces ~recurring?: false~; a *bucket* change is refused once completions exist, while the =extra= ↔ =extra_daily= toggle is accepted whatever the chore's completion history.
 
 *Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
 
@@ -228,7 +230,7 @@ Per the mvp DESIGN's testing strategy (mvp/§11) and the repo's TDD conventions,
 - *Recurrence other than daily* (weekdays only, every N days, specific days) — daily is the whole ask; a schedule needs its own model.
 - *Per-extra point values surfaced on the kiosk* — an open backlog entry, adjacent but independent.
 - *Archiving kids or rewards* — kids are not deletable today and rewards already archive.
-- *Date-bounding ~routine~ itself* — the residual drift vector is closed by the reclassification lock instead.
+- *Date-bounding ~routine~ itself* — the residual drift vector is closed by the bucket-change lock instead.
 - *The ~points_total/2~ N+1 shape* — a separate open backlog entry; the date-bounded roster touches the grouped query but does not claim the per-kid loop.
 - *Any kids'-view visual change* — no ~docs/design-language.org~ ruling is required.
 
@@ -246,3 +248,15 @@ Decisions for this initiative: [[file:../decisions.org]] — D78 through D84 wer
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-09-04 Fri 19:55] The "Shows in" lock no longer covers the recurrence toggle (D85)
+
+/Sections affected: §Screens ("Shows in" select), §Key Behaviors (Reclassification), §Testing/
+
+This document previously said the select "is editable only while the chore has zero completion rows" and locks entirely "once any completion row exists", with §Testing asking that "reclassification is refused once completions exist". Do not reintroduce the blanket form, even though it reads as the simpler and safer rule and is exactly what [[file:../decisions.org::#d84][D84]] says: one control carries two independent settings, and locking both makes §Recurring extras' "two exits" and [[file:../decisions.org::#d82][D82]]'s intended resurrection of a retired extra unreachable, leaving archive as a recurring extra's only end. The lock now refuses a change of ~routine~ only. Rationale: [[file:../decisions.org::#d85][D85]].
+
+** [2026-09-04 Fri 19:58] Creation was described as already passing a local datetime (D86)
+
+/Sections affected: §Data Model/
+
+This document previously said both lifetime fields are set "from the local datetime the caller already passes". That was true of the archive path and false of creation: ~create_chore/2~ took no datetime, so a reader taking the sentence at face value would conclude the create path needed no signature change and would reach for the obvious alternative — a ~LocalTime.now()~ read inside ~create_chore~, or a ~local_now \\ LocalTime.now()~ default argument. Both put a clock read back into domain code, which the standing invariant forbids; creation now takes the argument explicitly. Rationale: [[file:../decisions.org::#d86][D86]].
