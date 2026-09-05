@@ -1,0 +1,88 @@
+#+title: Story 04 — The "Shows in" select: four options, the extras create path, and the reclassification lock
+#+date: 2026-09-04
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Data Model (excerpt)
+
+~Chore~ also gains a *virtual* field ~shows_in~ (a plain string, not a predicate), which drives the admin select and from which the changeset derives ~routine~ and ~recurring?~ — see §Screens / Interfaces.
+
+** Admin — the "Shows in" select
+
+The select grows a fourth option:
+
+- Morning routine
+- Evening routine
+- After routines (extra)
+- After routines (repeats daily)
+
+It binds to the virtual ~shows_in~ field — values =morning= / =evening= / =extra= / =extra_daily= — and the changeset derives ~routine~ and ~recurring?~ from it. An invalid pair (a routine chore marked recurring) therefore cannot reach the database; the changeset also forces ~recurring?: false~ whenever ~routine~ is non-nil, as defence in depth for the create path, which sets ~routine~ directly. On edit, ~shows_in~ is derived back from the stored pair so the select preselects correctly.
+
+*Create path (narrowing D36).* The Morning and Evening "+ Add" links still hide the select and file the chore into the tapped bucket. The *Extras* "+ Add" link now shows the select, so a repeating extra can be created in one step rather than create-then-edit.
+
+*Reclassification lock.* The *routine bucket* is editable only while the chore has zero completion rows. Once any completion row exists — including undone and failed ones — a bucket change is refused, with a hint to archive the chore and create a new one. The =extra= ↔ =extra_daily= toggle is *not* locked: recurrence is read only by ~list_extras/2~ for the day being displayed and never by the points derivation, so flipping it rewrites no past day ([[file:../../decisions.org::#d85][D85]]). See §Key Behaviors / Reclassification.
+
+
+** Reclassification
+
+~routine~ itself is not date-bounded. Reclassifying a chore morning → evening rewrites which chores were required in the *past* for both buckets — the same class of retroactive rewrite this design removes from delete. Extras ↔ routine moves are worse, because the point shape changes too (per-row versus bonus).
+
+*A bucket change is allowed only while a chore has no completions.* The "Shows in" select's routine bucket stays editable for a chore with zero completion rows — the "I filed it in the wrong bucket" case, where there is nothing to rewrite — and locks once *any* completion row exists, with a hint to archive it and create a new one. "Any" includes undone and failed rows, since rows are never deleted (mvp/FR-17) and an undone row still evidences that the chore was live in that bucket on that day. A cheap existence check enforces it.
+
+*The recurrence toggle is not locked.* Moving an extra between =extra= and =extra_daily= is not a reclassification in this sense: recurrence is read only by ~list_extras/2~, for the day being displayed, and never by ~extra_contribution/2~, ~earnings/2~ or ~extras_by_kid/1~ — so no historical day is scored differently for it, and there is nothing to rewrite. Locking it would also close both of §Recurring extras' two exits, leaving archive as a recurring extra's only end, and would forbid the resurrection D82 states as intended. Rationale: [[file:../../decisions.org::#d85][D85]].
+
+
+** Testing (excerpt)
+
+*Changeset*: ~shows_in~ round-trips all four values; a non-nil ~routine~ forces ~recurring?: false~; a *bucket* change is refused once completions exist, while the =extra= ↔ =extra_daily= toggle is accepted whatever the chore's completion history.
+
+*LiveView, admin* (~admin/chore_live_test.exs~): the form archives with a flash and a redirect and offers no Delete anywhere; a repeating extra is created in one step from the Extras "+ Add"; a one-off edits into repeating; the select locks on a chore with history.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d83][D83]] — One "Shows in" select drives two columns via a virtual ~shows_in~ field, and appears on the extras create path — narrows D36.
+- [[file:../../decisions.org::#d84][D84]] — Reclassification is allowed only while a chore has no completions, as narrowed by [[file:../../decisions.org::#d85][D85]] — the lock guards ~routine~ changes only.
+
+* User Story
+
+As a parent, I need one control that says where a chore shows up — morning routine, evening routine, an extra, or an extra that repeats every day — and I need it to stop me re-filing a chore my kid already has history on, so that a bucket change can never rewrite a past day.
+
+* Acceptance Criteria
+
+** [ ] The "Shows in" select offers four options — Morning routine, Evening routine, After routines (extra), After routines (repeats daily) — and each one round-trips: saving a chore under an option and reopening the form preselects that same option. (SC-2, D83)
+** [ ] The Extras "+ Add" link shows the select, so a parent creates a repeating extra in one step rather than creating it and then editing it. (SC-2, D83)
+** [ ] The Morning and Evening "+ Add" links still hide the select and file the new chore into the bucket that was tapped. (SC-2, D83)
+** [ ] A chore that shows in a routine is never marked as repeating: the invalid pair cannot be saved from any path, including the create path that sets the routine directly. (SC-2, D83)
+** [ ] A one-off extra can be edited into a repeating one through the select, and the change sticks on the chore. (SC-2, D83)
+** [ ] A chore with no completion rows at all can be re-filed into any other bucket — the "I filed it in the wrong bucket" case works. (SC-3, D84)
+** [ ] A chore with any completion row — including undone and failed ones — can no longer be moved between the morning, evening and extras buckets, and the parent is told to archive it and create a new one instead. (SC-3, SC-4, D84, human ruling [2026-09-04])
+** [ ] Switching an extra between one-off and repeating stays available whatever its completion history: the lock guards a change of routine bucket only. (SC-2, SC-3, D82, D84, human ruling [2026-09-04])
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the ~is_recurring~ column, and on Story 03 only in the sense that both touch ~admin/chore_live/form.ex~ — landing the Archive button first keeps the two edits from colliding. Marking an extra as repeating has *no kiosk behaviour yet*: the flag persists and is ignored until Story 05 adds the ~list_extras/2~ branch. That is intended sequencing, not an incomplete story — the parent leg of chore-lifecycle/SC-2 is what this story delivers.
+
+~shows_in~ is virtual and a plain string (=morning= / =evening= / =extra= / =extra_daily=), so it keeps a plain name — no ~?~ suffix. The changeset derives ~routine~ and ~recurring?~ from it, forces ~recurring?: false~ whenever ~routine~ is non-nil as defence in depth for the create path, and derives ~shows_in~ back from the stored pair on edit so the select preselects. Enforcement of the lock is changeset-level per the design's Testing line (a bucket change refused once completions exist, the recurrence toggle accepted regardless), backed by a cheap existence check over ~completions~ for that chore in any state — which runs only when the submitted ~shows_in~ implies a different ~routine~ than the stored one.
+
+The create-path work spans both admin files: ~admin/chore_live/index.ex~'s Extras "+ Add" link (today ~/admin/chores/new?kid=…~ with no routine param, alongside the routine buckets' ~&routine=…~ form), and ~admin/chore_live/form.ex~, whose ~apply_action(:new, …)~ currently pins the routine from the URL param and whose ~save_chore(:new, …)~ overwrites the submitted ~"routine"~ with it. The select is currently rendered ~:if={@live_action == :edit}~ with three options bound to ~routine~ directly.
+
+The design says the locked select carries "a hint to archive the chore and create a new one" without specifying its presentation; the acceptance criterion is written at that level, and the wording and placement are implementation latitude.
+
+*Human ruling [2026-09-04] — the lock guards ~routine~ changes only ([[file:../../decisions.org::#d85][D85]]).* DESIGN §Reclassification previously locked the whole "Shows in" select once any completion row exists, but that select also carries the =extra= ↔ =extra_daily= distinction, and DESIGN §Recurring extras depends on that distinction staying changeable *after* completions exist: its "two exits" paragraph has a running recurring extra reclassified to "After routines (extra)" so it retires "naturally once its last completion is a prior day", and [[file:../../decisions.org::#d82][D82]] states that flipping ~recurring?~ on for an already-retired extra — which by definition has completions — resurrects it, "that is intended". Under a lock covering all four values neither exit is reachable. Ruled: the lock refuses a change of ~routine~ (the bucket, whose point shape rewrites the past) and permits the recurrence toggle within the extras bucket. The criteria above are written to that ruling.
+
+*Recorded in DESIGN.org [2026-09-04].* [[file:../../decisions.org::#d85][D85]] mints the narrowing, §Screens and §Key Behaviors carry it in their bodies, the ~*Changeset*~ testing line is reworded, and an Advisory carries the superseded blanket-lock position. The excerpt above is the updated text; no obligation is outstanding.

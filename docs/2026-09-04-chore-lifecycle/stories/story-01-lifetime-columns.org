@@ -1,0 +1,110 @@
+#+title: Story 01 — Chore lifetime columns: the ~add_chore_lifecycle~ migration and its backfill
+#+date: 2026-09-04
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Data Model
+
+Three new columns on ~chores~. No new tables, no new indexes — the existing ~[:kid_id, :routine, :position]~ covers these at family scale.
+
+| Column         | Schema field   | Type                               | Meaning                                                                            |
+|----------------+----------------+------------------------------------+------------------------------------------------------------------------------------|
+| ~active_from~  | ~:active_from~ | ~date~, not null                   | Local date the chore became live; set at creation from the caller's local datetime  |
+| ~archived_on~  | ~:archived_on~ | ~date~, nullable                   | Local date it was archived; ~nil~ means live. One-way — never cleared               |
+| ~is_recurring~ | ~:recurring?~  | ~boolean~, not null, default false | Extras only: comes back every day instead of retiring after one completion          |
+
+The boolean is named ~is_recurring~ in the database and ~recurring?~ in the schema. Ecto's ~field/3~ ~:source~ option carries the mapping, and Ecto rewrites ~ch.recurring?~ to the real column in query expressions:
+
+#+begin_src elixir
+field :recurring?, :boolean, source: :is_recurring, default: false
+#+end_src
+
+*Hazard.* A raw ~fragment(...)~ bypasses that translation and must spell ~is_recurring~. ~extras_by_kid/1~ already contains such a fragment, so any future reference to the flag from inside one is a live trap.
+
+~active_from~ and ~archived_on~ are *local dates, not UTC timestamps*: they are compared against ~completions.local_date~ inside the points derivation, and mixing the two date spaces there is exactly how day-edge bugs get in. This is a deliberate divergence from the ~rewards.retired_at~ sibling, which is a UTC timestamp — rewards never compare their marker against a historical date. Both fields are set by the context from a local datetime the caller passes: ~archive_chore/2~ takes one as ~complete_chore/3~ and ~archive_reward/2~ already do, and ~create_chore/2~ gains one, becoming ~create_chore/3~ ([[file:../../decisions.org::#d86][D86]]). The standing "all time logic takes a local datetime argument" invariant holds, with no clock read in domain code.
+
+The column is ~archived_on~, not ~retired_at~: "retired" is already taken in chore vocabulary for the *derived* state of a one-off extra completed on a prior day (D28/D29), and that meaning survives this change. Rewards' own function is already ~archive_reward/2~ despite its ~retired_at~ column, so "archive" is the verb the repo actually uses; chores take the verb and name the column to match.
+
+~Chore~ also gains a *virtual* field ~shows_in~ (a plain string, not a predicate), which drives the admin select and from which the changeset derives ~routine~ and ~recurring?~ — see §Screens / Interfaces.
+
+~completions~ is untouched: same table, same ~(chore_id, local_date)~ partial unique index, same undo / fail / on-behalf machinery. An archived chore keeps every completion row it ever had, which is the whole point.
+
+Rationale: [[file:../../decisions.org::#d80][D80]], [[file:../../decisions.org::#d82][D82]].
+
+** Migration and backfill
+
+One migration, ~add_chore_lifecycle~:
+
+- ~add :is_recurring, :boolean, null: false, default: false~
+- ~add :archived_on, :date~ (nullable)
+- ~add :active_from, :date, null: false, default: "1970-01-01"~
+
+SQLite can add a ~NOT NULL~ column only with a constant default, so ~active_from~ arrives as an epoch floor — the *conservative* direction, since "live since forever" can only ever grow a historical roster, never shrink one and fabricate a bonus. No table rebuild is needed; nothing here alters an existing column.
+
+The same migration backfills the accurate value:
+
+#+begin_src sql
+UPDATE chores
+   SET active_from = MIN(DATE(inserted_at),
+                         COALESCE((SELECT MIN(local_date) FROM completions
+                                    WHERE chore_id = chores.id),
+                                  DATE(inserted_at)))
+#+end_src
+
+*The ~MIN~ of the two is load-bearing.* If a backfilled ~active_from~ ever landed *after* a day the chore was already being completed, that day's roster would shrink and hand out a ~+R~ that was never earned. Taking the earliest of "created" and "first completed" makes that impossible, and absorbs the UTC-versus-local skew in ~DATE(inserted_at)~ for evening-created chores.
+
+** Testing (excerpt)
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d80][D80]] — Chore lifetime is two local-date columns, ~active_from~ / ~archived_on~; naming and date space diverge from ~rewards.retired_at~ deliberately, and the backfill takes the ~MIN~ of created and first-completed.
+- [[file:../../decisions.org::#d82][D82]] — Extras may repeat daily via ~is_recurring~ / ~recurring?~ (the column this story lands; its behavior is Story 05).
+
+* User Story
+
+As a parent, I need every chore to carry the local date it became live, a place to stamp the date it ends, and a truthful backfilled value for the chores we already have — so that later changes to today's roster can never reach backwards and move points a kid already earned.
+
+* Acceptance Criteria
+
+** [ ] Every chore that existed before this change carries an ~active_from~ no later than both the local date it was created and the earliest ~local_date~ it was ever completed on, so no historical roster can shrink and hand out a bonus that was never earned. (SC-3, SC-5, D80)
+** [ ] A chore created from this point on carries an ~active_from~ equal to the local date it was created on, taken from a local datetime supplied by the caller rather than from a clock read inside domain code. (SC-3, SC-5, D80)
+** [ ] Every chore that existed before this change is still live and still one-off after the migration: ~archived_on~ is ~nil~ and ~is_recurring~ is false on every backfilled row. (SC-5, D80, D82)
+** [ ] Every kid's derived point total is identical immediately before and immediately after the migration runs — the columns land without moving a single score. (SC-5, D80)
+** [ ] ~archived_on~ accepts a local date and ~is_recurring~ a boolean on any chore row, while no existing ~chores~ column is altered and ~completions~ is untouched — same table, same ~(chore_id, local_date)~ partial unique index. (SC-4, D80)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story has no dependency on any other — it is the data model every later story in the batch builds on. It deliberately changes *no* behavior: nothing reads ~archived_on~ or ~is_recurring~ yet (Stories 02, 03 and 05 do), and nothing writes ~archived_on~ yet (Story 03 does).
+
+Generate the migration with ~mix ecto.gen.migration add_chore_lifecycle~ so the timestamp and conventions are applied. Column order and the SQLite constant-default constraint are as the excerpt states; the backfill ~UPDATE~ runs in the same migration, after the ~add~s.
+
+~BearCub.Chores.Chore~ gains ~:active_from~ (~:date~), ~:archived_on~ (~:date~) and ~field :recurring?, :boolean, source: :is_recurring, default: false~. The virtual ~shows_in~ field and the changeset derivation that drives it are Story 04's scope, not this story's — here the schema simply carries the columns.
+
+Carry the excerpt's ~fragment~ hazard forward when touching ~lib/bear_cub/chores.ex~: ~extras_by_kid/1~ already contains a raw ~fragment(...)~, and any reference to the recurrence flag from inside one must spell ~is_recurring~, not ~recurring?~.
+
+The rewards sibling settles half of this and not the other half. Lifecycle *markers* there are stamped by the context from a caller-supplied ~%DateTime{}~ through a private ~to_utc/1~ — ~Rewards.archive_reward(reward, LocalTime.now())~ at ~admin/reward_live/index.ex~ — which is the precedent ~archive_chore/2~ follows in Story 03, differing only in storing a local date rather than a UTC instant. *Creation* has no such precedent: ~create_reward/2~ takes no datetime at all, and rewards stamp nothing at creation beyond Ecto's UTC ~timestamps/1~. ~active_from~ is the first field in the repo needing a local date at creation time.
+
+*Ruled [2026-09-04] — creation takes the caller's local datetime: ~create_chore/3~ ([[file:../../decisions.org::#d86][D86]]).* ~active_from~ is stamped by the context from a ~%DateTime{}~ the caller supplies, with the clock read staying at the web edge (~LocalTime.now()~ in ~admin/chore_live/form.ex~, as ~archive_reward/2~ is already called from ~admin/reward_live/index.ex~). ~active_from~ is then ~DateTime.to_date(local_now)~, set by the context and never cast from attrs, alongside ~kid_id~ and ~position~.
+
+The reason is the standing "all time logic takes a local datetime argument" invariant, *not* the test suite: the argument carries no production information — a chore's ~active_from~ is always the day the row was made — so what earns it is that dropping it would make ~create_chore~ the only date-writing function in the repo reading the clock itself. An earlier draft of this story justified the argument by what the tests need; that reasoning was rejected. Rejected alternatives, recorded in D86 so they are not relitigated at implementation time: a clock read inside ~create_chore/2~; a ~local_now \\ LocalTime.now()~ default argument; casting ~active_from~ from attrs; a SQLite ~CURRENT_DATE~ default.
+
+The test consequence follows rather than motivates: ~chore_fixture~ can express a chore that became live on a past day through the real create path, which every date-bounded criterion in Story 02 depends on.
+
+Two call sites change: ~admin/chore_live/form.ex~'s ~save_chore(socket, :new, params)~, and ~chore_fixture/2~ in ~test/support/fixtures/chores_fixtures.ex~.
+
+Test hygiene per the excerpt: fixed local dates, ~:routine_windows~ pinned, no wall-clock reads. The "identical before and after" criterion is naturally expressed as a derivation pin — build a fixture with completions across several days, record ~BearCub.Points~ output, and assert it is unchanged once the columns exist.

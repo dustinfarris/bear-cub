@@ -1,0 +1,102 @@
+#+title: Story 02 — The date-bounded roster: a past routine-day is scored against the chores that were live that day
+#+date: 2026-09-04
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** The liveness predicate
+
+A chore is *live on local date D* when:
+
+#+begin_src elixir
+active_from <= D and (is_nil(archived_on) or archived_on > D)
+#+end_src
+
+Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
+
+The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+
+
+** Which queries filter, and how
+
+All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
+
+*Today's surfaces — filter on ~is_nil(archived_on)~ alone* (8 sites): ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses, both ~next_position/2~ clauses. The liveness predicate collapses to that for ~D = today~: ~active_from~ is set at creation and can never be in the future, so its half always holds today, and ~archived_on~ can only ever be today or in the past, so "not archived" and "live today" coincide. ~list_chores/2~ therefore keeps its current signature with no date argument. Excluding archived rows from ~neighbor/2~ and ~next_position/2~ mirrors ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left by archived rows are a non-issue.
+
+*The points derivation — full date-bounded predicate* (2 sites): the roster query inside ~routine_day_contribution/3~, and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~. These are the only two places that ask about days other than today.
+
+*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and ~routine_days_by_kid/1~'s main aggregate. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed.
+
+
+** The date-bounded roster
+
+~routine_day_contribution/3~'s roster query gains the bound:
+
+#+begin_src elixir
+from c in Chore,
+  where: c.kid_id == ^kid.id and c.routine == ^routine and
+         c.active_from <= ^local_date and
+         (is_nil(c.archived_on) or c.archived_on > ^local_date),
+  select: c.id
+#+end_src
+
+~routine_days_by_kid/1~ is the harder one. Today it precomputes one ~chore_count~ per ~(kid_id, routine)~ and joins it against the per-day aggregate — but roster size is now a function of the day, so that subquery must become per-~(kid_id, routine, local_date)~. The shape: derive the distinct ~(kid, routine, day)~ set from completions as it does now, then join ~chores~ against *that* on the range condition (~active_from <= day and (archived_on is null or archived_on > day)~) and count.
+
+Ecto expresses the range join directly, and it *stays one query*. Preserving that matters: the grouped-query property ([[file:../../decisions.org::#d72][D72]] — constant queries regardless of kid count or history length) is what makes this safe to run on every ~:chores_changed~ re-render. A day with no completions still produces no row and contributes 0, exactly as now.
+
+*What this fixes.* Adding a morning chore today stops retroactively voiding every past morning bonus, and archiving one stops retroactively granting bonuses never earned.
+
+*The extras leg is deliberately left alone.* ~earnings/2~ and ~extras_by_kid/1~ keep summing every completion of every nil-routine chore, archived or not. Points already earned are permanent; protecting exactly that history is what archive is for.
+
+*One-time balance shift, expected.* The rule change plus the backfill will move each kid's cumulative total *once*, at deploy — mostly upward, restoring routine bonuses that current-roster drift had silently wiped. Spends already exist against these balances, so this is verified by a before/after comparison against a copy of the real database (§Testing), not discovered on the fridge.
+
+** Testing (excerpt)
+
+*Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d81][D81]] — The routine roster is date-bounded per day — closes [[file:../../decisions.org::#d72][D72]] in both directions.
+- [[file:../../decisions.org::#d80][D80]] — The lifetime columns the bound reads, and the null-tolerant direction of the predicate.
+
+* User Story
+
+As a parent, I need a past day's routine bonus scored against the chores that were actually live on that day — so that adding or ending a chore today never rewrites what a kid earned on a day already gone, or already spent against.
+
+* Acceptance Criteria
+
+** [ ] A routine chore added today leaves every past routine bonus exactly as it stood: a morning routine that was complete yesterday still scores its bonus after today's addition. (SC-3, D81)
+** [ ] A chore whose ~archived_on~ falls on a given local date counts toward that routine's roster for every day before that date and not for the date itself, so ending a chore can never retroactively grant a bonus that was never earned. (SC-3, SC-5, D81)
+** [ ] The two derivations agree pointwise: ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ produce the same contribution for every kid, routine and day over a fixture containing both a chore added mid-history and a chore archived mid-history. (SC-3, SC-5, D81)
+** [ ] The grouped derivation still runs as a single query whose count does not grow with the number of kids or the length of history, so it stays safe to re-run on every ~:chores_changed~ re-render. (SC-5, D81, D72)
+** [ ] A day on which a kid completed nothing still produces no row and contributes 0, exactly as before. (SC-3, D81)
+** [ ] Points already earned from extras are untouched by the bound: every completion of every ~routine = nil~ chore is still summed, whatever that chore's lifetime columns say. (SC-1, SC-5, D81)
+** [ ] A chore row carrying a null ~active_from~ is counted as live rather than skipped — the bound fails toward a larger roster, never toward a fabricated bonus. (SC-5, D80)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01, which lands the columns the bound reads and backfills ~active_from~ truthfully. It deliberately ships *before* Story 03's ~archive_chore/2~: with the bound already in place, the first archive anyone performs is scored correctly, and no window exists in which archiving a chore retroactively completes past routine-days. Until Story 03 lands, the ~archived_on~ half of the predicate is exercised only by tests that stamp the column directly.
+
+Exactly two of the fourteen ~Chore~ query sites change here — the roster query inside ~routine_day_contribution/3~ and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~ (~lib/bear_cub/chores.ex~). The eight today's-surface sites are Story 03's scope; the four deliberately unfiltered sites stay unfiltered permanently.
+
+Keeping ~routine_days_by_kid/1~ a single query is load-bearing, not tidiness — the excerpt's grouped-query property is why the derivation is safe on every re-render. Ecto's ~subquery/1~ already carries the current ~(kid_id, routine)~ chore-count join in that function; the change is to derive the distinct ~(kid, routine, day)~ set from completions and join ~chores~ against *that* on the range condition.
+
+*Two shipped pinning tests assert the behavior this story overturns*, and updating them is this story's job, not a violation of the pinning suite's intent: ~test/bear_cub/points_test.exs~ ~describe "roster drift (D72) — pinned as shipped, not as it ought to be"~ contains "adding a routine chore today retroactively wipes a past routine-day's +R", which this story inverts, and "deleting a routine chore retroactively completes a past routine-day, granting +R", which calls ~delete_chore/1~ and is Story 03's to retire. Their block comment says "Do not fix this here or in Story 02" — that refers to the *rewards* initiative's Story 02, the aggregate rewrite; D81 is the ruling that authorizes the repair now.
+
+Story 01's ~create_chore/3~ ruling ([[file:../../decisions.org::#d86][D86]]) is what makes this story's tests expressible: ~chore_fixture~ (~test/support/fixtures/chores_fixtures.ex~) needs to express a chore that became live on a past day, or a "chore added today" assertion is silently vacuous — every fixture chore would carry today's ~active_from~, yesterday's roster would be empty, and the bonus the test claims to protect would never have existed.
+
+The ~fragment~ hazard from the Data Model applies inside ~routine_days_by_kid/1~, which is fragment-heavy: any raw SQL there must spell real column names.

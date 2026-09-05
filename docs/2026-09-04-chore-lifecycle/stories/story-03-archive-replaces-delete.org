@@ -1,0 +1,116 @@
+#+title: Story 03 — Archive replaces delete: ~archive_chore/2~, today's surfaces, and the admin Archive button
+#+date: 2026-09-04
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Admin — chore edit form (~admin/chore_live/form.ex~)
+
+The *Delete* button becomes *Archive*, in place. Its ~data-confirm~ is reworded from today's "Its completion history is deleted with it" to the shape rewards already uses:
+
+#+begin_src
+Archive “Practice piano”? It stays in the points history.
+#+end_src
+
+On success, back to the chore index with a flash, as now. Archive stays on the edit form rather than moving to the index row: rewards put Archive on the index row, but chores keep it where Delete lives today — less churn on a phone-first surface, and the irreversible action stays one level in rather than sitting beside the ▲/▼ taps a parent makes casually.
+
+There is *no* Delete control anywhere in admin, and no archived-chores screen.
+
+** Kiosk — extras (excerpt)
+
+An archived chore's card disappears live on the next ~:chores_changed~ broadcast, through machinery that already exists.
+
+** The liveness predicate
+
+A chore is *live on local date D* when:
+
+#+begin_src elixir
+active_from <= D and (is_nil(archived_on) or archived_on > D)
+#+end_src
+
+Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
+
+The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+
+
+** Archive lifecycle
+
+~delete_chore/1~ is *removed outright*, with its tests. In its place:
+
+#+begin_src elixir
+archive_chore(%Chore{} = chore, %DateTime{} = local_now)
+#+end_src
+
+It stamps ~archived_on~ from ~local_now~ and broadcasts ~:chores_changed~ like every other write, so the kiosk drops the card live.
+
+The ~on_delete: :delete_all~ FK on ~completions.chore_id~ (~priv/repo/migrations/20260710083403_create_completions.exs~) stays in the schema as a safety net but stops having any trigger in the app. Kids are not deletable in admin, so nothing else reaches it.
+
+*Archive is one-way.* No unarchive, and no archived-chores screen. Bringing a chore back means creating it again — mirroring D29's "re-doing a retired task means creating a new extra", and mirroring rewards, which likewise offer no un-retire. The reason is structural as well as philosophical: with no unarchive, every chore row has exactly *one* lifetime interval, ~[active_from, archived_on)~, so the predicate above scores every historical day exactly. Supporting unarchive would give a row multiple live intervals; bounding on only the latest one would make the dormant days retroactively count the chore as required and destroy past bonuses.
+
+** Which queries filter, and how
+
+All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
+
+*Today's surfaces — filter on ~is_nil(archived_on)~ alone* (8 sites): ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses, both ~next_position/2~ clauses. The liveness predicate collapses to that for ~D = today~: ~active_from~ is set at creation and can never be in the future, so its half always holds today, and ~archived_on~ can only ever be today or in the past, so "not archived" and "live today" coincide. ~list_chores/2~ therefore keeps its current signature with no date argument. Excluding archived rows from ~neighbor/2~ and ~next_position/2~ mirrors ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left by archived rows are a non-issue.
+
+*The points derivation — full date-bounded predicate* (2 sites): the roster query inside ~routine_day_contribution/3~, and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~. These are the only two places that ask about days other than today.
+
+*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and ~routine_days_by_kid/1~'s main aggregate. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed.
+
+
+** Testing (excerpt)
+
+*Context* (~test/bear_cub/chores_test.exs~ and siblings): ~archive_chore/2~ stamps ~archived_on~, broadcasts, and leaves completions intact; an archived chore vanishes from ~list_chores/2~, ~list_extras/2~, both ~neighbor/2~ paths and ~next_position/2~; ~move_chore/2~ swaps past an archived neighbor; ~delete_chore/1~ no longer exists.
+
+*LiveView, admin* (~admin/chore_live_test.exs~): the form archives with a flash and a redirect and offers no Delete anywhere; a repeating extra is created in one step from the Extras "+ Add"; a one-off edits into repeating; the select locks on a chore with history.
+
+*LiveView, kiosk* (~kiosk_live_test.exs~): an archived card disappears live on ~:chores_changed~; a recurring extra completed yesterday is present and tappable at today's reveal.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d78][D78]] — Chores are archived, never deleted; ~delete_chore/1~ is removed outright.
+- [[file:../../decisions.org::#d79][D79]] — Archive is one-way: no unarchive, no archived-chores screen, one lifetime interval per row.
+
+* User Story
+
+As a parent, I need to end a chore we have outgrown without erasing what my kid already did — so that every point earned from it stays theirs and the tablet simply stops asking for it.
+
+* Acceptance Criteria
+
+** [ ] The chore edit form's only removal control is Archive, and its confirmation tells the parent the chore stays in the points history rather than that its completion history is deleted with it. (SC-1, SC-4, D78)
+** [ ] Archiving a chore returns the parent to that kid's chore index with a flash, exactly as deleting did. (SC-1, D78)
+** [ ] There is no Delete control anywhere in admin and ~delete_chore/1~ no longer exists in ~BearCub.Chores~ — no route the app offers can remove a kid's chore history. (SC-4, D78)
+** [ ] An archived chore keeps every completion row it ever had, and every point those completions earned: the kid's total for the days before the archive is identical before and after archiving. (SC-1, SC-4, D78)
+** [ ] An archived chore disappears from the kid's routine lists and from extras, from the ▲/▼ reorder neighbours, and from the position the next new chore is given. (SC-1, D78)
+** [ ] A ▲/▼ tap steps past an archived neighbour and swaps the chore with its nearest live one, leaving no dead position in the parent's list. (SC-1, D78)
+** [ ] The kiosk drops an archived chore's card live on the next broadcast, with no reload and no kid interaction. (SC-1, D78)
+** [ ] Archive is one-way: nothing in admin offers to bring an archived chore back, and there is no archived-chores screen. (SC-4, D79)
+** [ ] Archiving a chore today removes it from today's routine requirement — the card is gone from the kiosk, and today's bonus is scored against the chores that remain. (SC-3, D78, D81)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the ~archived_on~ column and on Story 02 for the date-bounded roster — with the bound already shipped, the first chore a parent archives is scored correctly on every past day, which is the whole reason the roster story precedes this one.
+
+Eight of the fourteen ~Chore~ query sites change here, all in ~lib/bear_cub/chores.ex~ and all to the same ~is_nil(archived_on)~ shape: ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses and both ~next_position/2~ clauses. ~list_chores/2~ keeps its current signature — no date argument, per the excerpt's collapse argument. The archived-neighbour behaviour mirrors the shipped ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left behind by archived rows need no repair pass.
+
+~archive_chore/2~ takes the chore and the caller's local datetime, stamps ~archived_on~ and broadcasts through the existing ~broadcast_change/1~ path, so the kiosk card disappears with no new PubSub wiring. ~admin/chore_live/form.ex~'s ~"delete"~ handler becomes the archive handler in place — its current comment about deletion cascading completions (a deliberate contrast with mvp/FR-17) goes with it, since after this story nothing in the app cascades.
+
+*Two shipped tests go with ~delete_chore/1~.* The design says it is removed "with its tests": the ~delete_chore/1~ context tests in ~test/bear_cub/chores_test.exs~, and the second roster-drift pin in ~test/bear_cub/points_test.exs~ ("deleting a routine chore retroactively completes a past routine-day, granting +R"), which calls ~delete_chore/1~ directly. That pin's *subject* survives as this story's own archive-side criterion — a chore archived today counts for every day before the archive — but it can no longer be written against delete.
+
+The ~on_delete: :delete_all~ FK on ~completions.chore_id~ stays in the schema untouched as a safety net; this story removes its only trigger, it does not remove the constraint.
+
+Three clauses of the *LiveView, admin* testing line quoted above belong to later stories and are carried as ACs there, not dropped: "a repeating extra is created in one step from the Extras + Add" and "a one-off edits into repeating" are Story 04's and Story 05's, and "the select locks on a chore with history" is Story 04's.

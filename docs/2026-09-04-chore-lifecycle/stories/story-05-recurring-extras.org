@@ -1,0 +1,87 @@
+#+title: Story 05 — Recurring extras: ~list_extras/2~ and the daily reveal
+#+date: 2026-09-04
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Recurring extras
+
+~list_extras/2~ gains one clause and one branch:
+
+#+begin_src elixir
+where: c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on),
+where: c.recurring? or c.id not in subquery(retired_ids)
+#+end_src
+
+That is the whole behavioral change. A recurring extra never retires: it reappears uncompleted at each morning reveal, shows done-today after a tap, and comes back fresh tomorrow. Undo returns it to outstanding the same day, as with any chore.
+
+*Points need no changes at all.* ~extra_contribution/2~ is per-completion-row, and ~earnings/2~ / ~extras_by_kid/1~ already sum every row for nil-routine chores across all dates. A 5-point recurring extra done thirty days running is already 300 points, with no code touched. A fail costs −points for that day only; tomorrow's card is unaffected.
+
+*Consequence, stated rather than discovered.* On a day a kid never finishes the morning routine inside its window, the reveal does not happen and the recurring extra is unearnable that day. This falls out of "extras are strictly a morning reward" (D33); the admin Today view's per-kid Extras section still offers the on-behalf toggle, so a parent can mark it late when it matters.
+
+*Two exits, each meaning something different.* Reclassify to "After routines (extra)" and it stops recurring, retiring naturally once its last completion is a prior day. Archive and it ends immediately, keeping every point it earned. There is no third — Delete is gone.
+
+Flipping ~recurring?~ *on* for an already-retired extra resurrects it. That is intended: it is how a one-off becomes a daily habit. It is not unarchiving — a retired extra is a live chore row whose visibility is derived (D28/D29), while an archived one is stamped and gone for good.
+
+
+** Kiosk — extras
+
+Unchanged. Recurring extras are revealed after the morning routine completes while the morning window is active (D33), in the same region, with *no visual distinction* on the kiosk card. Kids learn which extras come back by seeing them come back. A repeat marker was considered and declined: it would touch kids'-view visuals, making ~docs/design-language.org~ binding and adding an on-device legibility question, for a distinction the child does not need in order to act correctly.
+
+An archived chore's card disappears live on the next ~:chores_changed~ broadcast, through machinery that already exists.
+
+
+** Testing (excerpt)
+
+*Recurring extras*: a recurring extra completed yesterday still lists today; a one-off one does not; done-today lingers for both; undo returns either to outstanding; earnings across two days equals 2× points.
+
+*LiveView, kiosk* (~kiosk_live_test.exs~): an archived card disappears live on ~:chores_changed~; a recurring extra completed yesterday is present and tappable at today's reveal.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d82][D82]] — Extras may repeat daily via ~is_recurring~ / ~recurring?~ — narrows D28/D29 and overturns the extras no-recurrence exclusion.
+
+* User Story
+
+As a kid, I need the extras I am meant to do every day to come back every day — so that I can earn their points again tomorrow instead of watching them disappear after one go.
+
+* Acceptance Criteria
+
+** [ ] A recurring extra completed yesterday is offered again today: it appears uncompleted at today's reveal and is tappable. (SC-2, D82)
+** [ ] A one-off extra completed on a prior day still never returns. (SC-2, D82, D28/D29 as narrowed)
+** [ ] Both kinds show as done for the rest of the day once tapped, and undo returns either to outstanding on the same day. (SC-2, D82)
+** [ ] Completing the same recurring extra on two days earns its points twice — the kid's total across those days is twice its value. (SC-2, D82)
+** [ ] Failing a recurring extra costs its points for that day only; the next day's card is unaffected. (SC-2, D82)
+** [ ] A recurring extra looks exactly like every other extra on the kiosk — no repeat marker and no other visual distinction. (D82)
+** [ ] An archived extra never appears, recurring or not. (SC-1, D82)
+** [ ] A recurring extra is never required and never part of a routine: completing or failing it moves no routine bonus. (SC-2, D82, D8)
+** [ ] Marking an already-retired one-off extra as repeating brings it back at the next reveal. (SC-2, D82)
+** [ ] On a day the morning routine is not completed inside its window the reveal does not happen and the recurring extra is unearnable that day, and the admin Today view's per-kid Extras section can still mark it on the kid's behalf. (D82, D33)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the ~is_recurring~ column and on Story 04 for the parent-facing way to set it — with Story 04 shipped, this story's flows can be exercised end to end from the real create/edit path rather than by writing the flag in a fixture. The ~is_nil(c.archived_on)~ clause quoted in the excerpt lands in Story 03 with the rest of today's-surface filtering; the archived-extra criterion above re-verifies it in the recurring case rather than adding it a second time.
+
+The behavioural change is one branch in ~list_extras/2~ (~lib/bear_cub/chores.ex~). Three surfaces read that function and all three inherit the change: the kiosk reveal (~kiosk_live.ex~), the admin Today view's per-kid Extras section (~admin/today_live.ex~), and the admin chore index's extras list (~admin/chore_live/index.ex~) — where a parent now sees a recurring extra persist day to day instead of vanishing once done.
+
+*Points must need no change at all.* ~extra_contribution/2~ is per-completion-row and both ~earnings/2~ and ~extras_by_kid/1~ already sum every row for nil-routine chores across all dates, so the two-days-equals-2× criterion should pass with ~lib/bear_cub/points.ex~ and the contribution functions untouched. If it does not, that is a finding to surface rather than to patch around.
+
+The ~fragment~ hazard applies directly here: ~extras_by_kid/1~ contains a raw ~fragment(...)~, and any reference to the recurrence flag from inside one must spell ~is_recurring~, not ~recurring?~.
+
+No kids'-view visual change is in scope, so ~docs/design-language.org~ is not binding for this story — the absence of a repeat marker is itself the design's ruling, and the sixth criterion above pins it.
+
+*Human ruling [2026-09-04], now in the design.* The ninth criterion above, and the design's "two exits" paragraph, both need the "Shows in" select to work on a chore that already has completions, while DESIGN §Reclassification previously locked that select once any completion row existed. Ruled and recorded as [[file:../../decisions.org::#d85][D85]]: the lock guards a change of ~routine~ only, and the recurrence toggle stays available within the extras bucket — so both stand as written. Story 04 carries the implementation.
