@@ -665,6 +665,83 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "recurring extras (Story 05, D82)" do
+    import BearCub.ChoresFixtures
+
+    defp recurring_extra_fixture(kid, attrs \\ %{}) do
+      chore_fixture(
+        kid,
+        Enum.into(attrs, %{name: "Wash Car", icon: "🚗", shows_in: "extra_daily"})
+      )
+    end
+
+    test "list_extras/2 offers a recurring extra completed yesterday again today" do
+      kid = kid_fixture()
+      recurring = recurring_extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) == [recurring.id]
+    end
+
+    test "undoing a done-today recurring extra returns it to outstanding the same day" do
+      kid = kid_fixture()
+      recurring = recurring_extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) == [recurring.id]
+      assert Map.has_key?(Chores.current_completions(~D[2026-07-10]), recurring.id)
+
+      {:ok, _} = Chores.undo_chore(recurring, la(~D[2026-07-10], ~T[08:05:00]))
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) == [recurring.id]
+      refute Map.has_key?(Chores.current_completions(~D[2026-07-10]), recurring.id)
+    end
+
+    test "completing the same recurring extra on two days earns its points twice" do
+      kid = kid_fixture()
+      recurring = recurring_extra_fixture(kid, %{points: 5})
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Chores.earnings_by_kid(~D[2026-07-09]) == %{kid.id => 5}
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 10}
+    end
+
+    test "failing a recurring extra costs its points that day only; the next day's card is unaffected" do
+      kid = kid_fixture()
+      recurring = recurring_extra_fixture(kid, %{points: 5})
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(recurring, la(~D[2026-07-09], ~T[08:05:00]))
+
+      assert Chores.earnings_by_kid(~D[2026-07-09]) == %{kid.id => -5}
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) == [recurring.id]
+      refute Map.has_key?(Chores.current_completions(~D[2026-07-10]), recurring.id)
+    end
+
+    test "list_extras/2 excludes an archived recurring extra" do
+      kid = kid_fixture()
+      recurring = recurring_extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(recurring, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.archive_chore(recurring, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == []
+    end
+
+    test "flipping recurring? on for an already-retired extra brings it back at the next reveal" do
+      kid = kid_fixture()
+      retired = extra_fixture(kid)
+      {:ok, _} = Chores.complete_chore(retired, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == []
+
+      assert {:ok, resurrected} = Chores.update_chore(retired, %{shows_in: "extra_daily"})
+      assert resurrected.recurring? == true
+
+      assert Enum.map(Chores.list_extras(kid, ~D[2026-07-10]), & &1.id) == [resurrected.id]
+    end
+  end
+
   describe "completions" do
     import BearCub.ChoresFixtures
 

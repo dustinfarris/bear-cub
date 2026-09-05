@@ -729,6 +729,46 @@ defmodule BearCubWeb.KioskLiveTest do
              )
     end
 
+    test "a recurring extra completed yesterday is present and tappable at today's reveal (Story 05, D82)",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      recurring =
+        chore_fixture(kid, %{name: "Wash Car", icon: "🚗", shows_in: "extra_daily"})
+
+      {:ok, _} = Chores.complete_chore(recurring, DateTime.add(now, -1, :day), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{recurring.id}")
+      refute has_element?(view, "#extras-#{kid.id} #chore-#{recurring.id}[data-done]")
+
+      view |> element("#chore-#{recurring.id}") |> render_click()
+      assert has_element?(view, "#chore-#{recurring.id}[data-done]")
+    end
+
+    test "an archived extra's card disappears live on the next :chores_changed broadcast",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#extras-#{kid.id} #chore-#{extra.id}")
+
+      {:ok, _} = Chores.archive_chore(extra, now)
+
+      refute has_element?(view, "#extras-#{kid.id} #chore-#{extra.id}")
+    end
+
     test "the morning reveal appears even with zero extras", %{conn: conn, kid: kid} do
       morning_active()
       now = LocalTime.now()

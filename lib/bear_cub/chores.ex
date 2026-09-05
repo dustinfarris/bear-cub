@@ -81,8 +81,8 @@ defmodule BearCub.Chores do
   @doc """
   The kid's outstanding and done-today extras (nil-routine chores),
   ordered by position — a retired extra (current completion dated
-  before `local_date`) never returns (design: extras visibility), and
-  neither does an archived one (D78).
+  before `local_date`) never returns unless it's recurring (D82), and
+  an archived one never returns regardless (D78).
   """
   def list_extras(%Kid{} = kid, %Date{} = local_date) do
     retired_ids =
@@ -92,9 +92,8 @@ defmodule BearCub.Chores do
 
     Repo.all(
       from c in Chore,
-        where:
-          c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on) and
-            c.id not in subquery(retired_ids),
+        where: c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on),
+        where: c.recurring? or c.id not in subquery(retired_ids),
         order_by: [asc: c.position, asc: c.id]
     )
   end
