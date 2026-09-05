@@ -1,0 +1,248 @@
+#+title: DESIGN — Bear Cub: Chore lifecycle
+#+date: 2026-09-04
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Three changes that share one data model and one set of queries.
+
+1. *Archive replaces delete for chores.* A chore leaves the app by being archived — a stamped local date — never by being deleted. Its completions, and every point they earned, stay.
+2. *Extras can be recurring.* An extra marked "repeats daily" comes back every day for points instead of retiring after one completion. It is never required and never part of a routine.
+3. *The routine roster becomes date-bounded.* A historical routine-day is scored against the chores that were actually live on that day, not against today's roster — which closes the deferred roster-drift defect ([[file:../decisions.org::#d72][D72]]) in both directions.
+
+They are designed together because they cannot be designed apart: (2) needs (1) to have an end of life, and (1) forces (3), since archiving a chore under today's derivation would retroactively complete past routine-days that were never complete.
+
+Everything lands in ~BearCub.Chores~, ~BearCub.Chores.Chore~, one migration, and the admin chore form. No new tables, no new contexts, no new PubSub topics, and no change to ~BearCub.Points~ or ~BearCub.Rewards~.
+
+** Canon this builds on
+
+- *D10 — day state is derived, never stored.* "Done" is a ~completions~ row with ~local_date = today AND undone_at IS NULL~. Nothing here adds a completed flag, a reset job, or midnight machinery. ~active_from~ / ~archived_on~ / ~is_recurring~ are properties of the chore *definition*, in the same category as ~points~ and ~position~ — not day state.
+- *D8 — routines are app constants.* Untouched. Extras remain ~routine = nil~ rows that ~Routines~ never sees.
+- *D27 — extras are chore rows with ~routine = nil~.* Untouched, and load-bearing: recurrence is a flag on that same row, not a second kind of thing.
+- *D28 / D29 — extras visibility is derived from completion date; a retired extra never returns.* Narrowed: still true for one-off extras, no longer true for recurring ones (§Recurring extras).
+- *D33 — the extras reveal is gated by the active morning window.* Untouched. Recurring extras appear exactly where extras appear now.
+- *D36 — Create hides the routine field; Edit relabels the select to "Shows in".* Narrowed on the create path for the extras bucket only (§Screens / Interfaces).
+- *D39 / D40 / D41 — the points model.* Per-completion-row contribution for extras; a capped ~±R~ per ~(kid, routine, local_date)~; unfloored and unclamped until ~BearCub.Points~. The shape is unchanged; only *which chores constitute the roster for a given day* changes.
+- *[[file:../decisions.org::#d68][D68]] — rewards are archived, never deleted.* The precedent this design extends to chores.
+- *[[file:../decisions.org::#d72][D72]] — roster drift, deferred.* Closed here; its backlog entry moves to ~docs/completed.org~ at gate close.
+
+* Data Model
+
+Three new columns on ~chores~. No new tables, no new indexes — the existing ~[:kid_id, :routine, :position]~ covers these at family scale.
+
+| Column         | Schema field   | Type                               | Meaning                                                                            |
+|----------------+----------------+------------------------------------+------------------------------------------------------------------------------------|
+| ~active_from~  | ~:active_from~ | ~date~, not null                   | Local date the chore became live; set at creation from the caller's local datetime  |
+| ~archived_on~  | ~:archived_on~ | ~date~, nullable                   | Local date it was archived; ~nil~ means live. One-way — never cleared               |
+| ~is_recurring~ | ~:recurring?~  | ~boolean~, not null, default false | Extras only: comes back every day instead of retiring after one completion          |
+
+The boolean is named ~is_recurring~ in the database and ~recurring?~ in the schema. Ecto's ~field/3~ ~:source~ option carries the mapping, and Ecto rewrites ~ch.recurring?~ to the real column in query expressions:
+
+#+begin_src elixir
+field :recurring?, :boolean, source: :is_recurring, default: false
+#+end_src
+
+*Hazard.* A raw ~fragment(...)~ bypasses that translation and must spell ~is_recurring~. ~extras_by_kid/1~ already contains such a fragment, so any future reference to the flag from inside one is a live trap.
+
+~active_from~ and ~archived_on~ are *local dates, not UTC timestamps*: they are compared against ~completions.local_date~ inside the points derivation, and mixing the two date spaces there is exactly how day-edge bugs get in. This is a deliberate divergence from the ~rewards.retired_at~ sibling, which is a UTC timestamp — rewards never compare their marker against a historical date. Both fields are set by the context from the local datetime the caller already passes; the standing "all time logic takes a local datetime argument" invariant holds, with no clock read in domain code.
+
+The column is ~archived_on~, not ~retired_at~: "retired" is already taken in chore vocabulary for the *derived* state of a one-off extra completed on a prior day (D28/D29), and that meaning survives this change. Rewards' own function is already ~archive_reward/2~ despite its ~retired_at~ column, so "archive" is the verb the repo actually uses; chores take the verb and name the column to match.
+
+~Chore~ also gains a *virtual* field ~shows_in~ (a plain string, not a predicate), which drives the admin select and from which the changeset derives ~routine~ and ~recurring?~ — see §Screens / Interfaces.
+
+~completions~ is untouched: same table, same ~(chore_id, local_date)~ partial unique index, same undo / fail / on-behalf machinery. An archived chore keeps every completion row it ever had, which is the whole point.
+
+Rationale: [[file:../decisions.org::#d80][D80]], [[file:../decisions.org::#d82][D82]].
+
+* Screens / Interfaces
+
+** Admin — chore edit form (~admin/chore_live/form.ex~)
+
+The *Delete* button becomes *Archive*, in place. Its ~data-confirm~ is reworded from today's "Its completion history is deleted with it" to the shape rewards already uses:
+
+#+begin_src
+Archive “Practice piano”? It stays in the points history.
+#+end_src
+
+On success, back to the chore index with a flash, as now. Archive stays on the edit form rather than moving to the index row: rewards put Archive on the index row, but chores keep it where Delete lives today — less churn on a phone-first surface, and the irreversible action stays one level in rather than sitting beside the ▲/▼ taps a parent makes casually.
+
+There is *no* Delete control anywhere in admin, and no archived-chores screen.
+
+** Admin — the "Shows in" select
+
+The select grows a fourth option:
+
+- Morning routine
+- Evening routine
+- After routines (extra)
+- After routines (repeats daily)
+
+It binds to the virtual ~shows_in~ field — values =morning= / =evening= / =extra= / =extra_daily= — and the changeset derives ~routine~ and ~recurring?~ from it. An invalid pair (a routine chore marked recurring) therefore cannot reach the database; the changeset also forces ~recurring?: false~ whenever ~routine~ is non-nil, as defence in depth for the create path, which sets ~routine~ directly. On edit, ~shows_in~ is derived back from the stored pair so the select preselects correctly.
+
+*Create path (narrowing D36).* The Morning and Evening "+ Add" links still hide the select and file the chore into the tapped bucket. The *Extras* "+ Add" link now shows the select, so a repeating extra can be created in one step rather than create-then-edit.
+
+*Reclassification lock.* The select is editable only while the chore has zero completion rows. Once any completion row exists — including undone and failed ones — it locks, with a hint to archive the chore and create a new one. See §Key Behaviors / Reclassification.
+
+** Kiosk — extras
+
+Unchanged. Recurring extras are revealed after the morning routine completes while the morning window is active (D33), in the same region, with *no visual distinction* on the kiosk card. Kids learn which extras come back by seeing them come back. A repeat marker was considered and declined: it would touch kids'-view visuals, making ~docs/design-language.org~ binding and adding an on-device legibility question, for a distinction the child does not need in order to act correctly.
+
+An archived chore's card disappears live on the next ~:chores_changed~ broadcast, through machinery that already exists.
+
+Rationale: [[file:../decisions.org::#d78][D78]], [[file:../decisions.org::#d82][D82]], [[file:../decisions.org::#d83][D83]], [[file:../decisions.org::#d84][D84]].
+
+* Key Behaviors
+
+** The liveness predicate
+
+A chore is *live on local date D* when:
+
+#+begin_src elixir
+active_from <= D and (is_nil(archived_on) or archived_on > D)
+#+end_src
+
+Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
+
+The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+
+** Archive lifecycle
+
+~delete_chore/1~ is *removed outright*, with its tests. In its place:
+
+#+begin_src elixir
+archive_chore(%Chore{} = chore, %DateTime{} = local_now)
+#+end_src
+
+It stamps ~archived_on~ from ~local_now~ and broadcasts ~:chores_changed~ like every other write, so the kiosk drops the card live.
+
+The ~on_delete: :delete_all~ FK on ~completions.chore_id~ (~priv/repo/migrations/20260710083403_create_completions.exs~) stays in the schema as a safety net but stops having any trigger in the app. Kids are not deletable in admin, so nothing else reaches it.
+
+*Archive is one-way.* No unarchive, and no archived-chores screen. Bringing a chore back means creating it again — mirroring D29's "re-doing a retired task means creating a new extra", and mirroring rewards, which likewise offer no un-retire. The reason is structural as well as philosophical: with no unarchive, every chore row has exactly *one* lifetime interval, ~[active_from, archived_on)~, so the predicate above scores every historical day exactly. Supporting unarchive would give a row multiple live intervals; bounding on only the latest one would make the dormant days retroactively count the chore as required and destroy past bonuses.
+
+** Which queries filter, and how
+
+All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
+
+*Today's surfaces — filter on ~is_nil(archived_on)~ alone* (8 sites): ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses, both ~next_position/2~ clauses. The liveness predicate collapses to that for ~D = today~: ~active_from~ is set at creation and can never be in the future, so its half always holds today, and ~archived_on~ can only ever be today or in the past, so "not archived" and "live today" coincide. ~list_chores/2~ therefore keeps its current signature with no date argument. Excluding archived rows from ~neighbor/2~ and ~next_position/2~ mirrors ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left by archived rows are a non-issue.
+
+*The points derivation — full date-bounded predicate* (2 sites): the roster query inside ~routine_day_contribution/3~, and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~. These are the only two places that ask about days other than today.
+
+*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and ~routine_days_by_kid/1~'s main aggregate. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed.
+
+** The date-bounded roster
+
+~routine_day_contribution/3~'s roster query gains the bound:
+
+#+begin_src elixir
+from c in Chore,
+  where: c.kid_id == ^kid.id and c.routine == ^routine and
+         c.active_from <= ^local_date and
+         (is_nil(c.archived_on) or c.archived_on > ^local_date),
+  select: c.id
+#+end_src
+
+~routine_days_by_kid/1~ is the harder one. Today it precomputes one ~chore_count~ per ~(kid_id, routine)~ and joins it against the per-day aggregate — but roster size is now a function of the day, so that subquery must become per-~(kid_id, routine, local_date)~. The shape: derive the distinct ~(kid, routine, day)~ set from completions as it does now, then join ~chores~ against *that* on the range condition (~active_from <= day and (archived_on is null or archived_on > day)~) and count.
+
+Ecto expresses the range join directly, and it *stays one query*. Preserving that matters: the grouped-query property ([[file:../decisions.org::#d72][D72]] — constant queries regardless of kid count or history length) is what makes this safe to run on every ~:chores_changed~ re-render. A day with no completions still produces no row and contributes 0, exactly as now.
+
+*What this fixes.* Adding a morning chore today stops retroactively voiding every past morning bonus, and archiving one stops retroactively granting bonuses never earned.
+
+*The extras leg is deliberately left alone.* ~earnings/2~ and ~extras_by_kid/1~ keep summing every completion of every nil-routine chore, archived or not. Points already earned are permanent; protecting exactly that history is what archive is for.
+
+*One-time balance shift, expected.* The rule change plus the backfill will move each kid's cumulative total *once*, at deploy — mostly upward, restoring routine bonuses that current-roster drift had silently wiped. Spends already exist against these balances, so this is verified by a before/after comparison against a copy of the real database (§Testing), not discovered on the fridge.
+
+** Recurring extras
+
+~list_extras/2~ gains one clause and one branch:
+
+#+begin_src elixir
+where: c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on),
+where: c.recurring? or c.id not in subquery(retired_ids)
+#+end_src
+
+That is the whole behavioral change. A recurring extra never retires: it reappears uncompleted at each morning reveal, shows done-today after a tap, and comes back fresh tomorrow. Undo returns it to outstanding the same day, as with any chore.
+
+*Points need no changes at all.* ~extra_contribution/2~ is per-completion-row, and ~earnings/2~ / ~extras_by_kid/1~ already sum every row for nil-routine chores across all dates. A 5-point recurring extra done thirty days running is already 300 points, with no code touched. A fail costs −points for that day only; tomorrow's card is unaffected.
+
+*Consequence, stated rather than discovered.* On a day a kid never finishes the morning routine inside its window, the reveal does not happen and the recurring extra is unearnable that day. This falls out of "extras are strictly a morning reward" (D33); the admin Today view's per-kid Extras section still offers the on-behalf toggle, so a parent can mark it late when it matters.
+
+*Two exits, each meaning something different.* Reclassify to "After routines (extra)" and it stops recurring, retiring naturally once its last completion is a prior day. Archive and it ends immediately, keeping every point it earned. There is no third — Delete is gone.
+
+Flipping ~recurring?~ *on* for an already-retired extra resurrects it. That is intended: it is how a one-off becomes a daily habit. It is not unarchiving — a retired extra is a live chore row whose visibility is derived (D28/D29), while an archived one is stamped and gone for good.
+
+** Reclassification
+
+~routine~ itself is not date-bounded. Reclassifying a chore morning → evening rewrites which chores were required in the *past* for both buckets — the same class of retroactive rewrite this design removes from delete. Extras ↔ routine moves are worse, because the point shape changes too (per-row versus bonus).
+
+*Reclassification is allowed only while a chore has no completions.* The "Shows in" select stays editable for a chore with zero completion rows — the "I filed it in the wrong bucket" case, where there is nothing to rewrite — and locks once *any* completion row exists, with a hint to archive it and create a new one. "Any" includes undone and failed rows, since rows are never deleted (mvp/FR-17) and an undone row still evidences that the chore was live in that bucket on that day. A cheap existence check enforces it.
+
+** Migration and backfill
+
+One migration, ~add_chore_lifecycle~:
+
+- ~add :is_recurring, :boolean, null: false, default: false~
+- ~add :archived_on, :date~ (nullable)
+- ~add :active_from, :date, null: false, default: "1970-01-01"~
+
+SQLite can add a ~NOT NULL~ column only with a constant default, so ~active_from~ arrives as an epoch floor — the *conservative* direction, since "live since forever" can only ever grow a historical roster, never shrink one and fabricate a bonus. No table rebuild is needed; nothing here alters an existing column.
+
+The same migration backfills the accurate value:
+
+#+begin_src sql
+UPDATE chores
+   SET active_from = MIN(DATE(inserted_at),
+                         COALESCE((SELECT MIN(local_date) FROM completions
+                                    WHERE chore_id = chores.id),
+                                  DATE(inserted_at)))
+#+end_src
+
+*The ~MIN~ of the two is load-bearing.* If a backfilled ~active_from~ ever landed *after* a day the chore was already being completed, that day's roster would shrink and hand out a ~+R~ that was never earned. Taking the earliest of "created" and "first completed" makes that impossible, and absorbs the UTC-versus-local skew in ~DATE(inserted_at)~ for evening-created chores.
+
+** Testing
+
+Per the mvp DESIGN's testing strategy (mvp/§11) and the repo's TDD conventions, both layers.
+
+*Context* (~test/bear_cub/chores_test.exs~ and siblings): ~archive_chore/2~ stamps ~archived_on~, broadcasts, and leaves completions intact; an archived chore vanishes from ~list_chores/2~, ~list_extras/2~, both ~neighbor/2~ paths and ~next_position/2~; ~move_chore/2~ swaps past an archived neighbor; ~delete_chore/1~ no longer exists.
+
+*Recurring extras*: a recurring extra completed yesterday still lists today; a one-off one does not; done-today lingers for both; undo returns either to outstanding; earnings across two days equals 2× points.
+
+*Changeset*: ~shows_in~ round-trips all four values; a non-nil ~routine~ forces ~recurring?: false~; reclassification is refused once completions exist.
+
+*Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
+
+*LiveView, admin* (~admin/chore_live_test.exs~): the form archives with a flash and a redirect and offers no Delete anywhere; a repeating extra is created in one step from the Extras "+ Add"; a one-off edits into repeating; the select locks on a chore with history.
+
+*LiveView, kiosk* (~kiosk_live_test.exs~): an archived card disappears live on ~:chores_changed~; a recurring extra completed yesterday is present and tappable at today's reveal.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+*Verification beyond ~mix precommit~*: a *before/after balance comparison against a copy of the real database*, and the standing on-device gate from the mvp PRD (mvp/§7 — Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) at batch close.
+
+* Out of Scope for This Design
+
+- *Unarchive in any form* — ruled out above; revisitable only with interval tracking.
+- *Due dates or scheduled dates on extras* — the other half of the extras design's exclusion, left standing.
+- *Recurrence other than daily* (weekdays only, every N days, specific days) — daily is the whole ask; a schedule needs its own model.
+- *Per-extra point values surfaced on the kiosk* — an open backlog entry, adjacent but independent.
+- *Archiving kids or rewards* — kids are not deletable today and rewards already archive.
+- *Date-bounding ~routine~ itself* — the residual drift vector is closed by the reclassification lock instead.
+- *The ~points_total/2~ N+1 shape* — a separate open backlog entry; the date-bounded roster touches the grouped query but does not claim the per-kid loop.
+- *Any kids'-view visual change* — no ~docs/design-language.org~ ruling is required.
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d78][D78]].
+
+Decisions for this initiative: [[file:../decisions.org]] — D78 through D84 were minted at promotion.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
