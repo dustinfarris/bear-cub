@@ -69,7 +69,7 @@ All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exac
 
 *LiveView, kiosk* (~kiosk_live_test.exs~): an archived card disappears live on ~:chores_changed~; a recurring extra completed yesterday is present and tappable at today's reveal.
 
-*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock. The one exception is a test whose subject *is* an edge that reads the clock — the admin create form and the seed script — which brackets the action with two ~LocalTime.now()~ reads and asserts the stored date falls between them, rather than comparing against a single second read that a midnight boundary can flake ([[file:../../decisions.org::#d88][D88]]). Such a guard cannot tell a local read from a UTC one before 17:00 local, when the two agree.
 
 ** Decision Log entries in scope
 

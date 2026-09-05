@@ -57,7 +57,7 @@ Ecto expresses the range join directly, and it *stays one query*. Preserving tha
 
 *Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
 
-*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock. The one exception is a test whose subject *is* an edge that reads the clock — the admin create form and the seed script — which brackets the action with two ~LocalTime.now()~ reads and asserts the stored date falls between them, rather than comparing against a single second read that a midnight boundary can flake ([[file:../../decisions.org::#d88][D88]]). Such a guard cannot tell a local read from a UTC one before 17:00 local, when the two agree.
 
 ** Decision Log entries in scope
 

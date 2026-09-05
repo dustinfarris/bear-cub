@@ -191,17 +191,16 @@ One migration, ~add_chore_lifecycle~:
 
 SQLite can add a ~NOT NULL~ column only with a constant default, so ~active_from~ arrives as an epoch floor — the *conservative* direction, since "live since forever" can only ever grow a historical roster, never shrink one and fabricate a bonus. No table rebuild is needed; nothing here alters an existing column.
 
-The same migration backfills the accurate value:
+The same migration backfills the accurate value, in Elixir rather than SQL — ~AddChoreLifecycle.backfill/1~, which reads each row still sitting at the floor and stamps the earlier of two dates:
 
-#+begin_src sql
-UPDATE chores
-   SET active_from = MIN(DATE(inserted_at),
-                         COALESCE((SELECT MIN(local_date) FROM completions
-                                    WHERE chore_id = chores.id),
-                                  DATE(inserted_at)))
+#+begin_src elixir
+inserted_at |> DateTime.shift_zone!(LocalTime.timezone()) |> DateTime.to_date()
+# vs. the earliest completions.local_date for that chore, if any
 #+end_src
 
-*The ~MIN~ of the two is load-bearing.* If a backfilled ~active_from~ ever landed *after* a day the chore was already being completed, that day's roster would shrink and hand out a ~+R~ that was never earned. Taking the earliest of "created" and "first completed" makes that impossible, and absorbs the UTC-versus-local skew in ~DATE(inserted_at)~ for evening-created chores.
+*The earlier of the two is load-bearing.* If a backfilled ~active_from~ ever landed *after* a day the chore was already being completed, that day's roster would shrink and hand out a ~+R~ that was never earned. Taking the earliest of "created" and "first completed" makes that impossible.
+
+*The conversion is equally load-bearing, and SQL cannot do it.* ~inserted_at~ is UTC, so ~DATE(inserted_at)~ reads the *following* day for anything created after 17:00 local, and a chore created in the evening and never completed has no earlier completion date for the ~MIN~ to fall back on — it would be stamped live a day after it existed, in the unsafe direction. Each row is therefore converted into the configured timezone before comparison ([[file:../decisions.org::#d87][D87]]). Two consequences worth stating, because both are invisible until they bite: the migration must start ~:tzdata~ itself, since a migration runs with the application unstarted and the conversion raises ~:time_zone_not_found~ otherwise; and the backfill only touches rows still at the epoch floor, so replaying it cannot overwrite a date ~create_chore/3~ has since stamped truthfully.
 
 ** Testing
 
@@ -219,7 +218,7 @@ Per the mvp DESIGN's testing strategy (mvp/§11) and the repo's TDD conventions,
 
 *LiveView, kiosk* (~kiosk_live_test.exs~): an archived card disappears live on ~:chores_changed~; a recurring extra completed yesterday is present and tappable at today's reveal.
 
-*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock. The one exception is a test whose subject *is* an edge that reads the clock — the admin create form and the seed script — which brackets the action with two ~LocalTime.now()~ reads and asserts the stored date falls between them, rather than comparing against a single second read that a midnight boundary can flake ([[file:../decisions.org::#d88][D88]]). Such a guard cannot tell a local read from a UTC one before 17:00 local, when the two agree.
 
 *Verification beyond ~mix precommit~*: a *before/after balance comparison against a copy of the real database*, and the standing on-device gate from the mvp PRD (mvp/§7 — Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) at batch close.
 
@@ -260,3 +259,25 @@ This document previously said the select "is editable only while the chore has z
 /Sections affected: §Data Model/
 
 This document previously said both lifetime fields are set "from the local datetime the caller already passes". That was true of the archive path and false of creation: ~create_chore/2~ took no datetime, so a reader taking the sentence at face value would conclude the create path needed no signature change and would reach for the obvious alternative — a ~LocalTime.now()~ read inside ~create_chore~, or a ~local_now \\ LocalTime.now()~ default argument. Both put a clock read back into domain code, which the standing invariant forbids; creation now takes the argument explicitly. Rationale: [[file:../decisions.org::#d86][D86]].
+
+** [2026-09-04 Fri 21:21] The backfill is no longer a SQL ~UPDATE~, and the ~MIN~ never absorbed the UTC skew (D87)
+
+/Sections affected: §Migration and backfill/
+
+This document previously specified the backfill as a single SQL statement, quoted in full:
+
+#+begin_src sql
+UPDATE chores
+   SET active_from = MIN(DATE(inserted_at),
+                         COALESCE((SELECT MIN(local_date) FROM completions
+                                    WHERE chore_id = chores.id),
+                                  DATE(inserted_at)))
+#+end_src
+
+and asserted that taking the ~MIN~ "absorbs the UTC-versus-local skew in ~DATE(inserted_at)~ for evening-created chores". Do not reintroduce either, and do not trust that sentence if you meet it in an old excerpt or in [[file:../decisions.org::#d80][D80]], which still carries both. The statement is genuinely attractive — one round trip, no application code in a migration, no timezone database to start — but the claim is false in the one case that matters: the ~MIN~ can only absorb the skew when a completion already exists on the earlier local day, so an evening-created chore that was never completed is stamped a day *late*, which shrinks that day's roster and fabricates a ~+R~. That is the exact failure [[file:../decisions.org::#d80][D80]] was written to prevent. Rationale: [[file:../decisions.org::#d87][D87]].
+
+** [2026-09-04 Fri 21:21] §Testing's wall-clock ban now has one stated exception (D88)
+
+/Sections affected: §Testing/
+
+This document previously said, without qualification, that "no new test derives a date from the wall clock". Read literally that forbids pinning the two paths that read the clock by design — the admin create form and the seed script — and implementation found a real bug on one of them, so the literal reading leaves a hole rather than enforcing rigor. It still looks like the stricter, safer rule, and the obvious way to keep it is an injectable clock at the web edge; [[file:../decisions.org::#d86][D86]] already rejected test expressibility as a reason to shape an API that way. Rationale: [[file:../decisions.org::#d88][D88]].
