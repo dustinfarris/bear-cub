@@ -1,6 +1,6 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
-Active initiative: none
+Active initiative: docs/2026-09-04-chore-lifecycle/
 
 ## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 

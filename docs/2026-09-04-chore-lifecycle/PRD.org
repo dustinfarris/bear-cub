@@ -1,0 +1,32 @@
+#+title: PRD — Bear Cub: Chore lifecycle
+#+date: 2026-09-04
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+A chore can only leave Bear Cub by being deleted, and deleting it takes its completions with it — silently rewriting how many points a kid earned, on a balance that rewards and redemptions now spend against. There is also no way to hand a kid a task they can do every day for points without making it a required part of a routine. Underneath both sits a third problem: a past day's routine bonus is scored against the chore roster as it stands *today*, so any roster change reaches backwards and moves points a kid already earned, or already spent.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. A parent can end any chore — routine or extra — and every point the kid already earned from it stays.
+2. A kid can earn points from the same extra every day, without that extra ever being required or part of a routine.
+3. Adding or ending a chore today never changes what a kid earned on any past day.
+4. A parent cannot delete a kid's chore history, by accident or on purpose.
+5. Any shift in a kid's balance when this ships is accounted for by bonuses they actually earned.
+
+* Out of Scope
+
+- Restoring a chore that has been ended — bringing one back means creating it again.
+- Recurrence other than daily: weekday-only, every-N-days, or specific-days schedules.
+- Due dates or scheduled dates on extras.
+- Showing a kid what an extra is worth on the kiosk.
+- Any change to how many points a chore or a routine is worth.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
