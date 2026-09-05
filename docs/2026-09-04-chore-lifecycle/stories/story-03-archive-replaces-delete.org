@@ -82,22 +82,74 @@ As a parent, I need to end a chore we have outgrown without erasing what my kid 
 
 * Acceptance Criteria
 
-** [ ] The chore edit form's only removal control is Archive, and its confirmation tells the parent the chore stays in the points history rather than that its completion history is deleted with it. (SC-1, SC-4, D78)
-** [ ] Archiving a chore returns the parent to that kid's chore index with a flash, exactly as deleting did. (SC-1, D78)
-** [ ] There is no Delete control anywhere in admin and ~delete_chore/1~ no longer exists in ~BearCub.Chores~ — no route the app offers can remove a kid's chore history. (SC-4, D78)
-** [ ] An archived chore keeps every completion row it ever had, and every point those completions earned: the kid's total for the days before the archive is identical before and after archiving. (SC-1, SC-4, D78)
-** [ ] An archived chore disappears from the kid's routine lists and from extras, from the ▲/▼ reorder neighbours, and from the position the next new chore is given. (SC-1, D78)
-** [ ] A ▲/▼ tap steps past an archived neighbour and swaps the chore with its nearest live one, leaving no dead position in the parent's list. (SC-1, D78)
-** [ ] The kiosk drops an archived chore's card live on the next broadcast, with no reload and no kid interaction. (SC-1, D78)
-** [ ] Archive is one-way: nothing in admin offers to bring an archived chore back, and there is no archived-chores screen. (SC-4, D79)
-** [ ] Archiving a chore today removes it from today's routine requirement — the card is gone from the kiosk, and today's bonus is scored against the chores that remain. (SC-3, D78, D81)
+** [X] The chore edit form's only removal control is Archive, and its confirmation tells the parent the chore stays in the points history rather than that its completion history is deleted with it. (SC-1, SC-4, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~lib/bear_cub_web/live/admin/chore_live/form.ex~ renders a single ~#archive-chore~ button with ~data-confirm={"Archive \"#{@chore.name}\"? It stays in the points history."}~, matching the Design excerpt's wording. Verified by ~"the edit form's confirm text says the chore stays in the points history"~ and ~"there is no Delete control anywhere in admin"~ in ~test/bear_cub_web/live/admin/chore_live_test.exs~.
+:END:
+** [X] Archiving a chore returns the parent to that kid's chore index with a flash, exactly as deleting did. (SC-1, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"archive on the edit form removes the chore from the kid's lists but keeps the row"~ (~chore_live_test.exs~) asserts the redirect to ~/admin/chores?kid=...~. The flash (~put_flash(:info, "Chore archived")~, ~form.ex~) follows the same code path as ~create~/~update~'s flashes, which this test suite has never asserted the text of — consistent with existing project convention, not a gap introduced here.
+:END:
+** [X] There is no Delete control anywhere in admin and ~delete_chore/1~ no longer exists in ~BearCub.Chores~ — no route the app offers can remove a kid's chore history. (SC-4, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"delete_chore/1 no longer exists"~ (~test/bear_cub/chores_test.exs~) asserts ~refute function_exported?(Chores, :delete_chore, 1)~. ~"there is no Delete control anywhere in admin"~ (~chore_live_test.exs~) asserts no ~#delete-chore~ element on either the new or edit form and no "Delete" text rendered. The chore router only ever exposed ~index~/~new~/~edit~ — delete was event-based, not routed, so removing the handler removes the only path.
+:END:
+** [X] An archived chore keeps every completion row it ever had, and every point those completions earned: the kid's total for the days before the archive is identical before and after archiving. (SC-1, SC-4, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"leaves the chore's completions intact"~ confirms the completion row survives. ~"a past fully-earned routine-day stays earned after a later archive"~ and ~"archiving a chore does not retroactively grant a past incomplete routine-day"~ (both in ~chores_test.exs~'s ~archive_chore/2~ describe block) prove the earned and unearned cases stay identical before/after, through ~archive_chore/2~ itself.
+:END:
+** [X] An archived chore disappears from the kid's routine lists and from extras, from the ▲/▼ reorder neighbours, and from the position the next new chore is given. (SC-1, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~is_nil(c.archived_on)~ added to all 8 "today's surfaces" query sites named in the Design excerpt: ~list_chores/2~, ~list_extras/2~, all four ~neighbor/2~ clauses, both ~next_position/2~ clauses (~lib/bear_cub/chores.ex~). Each covered by a dedicated test in ~chores_test.exs~'s ~archive_chore/2~ describe block: list exclusion, extras exclusion, neighbor-skipping (both directions, both routine and extras buckets), and next-position reuse.
+:END:
+** [X] A ▲/▼ tap steps past an archived neighbour and swaps the chore with its nearest live one, leaving no dead position in the parent's list. (SC-1, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"move_chore/2 steps past an archived neighbor to the nearest live chore"~ (down) and ~"move_chore/2 :up also steps past an archived neighbor..."~ (up) cover the routine bucket; ~"move_chore/2 steps past an archived neighbor within the extras bucket, both directions"~ covers the nil-routine bucket — all four ~neighbor/2~ clauses independently exercised against an archived neighbour, each asserting the resulting list has no gap.
+:END:
+** [X] The kiosk drops an archived chore's card live on the next broadcast, with no reload and no kid interaction. (SC-1, D78)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"an archived chore's card disappears live on the next :chores_changed broadcast"~ (~test/bear_cub_web/live/kiosk_live_test.exs~) mounts the kiosk view, calls ~Chores.archive_chore/2~ from outside the view (no tap, no reload), and asserts the card element is gone — proving the existing PubSub re-render path picks up the archive.
+:END:
+** [X] Archive is one-way: nothing in admin offers to bring an archived chore back, and there is no archived-chores screen. (SC-4, D79)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  No unarchive affordance or archived-chores route exists anywhere in ~lib/~ — the chore router still lists only ~index~/~new~/~edit~. ~Chore.changeset/2~ does not cast ~archived_on~, so ~archive_chore/2~ is structurally the only write path to that field: there is nothing to un-set it back to ~nil~.
+:END:
+** [X] Archiving a chore today removes it from today's routine requirement — the card is gone from the kiosk, and today's bonus is scored against the chores that remain. (SC-3, D78, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:42] \\
+  ~"archiving a chore today drops it from today's requirement, scoring against what remains"~ (~chores_test.exs~) proves ~routine_day_contribution/3~ flips from ~0~ to ~Routines.bonus()~ once the remaining chore's completion is enough. The kiosk-card half is covered by the previous item's test.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:44] \\
+  All 9 items above independently re-verified against repo state (not just LOGBOOK claims) by a fresh ~story-verifier~ pass: button/copy, redirect+flash, no-Delete/removed function, completions/points survival, 8 query-site filtering, all four ~neighbor/2~ clauses, kiosk live-drop, one-way enforcement, and today's-requirement scoring all confirmed with concrete file/test evidence.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:44] \\
+  Isolated re-run of the five touched test files: ~mix test test/bear_cub/chores_test.exs test/bear_cub_web/live/admin/chore_live_test.exs test/bear_cub_web/live/kiosk_live_test.exs test/bear_cub/points_test.exs test/bear_cub/chores/completion_test.exs~ — 255 passed. Every test name cited in the AC LOGBOOK entries was located and confirmed present and passing.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:44] \\
+  Spot-checked against CLAUDE.md's Elixir/Ecto/LiveView rules: ~Ecto.Changeset.change/2~ used for the ~archived_on~ stamp, ~cast~ correctly excludes it (programmatic field, never mass-assignable), LiveView tests use ~element/2~/~has_element?/2~ against explicit DOM ids, no deprecated APIs or forbidden patterns introduced. ~mix format --check-formatted~ and ~mix compile --warnings-as-errors --force~ both clean on the touched files.
+:END:
+** [X] The repo's declared ~Verify command:~ (~mix precommit~; CLAUDE.md) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 10:44] \\
+  ~mix precommit~ (compile ~--warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) run twice independently: both ~Result: 521 passed~, exit code 0. The ~Exqlite.Connection ... disconnected~ lines in the output are sandbox-checkin noise from concurrent test cleanup, not failures.
+:END:
 
 * Technical Notes
 
