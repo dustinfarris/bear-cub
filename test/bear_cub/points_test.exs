@@ -206,15 +206,16 @@ defmodule BearCub.PointsTest do
   end
 
   describe "the date-bounded roster (D81) — the drift D72 pinned, now closed" do
-    # These two tests pinned a *known defect*: `routine_day_contribution/3`
+    # This test pinned a *known defect*: `routine_day_contribution/3`
     # evaluated historical routine-days against the kid's CURRENT roster, so
     # a roster edit retroactively moved past routine-day points. D81 closes
-    # the addition half, and the first test below is the inversion of what it
-    # used to pin — repairing it is this story's job, not a violation of the
-    # pinning suite's intent. The deletion half the bound cannot close:
-    # `delete_chore/1` removes the row, leaving nothing to bound against —
-    # D72's own objection, which D78's archive is what removes. Story 03
-    # replaces that path and retires the second test with it.
+    # the addition half, and the test below is the inversion of what it used
+    # to pin — repairing it is this story's job, not a violation of the
+    # pinning suite's intent. The removal half the bound closes too, now that
+    # D78's archive replaces deletion as the only removal path: archiving
+    # stamps `archived_on` rather than deleting the row, so there is always
+    # something left to bound against. `BearCub.ChoresTest`'s
+    # `archive_chore/2` describe block covers that path directly.
     #
     # Every assertion is made through BOTH `balance/2` and `balances/1`: the
     # design's §Testing excerpt requires the *aggregate* pinned on this path,
@@ -246,7 +247,7 @@ defmodule BearCub.PointsTest do
       assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
     end
 
-    test "deleting a routine chore retroactively completes a past routine-day, granting +R" do
+    test "archiving a routine chore leaves a past incomplete routine-day at zero (no drift)" do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
@@ -255,12 +256,13 @@ defmodule BearCub.PointsTest do
       assert Points.balance(kid, ~D[2026-07-20]) == 0
       assert Points.balances(~D[2026-07-20]) == %{kid.id => 0}
 
-      {:ok, _} = Chores.delete_chore(b)
+      {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
 
-      # DRIFT: 2026-07-10 was never fully complete, but the only chore
-      # left on the roster has a live completion that day, so it scores +R.
-      assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
-      assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+      # unlike the deleted-row drift this replaces: b is still on the
+      # bound roster for 2026-07-10 (it was live then), so the day stays
+      # incomplete — archiving never retroactively grants a past bonus.
+      assert Points.balance(kid, ~D[2026-07-20]) == 0
+      assert Points.balances(~D[2026-07-20]) == %{kid.id => 0}
     end
   end
 

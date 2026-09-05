@@ -64,11 +64,16 @@ defmodule BearCub.Chores do
 
   alias BearCub.Chores.Chore
 
-  @doc "The kid's chores for one routine, in parent-controlled order."
+  @doc """
+  The kid's chores for one routine, in parent-controlled order — an
+  archived chore never returns (D78): `is_nil(archived_on)` alone
+  suffices here because it collapses to the full liveness predicate for
+  `D = today` (design: which queries filter, and how).
+  """
   def list_chores(%Kid{} = kid, routine) when routine in ~w(morning evening) do
     Repo.all(
       from c in Chore,
-        where: c.kid_id == ^kid.id and c.routine == ^routine,
+        where: c.kid_id == ^kid.id and c.routine == ^routine and is_nil(c.archived_on),
         order_by: [asc: c.position, asc: c.id]
     )
   end
@@ -76,7 +81,8 @@ defmodule BearCub.Chores do
   @doc """
   The kid's outstanding and done-today extras (nil-routine chores),
   ordered by position — a retired extra (current completion dated
-  before `local_date`) never returns (design: extras visibility).
+  before `local_date`) never returns (design: extras visibility), and
+  neither does an archived one (D78).
   """
   def list_extras(%Kid{} = kid, %Date{} = local_date) do
     retired_ids =
@@ -86,7 +92,9 @@ defmodule BearCub.Chores do
 
     Repo.all(
       from c in Chore,
-        where: c.kid_id == ^kid.id and is_nil(c.routine) and c.id not in subquery(retired_ids),
+        where:
+          c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on) and
+            c.id not in subquery(retired_ids),
         order_by: [asc: c.position, asc: c.id]
     )
   end
@@ -144,9 +152,16 @@ defmodule BearCub.Chores do
     |> broadcast_change()
   end
 
-  def delete_chore(%Chore{} = chore) do
+  @doc """
+  Archives `chore` (D78) — the only removal path: stamps `archived_on`
+  from the local date of `local_now` and broadcasts like every other
+  write, so the kiosk card disappears live. The row and its completions
+  are never deleted. Archiving is one-way (D79): there is no unarchive.
+  """
+  def archive_chore(%Chore{} = chore, %DateTime{} = local_now) do
     chore
-    |> Repo.delete()
+    |> Ecto.Changeset.change(archived_on: DateTime.to_date(local_now))
+    |> Repo.update()
     |> broadcast_change()
   end
 
@@ -176,14 +191,14 @@ defmodule BearCub.Chores do
   end
 
   # The adjacent chore within the same kid+routine — position-gap tolerant
-  # (deletes leave gaps; the nearest position wins, ties broken by id).
-  # A pinned nil routine can't use `==` (Ecto forbids the unsafe NULL
-  # comparison) — the extra bucket needs `is_nil/1` instead.
+  # (an archived chore leaves a gap; the nearest LIVE position wins, ties
+  # broken by id). A pinned nil routine can't use `==` (Ecto forbids the
+  # unsafe NULL comparison) — the extra bucket needs `is_nil/1` instead.
   defp neighbor(%Chore{routine: nil} = chore, :up) do
     Repo.one(
       from c in Chore,
         where:
-          c.kid_id == ^chore.kid_id and is_nil(c.routine) and
+          c.kid_id == ^chore.kid_id and is_nil(c.routine) and is_nil(c.archived_on) and
             c.position < ^chore.position,
         order_by: [desc: c.position, desc: c.id],
         limit: 1
@@ -195,7 +210,7 @@ defmodule BearCub.Chores do
       from c in Chore,
         where:
           c.kid_id == ^chore.kid_id and c.routine == ^chore.routine and
-            c.position < ^chore.position,
+            is_nil(c.archived_on) and c.position < ^chore.position,
         order_by: [desc: c.position, desc: c.id],
         limit: 1
     )
@@ -205,7 +220,7 @@ defmodule BearCub.Chores do
     Repo.one(
       from c in Chore,
         where:
-          c.kid_id == ^chore.kid_id and is_nil(c.routine) and
+          c.kid_id == ^chore.kid_id and is_nil(c.routine) and is_nil(c.archived_on) and
             c.position > ^chore.position,
         order_by: [asc: c.position, asc: c.id],
         limit: 1
@@ -217,7 +232,7 @@ defmodule BearCub.Chores do
       from c in Chore,
         where:
           c.kid_id == ^chore.kid_id and c.routine == ^chore.routine and
-            c.position > ^chore.position,
+            is_nil(c.archived_on) and c.position > ^chore.position,
         order_by: [asc: c.position, asc: c.id],
         limit: 1
     )
@@ -227,7 +242,7 @@ defmodule BearCub.Chores do
     max_position =
       Repo.one(
         from c in Chore,
-          where: c.kid_id == ^kid.id and is_nil(c.routine),
+          where: c.kid_id == ^kid.id and is_nil(c.routine) and is_nil(c.archived_on),
           select: max(c.position)
       )
 
@@ -238,7 +253,7 @@ defmodule BearCub.Chores do
     max_position =
       Repo.one(
         from c in Chore,
-          where: c.kid_id == ^kid.id and c.routine == ^routine,
+          where: c.kid_id == ^kid.id and c.routine == ^routine and is_nil(c.archived_on),
           select: max(c.position)
       )
 

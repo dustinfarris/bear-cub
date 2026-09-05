@@ -51,11 +51,11 @@ defmodule BearCub.Chores.CompletionTest do
     assert %{source: ["is invalid"]} = errors_on(changeset)
   end
 
-  test "deleting a chore cascades its completions" do
+  test "the on_delete: :delete_all FK safety net still cascades completions, though nothing in the app triggers it (Story 03, D78)" do
     chore = chore_fixture()
     {:ok, completion} = insert_completion(chore)
 
-    {:ok, _} = BearCub.Chores.delete_chore(chore)
+    Repo.delete!(chore)
 
     assert Repo.get(Completion, completion.id) == nil
   end

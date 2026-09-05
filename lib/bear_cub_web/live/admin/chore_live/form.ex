@@ -39,14 +39,12 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     save_chore(socket, socket.assigns.live_action, params)
   end
 
-  def handle_event("delete", _params, socket) do
-    # deleting cascades the chore's completions — an explicit parent
-    # choice, distinct from FR-17's "undo never deletes" (design §1)
-    {:ok, _} = Chores.delete_chore(socket.assigns.chore)
+  def handle_event("archive", _params, socket) do
+    {:ok, _} = Chores.archive_chore(socket.assigns.chore, LocalTime.now())
 
     {:noreply,
      socket
-     |> put_flash(:info, "Chore deleted")
+     |> put_flash(:info, "Chore archived")
      |> push_navigate(to: ~p"/admin/chores?kid=#{socket.assigns.kid.id}")}
   end
 
@@ -112,12 +110,12 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
 
         <button
           :if={@live_action == :edit}
-          id="delete-chore"
-          phx-click="delete"
-          data-confirm={"Delete “#{@chore.name}”? Its completion history is deleted with it."}
+          id="archive-chore"
+          phx-click="archive"
+          data-confirm={"Archive “#{@chore.name}”? It stays in the points history."}
           class="mt-10 w-full rounded-xl border border-error/40 py-3 font-semibold text-error transition active:scale-95"
         >
-          Delete Chore
+          Archive Chore
         </button>
 
         <.link

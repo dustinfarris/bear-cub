@@ -268,16 +268,38 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert updated.icon == "🦷"
     end
 
-    test "delete on the edit form removes the chore — an explicit parent choice",
+    test "archive on the edit form removes the chore from the kid's lists but keeps the row",
          %{conn: conn, kid_a: kid_a} do
       chore = chore_fixture(kid_a)
 
       {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
 
-      view |> element("#delete-chore") |> render_click()
+      view |> element("#archive-chore") |> render_click()
 
       assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
-      assert Chores.get_chore(chore.id) == nil
+      assert Chores.get_chore(chore.id).archived_on
+      assert Chores.list_chores(kid_a, "morning") == []
+    end
+
+    test "the edit form's confirm text says the chore stays in the points history",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Practice Piano"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      html = view |> element("#archive-chore") |> render()
+      assert html =~ "It stays in the points history"
+    end
+
+    test "there is no Delete control anywhere in admin", %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a)
+
+      {:ok, new_view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+      refute has_element?(new_view, "#delete-chore")
+
+      {:ok, edit_view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+      refute has_element?(edit_view, "#delete-chore")
+      refute render(edit_view) =~ "Delete"
     end
 
     test "the edit form shows a single 'Shows in' select offering all three buckets",

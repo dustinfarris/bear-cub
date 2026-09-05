@@ -204,13 +204,6 @@ defmodule BearCub.ChoresTest do
       assert chore.position == 0
     end
 
-    test "delete_chore/1 deletes the chore" do
-      chore = chore_fixture()
-
-      assert {:ok, _} = Chores.delete_chore(chore)
-      assert_raise Ecto.NoResultsError, fn -> Chores.get_chore!(chore.id) end
-    end
-
     test "deleting a kid cascades its chores" do
       kid = kid_fixture()
       chore = chore_fixture(kid)
@@ -347,18 +340,142 @@ defmodule BearCub.ChoresTest do
 
       assert updated.position == 0
     end
+  end
 
-    test "move_chore/2 swaps across position gaps left by deletes" do
+  describe "archive_chore/2 (Story 03, D78, D79)" do
+    import BearCub.ChoresFixtures
+
+    test "stamps archived_on from the caller's local date and broadcasts" do
+      chore = chore_fixture()
+      :ok = Chores.subscribe()
+
+      assert {:ok, archived} = Chores.archive_chore(chore, la(~D[2026-07-10], ~T[19:30:00]))
+      assert archived.archived_on == ~D[2026-07-10]
+      assert_receive :chores_changed
+    end
+
+    test "leaves the chore's completions intact" do
+      chore = chore_fixture()
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      {:ok, _} = Chores.archive_chore(chore, la(~D[2026-07-11], ~T[08:00:00]))
+
+      assert Repo.get!(Completion, completion.id)
+    end
+
+    test "a past fully-earned routine-day stays earned after a later archive (AC-4, D78, D81)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+
+      {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+    end
+
+    test "an archived chore vanishes from list_chores/2" do
+      kid = kid_fixture()
+      chore = chore_fixture(kid)
+      {:ok, _} = Chores.archive_chore(chore, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Chores.list_chores(kid, "morning") == []
+    end
+
+    test "an archived extra vanishes from list_extras/2" do
+      kid = kid_fixture()
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+      {:ok, _} = Chores.archive_chore(extra, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert Chores.list_extras(kid, ~D[2026-07-10]) == []
+    end
+
+    test "move_chore/2 steps past an archived neighbor to the nearest live chore" do
       kid = kid_fixture()
       first = chore_fixture(kid)
       middle = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
       last = chore_fixture(kid, %{name: "Get Dressed", icon: "👕"})
-      {:ok, _} = Chores.delete_chore(middle)
+      {:ok, _} = Chores.archive_chore(middle, la(~D[2026-07-10], ~T[08:00:00]))
 
       assert {:ok, moved} = Chores.move_chore(first, :down)
       assert moved.position == 2
 
       assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [last.id, first.id]
+    end
+
+    test "move_chore/2 :up also steps past an archived neighbor to the nearest live chore" do
+      kid = kid_fixture()
+      first = chore_fixture(kid)
+      middle = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      last = chore_fixture(kid, %{name: "Get Dressed", icon: "👕"})
+      {:ok, _} = Chores.archive_chore(middle, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:ok, moved} = Chores.move_chore(last, :up)
+      assert moved.position == 0
+
+      assert Enum.map(Chores.list_chores(kid, "morning"), & &1.id) == [last.id, first.id]
+    end
+
+    test "move_chore/2 steps past an archived neighbor within the extras bucket, both directions" do
+      kid = kid_fixture()
+
+      first = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+      middle = chore_fixture(kid, %{name: "Water Plants", icon: "🪴", routine: nil})
+      last = chore_fixture(kid, %{name: "Sweep Porch", icon: "🧹", routine: nil})
+      {:ok, _} = Chores.archive_chore(middle, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:ok, moved_down} = Chores.move_chore(first, :down)
+      assert moved_down.position == last.position
+
+      assert {:ok, moved_up} = Chores.move_chore(moved_down, :up)
+      assert moved_up.position == first.position
+    end
+
+    test "next_position/2 reuses the position an archived chore freed" do
+      kid = kid_fixture()
+      _first = chore_fixture(kid)
+      second = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️"})
+      {:ok, _} = Chores.archive_chore(second, la(~D[2026-07-10], ~T[08:00:00]))
+
+      third =
+        chore_fixture(kid, %{name: "Get Dressed", icon: "👕"}, la(~D[2026-07-11], ~T[08:00:00]))
+
+      assert third.position == 1
+    end
+
+    test "delete_chore/1 no longer exists" do
+      refute function_exported?(Chores, :delete_chore, 1)
+    end
+
+    test "archiving a chore does not retroactively grant a past incomplete routine-day (D78, D81)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+
+      {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => 0}
+    end
+
+    test "archiving a chore today drops it from today's requirement, scoring against what remains (D78, D81)" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+
+      {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-10], ~T[09:00:00]))
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
     end
   end
 
@@ -1182,7 +1299,7 @@ defmodule BearCub.ChoresTest do
       {:ok, _} = Chores.undo_chore(chore, noon())
       assert_receive :chores_changed
 
-      {:ok, _} = Chores.delete_chore(chore)
+      {:ok, _} = Chores.archive_chore(chore, noon())
       assert_receive :chores_changed
     end
 

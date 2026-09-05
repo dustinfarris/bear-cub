@@ -522,6 +522,17 @@ defmodule BearCubWeb.KioskLiveTest do
 
       refute has_element?(view, "#chore-#{chore.id}")
     end
+
+    test "an archived chore's card disappears live on the next :chores_changed broadcast (Story 03, D78)",
+         %{conn: conn, chore: chore} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{chore.id}")
+
+      {:ok, _} = Chores.archive_chore(chore, LocalTime.now())
+
+      refute has_element?(view, "#chore-#{chore.id}")
+    end
   end
 
   describe "Good Night mode" do
