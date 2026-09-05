@@ -2,9 +2,10 @@ defmodule BearCub.PointsTest do
   # The pinning suite for the points derivation (Story 01, D57, D72).
   #
   # These tests capture the *shipped* per-kid derivation's outputs so the
-  # Story 02 aggregate rewrite can be proven behavior-preserving: they must
-  # pass unmodified there. The roster-drift block pins the derivation as it
-  # is, not as it ought to be — see the comment there.
+  # rewards initiative's aggregate rewrite could be proven behavior-preserving.
+  # The roster block below no longer pins drift: D81 date-bounds the routine
+  # roster, and the block records what the bound repairs and what it cannot —
+  # see the comment there.
 
   use BearCub.DataCase
 
@@ -204,38 +205,45 @@ defmodule BearCub.PointsTest do
     end
   end
 
-  describe "roster drift (D72) — pinned as shipped, not as it ought to be" do
-    # These two tests pin a *known defect*: `routine_day_contribution/3`
-    # evaluates historical routine-days against the kid's CURRENT roster,
-    # so a roster edit retroactively moves past routine-day points. The
-    # expected values below are what the shipped code produces, not what
-    # is right. Do not "fix" this here or in Story 02 — a refactor that
-    # silently repaired drift would be an unruled semantic change smuggled
-    # in under a performance story. Roster drift is its own backlog entry.
+  describe "the date-bounded roster (D81) — the drift D72 pinned, now closed" do
+    # These two tests pinned a *known defect*: `routine_day_contribution/3`
+    # evaluated historical routine-days against the kid's CURRENT roster, so
+    # a roster edit retroactively moved past routine-day points. D81 closes
+    # the addition half, and the first test below is the inversion of what it
+    # used to pin — repairing it is this story's job, not a violation of the
+    # pinning suite's intent. The deletion half the bound cannot close:
+    # `delete_chore/1` removes the row, leaving nothing to bound against —
+    # D72's own objection, which D78's archive is what removes. Story 03
+    # replaces that path and retires the second test with it.
     #
-    # Every assertion is made through BOTH `balance/2` and `balances/1`:
-    # the design's §Testing excerpt requires the *aggregate* pinned on the
-    # drift path, and Story 02 rewrites `balances/1` as the grouped query
-    # with `balance/2` delegating to it. Pinning only the singular form
-    # would leave the grouped query's drift behavior unproven — exactly
+    # Every assertion is made through BOTH `balance/2` and `balances/1`: the
+    # design's §Testing excerpt requires the *aggregate* pinned on this path,
+    # and `balances/1` reaches the roster through the grouped query rather
+    # than through `routine_day_contribution/3`. Asserting only the singular
+    # form would leave the grouped query's roster behavior unproven — exactly
     # the weird path D72 says must be covered.
 
-    test "adding a routine chore today retroactively wipes a past routine-day's +R" do
+    test "adding a routine chore today leaves a past routine-day's +R intact" do
       kid = kid_fixture()
-      a = chore_fixture(kid, %{name: "A", routine: "morning"})
-      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
 
       assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
       assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
 
-      _c = chore_fixture(kid, %{name: "C (added later)", routine: "morning"})
+      _c =
+        chore_fixture(
+          kid,
+          %{name: "C (added later)", routine: "morning"},
+          la(~D[2026-07-20], ~T[09:00:00])
+        )
 
-      # DRIFT: 2026-07-10 was fully complete when it happened, but it is
-      # re-evaluated against today's three-chore roster and now scores 0.
-      assert Points.balance(kid, ~D[2026-07-20]) == 0
-      assert Points.balances(~D[2026-07-20]) == %{kid.id => 0}
+      # 2026-07-10 was fully complete when it happened, and stays scored
+      # against the two chores that were live that day.
+      assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
+      assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
     end
 
     test "deleting a routine chore retroactively completes a past routine-day, granting +R" do

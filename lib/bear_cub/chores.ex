@@ -383,13 +383,24 @@ defmodule BearCub.Chores do
   completion that day. `failed?` is a boolean per routine-day, never a
   per-row sum, so two or more fails still cost a single `-R` and routine
   points never scale with chore count (SC-2).
+
+  The roster is the chores that were *live on `local_date`* (D81), not
+  today's: `active_from <= day and (archived_on is null or archived_on >
+  day)`. Archiving therefore drops a chore out of the archive day itself,
+  matching what the kiosk shows the instant Archive is tapped — a card
+  that is not there cannot be required. `active_from` is compared
+  directly: the column is `NOT NULL`, so the null case the bound used to
+  tolerate cannot occur (D90).
   """
   def routine_day_contribution(%Kid{} = kid, routine, %Date{} = local_date)
       when routine in ~w(morning evening) do
     chore_ids =
       Repo.all(
         from c in Chore,
-          where: c.kid_id == ^kid.id and c.routine == ^routine,
+          where:
+            c.kid_id == ^kid.id and c.routine == ^routine and
+              c.active_from <= ^local_date and
+              (is_nil(c.archived_on) or c.archived_on > ^local_date),
           select: c.id
       )
 
@@ -457,15 +468,15 @@ defmodule BearCub.Chores do
   (Story 02, D72) — the grouped-query rewrite of `earnings/2`'s per-kid
   loop, for whole-render reads. Two queries total, independent of how
   many kids or days of history exist: one for the extras leg, one for
-  the routine-days leg (a per-`(kid_id, routine)` chore-count subquery
-  joined in SQL against the per-day aggregate). Kids with no completions
-  are absent from the result — `BearCub.Points.balances/1` merges in the
-  full roster.
+  the routine-days leg (a per-`(kid_id, routine, local_date)` chore-count
+  subquery joined in SQL against the per-day aggregate). Kids with no
+  completions are absent from the result — `BearCub.Points.balances/1`
+  merges in the full roster.
 
-  Semantics are pointwise identical to `earnings/2` including roster
-  drift (D72): the chore-count leg counts the kid's *current* roster, not
-  the roster as of each historical routine-day, exactly as
-  `routine_day_contribution/3` does today.
+  Semantics are pointwise identical to `earnings/2`, the date-bounded
+  roster included (D81): the chore-count leg counts the chores that were
+  live on each historical routine-day, exactly as
+  `routine_day_contribution/3` does.
   """
   def earnings_by_kid(%Date{} = local_date) do
     Map.merge(extras_by_kid(local_date), routine_days_by_kid(local_date), fn _kid_id, e, r ->
@@ -493,21 +504,53 @@ defmodule BearCub.Chores do
     |> Map.new()
   end
 
+  # The per-`(kid, routine, local_date)` roster size (D81). Roster size is
+  # a function of the day, so the count cannot be precomputed per
+  # `(kid_id, routine)`: the distinct routine-days come from completions,
+  # and `chores` joins that set on the liveness range. Staying inside one
+  # query is what preserves D72's grouped-query property.
+  defp live_chore_counts(%Date{} = local_date) do
+    routine_days =
+      from(c in Completion,
+        join: ch in Chore,
+        on: ch.id == c.chore_id,
+        where: not is_nil(ch.routine) and c.local_date <= ^local_date,
+        distinct: true,
+        select: %{kid_id: ch.kid_id, routine: ch.routine, local_date: c.local_date}
+      )
+
+    from(d in subquery(routine_days),
+      join: ch in Chore,
+      on:
+        ch.kid_id == d.kid_id and ch.routine == d.routine and
+          ch.active_from <= d.local_date and
+          (is_nil(ch.archived_on) or ch.archived_on > d.local_date),
+      group_by: [d.kid_id, d.routine, d.local_date],
+      select: %{
+        kid_id: d.kid_id,
+        routine: d.routine,
+        local_date: d.local_date,
+        chore_count: count(ch.id)
+      }
+    )
+  end
+
   defp routine_days_by_kid(%Date{} = local_date) do
     r = Routines.bonus()
 
-    chore_counts =
-      from(ch in Chore,
-        where: not is_nil(ch.routine),
-        group_by: [ch.kid_id, ch.routine],
-        select: %{kid_id: ch.kid_id, routine: ch.routine, chore_count: count(ch.id)}
-      )
-
+    # The completion leg carries the same bound as the count leg: a chore
+    # completed this morning and archived this afternoon is off today's
+    # roster, so its completion must not be weighed against a count that
+    # excludes it. Without this the two derivations disagree on exactly
+    # the day archive is performed.
     from(c in Completion,
       join: ch in Chore,
-      on: ch.id == c.chore_id,
-      join: cc in subquery(chore_counts),
-      on: cc.kid_id == ch.kid_id and cc.routine == ch.routine,
+      on:
+        ch.id == c.chore_id and
+          ch.active_from <= c.local_date and
+          (is_nil(ch.archived_on) or ch.archived_on > c.local_date),
+      join: cc in subquery(live_chore_counts(local_date)),
+      on: cc.kid_id == ch.kid_id and cc.routine == ch.routine and cc.local_date == c.local_date,
       where: not is_nil(ch.routine) and c.local_date <= ^local_date,
       group_by: [ch.kid_id, ch.routine, c.local_date, cc.chore_count],
       select: %{

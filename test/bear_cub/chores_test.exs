@@ -626,6 +626,290 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "the date-bounded routine roster (Story 02, D81)" do
+    import BearCub.ChoresFixtures
+
+    # Story 03 lands `archive_chore/2`; until then the `archived_on` half of
+    # the liveness predicate is exercised by stamping the column directly.
+    defp stamp(chore, attrs), do: chore |> Ecto.Changeset.change(attrs) |> Repo.update!()
+
+    test "a routine chore added today leaves a past completed routine-day at +R" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+
+      _c = chore_fixture(kid, %{name: "C", routine: "morning"}, la(~D[2026-07-20], ~T[09:00:00]))
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+    end
+
+    test "a chore added today is required today, so today's routine-day is incomplete" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-20], ~T[07:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-20]) == Routines.bonus()
+
+      _b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-20], ~T[09:00:00]))
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-20]) == 0
+    end
+
+    test "archiving a chore never retroactively grants a past day's bonus" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      # 2026-07-09 was never fully complete: b was live and left undone
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[07:00:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == 0
+
+      stamp(b, archived_on: ~D[2026-07-10])
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == 0
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => 0}
+    end
+
+    test "a chore counts for every day before its archive date and not for the date itself" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-09], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      stamp(b, archived_on: ~D[2026-07-10])
+
+      # the day before the archive still requires b — it was live then
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == Routines.bonus()
+      # the archive date itself does not: the card is gone from the kiosk
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 2 * Routines.bonus()}
+    end
+
+    test "a chore completed on the day it is archived stops counting toward that day's roster" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
+      c = chore_fixture(kid, %{name: "C", routine: "morning"}, la(~D[2026-07-01], ~T[08:02:00]))
+
+      # the kid finished everything this morning; b is archived this afternoon
+      for chore <- [a, b, c] do
+        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      end
+
+      stamp(b, archived_on: ~D[2026-07-10])
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => Routines.bonus()}
+    end
+
+    # This is the tripwire for the ruling in D90, not a trivia assertion.
+    # D80/D81 wrote the bound null-tolerant (`is_nil(active_from) or
+    # active_from <= day`) so a stray null would fail toward a larger roster
+    # rather than a fabricated bonus; D90 removed that tolerance because the
+    # NOT NULL column makes the null impossible, leaving the constraint as
+    # the single protection. So: if this test ever fails, someone has
+    # relaxed the column, and the three date bounds in `BearCub.Chores` must
+    # regain their `is_nil(active_from) or` half before that ships — without
+    # it a null reads as "not yet live", shrinking a historical roster and
+    # handing out a bonus nobody earned.
+    test "the database rejects an update setting active_from to null" do
+      kid = kid_fixture()
+
+      chore =
+        chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+
+      assert_raise Exqlite.Error, ~r/NOT NULL constraint failed: chores.active_from/, fn ->
+        stamp(chore, active_from: nil)
+      end
+    end
+
+    test "a chore live since before recorded history is required on every scored day" do
+      kid = kid_fixture()
+      # the epoch floor the migration hands pre-lifecycle rows: live forever
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      b = chore_fixture(kid, %{name: "B", routine: "morning"})
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 0}
+
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => Routines.bonus()}
+    end
+
+    test "extras are never bounded: an archived extra's completions still sum (D81)" do
+      kid = kid_fixture()
+
+      extra =
+        chore_fixture(
+          kid,
+          %{name: "Extra", routine: nil, points: 7},
+          la(~D[2026-07-01], ~T[08:00:00])
+        )
+
+      {:ok, _} = Chores.complete_chore(extra, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      stamp(extra, active_from: ~D[2026-08-01], archived_on: ~D[2026-07-01])
+
+      assert Chores.earnings(kid, ~D[2026-07-10]) == 7
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 7}
+    end
+
+    test "a day on which the kid completed nothing produces no row and contributes 0" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert Chores.earnings(kid, ~D[2026-07-09]) == 0
+      assert Chores.earnings_by_kid(~D[2026-07-09]) == %{}
+    end
+
+    test "the grouped and per-kid totals agree across an addition and an archive" do
+      kid_a = kid_fixture(%{name: "Kid A", position: 0})
+      kid_b = kid_fixture(%{name: "Kid B", position: 1})
+
+      # Kid A: a morning chore from the start, a second added mid-history,
+      # and an evening chore archived mid-history.
+      a1 =
+        chore_fixture(kid_a, %{name: "A1", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+
+      a2 =
+        chore_fixture(kid_a, %{name: "A2", routine: "morning"}, la(~D[2026-07-05], ~T[08:00:00]))
+
+      a3 =
+        chore_fixture(kid_a, %{name: "A3", routine: "evening"}, la(~D[2026-07-01], ~T[08:00:00]))
+
+      a4 =
+        chore_fixture(kid_a, %{name: "A4", routine: "evening"}, la(~D[2026-07-01], ~T[08:01:00]))
+
+      stamp(a3, archived_on: ~D[2026-07-06])
+
+      # Kid B: one morning chore, plus an extra outside the bound entirely.
+      b1 =
+        chore_fixture(kid_b, %{name: "B1", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
+
+      b2 =
+        chore_fixture(
+          kid_b,
+          %{name: "B2", routine: nil, points: 3},
+          la(~D[2026-07-03], ~T[08:00:00])
+        )
+
+      for {day, chores} <- [
+            {~D[2026-07-02], [a1, a3, a4, b1]},
+            {~D[2026-07-04], [a1, b1, b2]},
+            {~D[2026-07-05], [a1, a2, a3]},
+            # a3 is completed on the very day it is archived, alongside the
+            # evening chore that outlives it — the case that separates the
+            # grouped query from the per-kid one if either leg goes unbounded
+            {~D[2026-07-06], [a1, a2, a3, a4, b1]},
+            {~D[2026-07-07], [a1, a4, b1]}
+          ],
+          chore <- chores do
+        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[07:00:00]), "kiosk")
+      end
+
+      {:ok, failed} = Chores.complete_chore(a2, la(~D[2026-07-08], ~T[07:00:00]), "kiosk")
+      fail_completion(failed, ~U[2026-07-08 15:00:00Z])
+
+      for day <- Date.range(~D[2026-07-01], ~D[2026-07-10]) do
+        by_kid = Chores.earnings_by_kid(day)
+
+        for kid <- [kid_a, kid_b] do
+          assert Map.get(by_kid, kid.id, 0) == Chores.earnings(kid, day),
+                 "grouped and per-kid earnings disagree for kid #{kid.name} on #{day}"
+        end
+      end
+    end
+
+    # The criterion is per-`(kid, routine, day)`, but `earnings_by_kid/1` is
+    # the only public way into the grouped derivation (`routine_days_by_kid/1`
+    # is private; `BearCub.Points.balances/1` is its one caller) and it returns
+    # a total per kid. Differencing it across consecutive cutoff dates isolates
+    # one kid-day; giving each kid a single routine makes that kid-day exactly
+    # one `(kid, routine, day)` cell, so the difference compares directly
+    # against `routine_day_contribution/3`.
+    #
+    # Residual, stated rather than hidden: any perturbation of the grouped
+    # per-cell values whose per-kid sum is zero at every cutoff date is
+    # invisible through a total — equal and opposite between a kid's two
+    # routines inside one day, or between two days of one cell. Single-routine
+    # kids are also what costs this test the routine axis: the totals test
+    # above is the only thing in the suite that catches a `(kid, routine)`
+    # confusion in the grouped joins. Neither test replaces the other.
+    test "each (kid, routine, day) cell agrees across an addition and an archive" do
+      morning_kid = kid_fixture(%{name: "Morning Kid", position: 0})
+      evening_kid = kid_fixture(%{name: "Evening Kid", position: 1})
+
+      m1 =
+        chore_fixture(
+          morning_kid,
+          %{name: "M1", routine: "morning"},
+          la(~D[2026-07-01], ~T[08:00:00])
+        )
+
+      # added mid-history: 07-05 onward the morning roster is two chores
+      m2 =
+        chore_fixture(
+          morning_kid,
+          %{name: "M2", routine: "morning"},
+          la(~D[2026-07-05], ~T[08:00:00])
+        )
+
+      e1 =
+        chore_fixture(
+          evening_kid,
+          %{name: "E1", routine: "evening"},
+          la(~D[2026-07-01], ~T[08:00:00])
+        )
+
+      e2 =
+        chore_fixture(
+          evening_kid,
+          %{name: "E2", routine: "evening"},
+          la(~D[2026-07-01], ~T[08:01:00])
+        )
+
+      # archived mid-history, after being completed on the archive day itself
+      stamp(e2, archived_on: ~D[2026-07-06])
+
+      for {day, chores} <- [
+            {~D[2026-07-02], [m1, e1, e2]},
+            {~D[2026-07-04], [m1, e1]},
+            {~D[2026-07-05], [m1, m2, e1, e2]},
+            {~D[2026-07-06], [m1, e1, e2]},
+            {~D[2026-07-07], [m1, m2, e1]}
+          ],
+          chore <- chores do
+        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[07:00:00]), "kiosk")
+      end
+
+      {:ok, failed} = Chores.complete_chore(m2, la(~D[2026-07-08], ~T[07:00:00]), "kiosk")
+      fail_completion(failed, ~U[2026-07-08 15:00:00Z])
+
+      for day <- Date.range(~D[2026-07-02], ~D[2026-07-10]),
+          {kid, routine} <- [{morning_kid, "morning"}, {evening_kid, "evening"}] do
+        grouped_cell =
+          Map.get(Chores.earnings_by_kid(day), kid.id, 0) -
+            Map.get(Chores.earnings_by_kid(Date.add(day, -1)), kid.id, 0)
+
+        assert grouped_cell == Chores.routine_day_contribution(kid, routine, day),
+               "derivations disagree for #{kid.name}/#{routine} on #{day}"
+      end
+    end
+  end
+
   describe "earnings_by_kid/1 (Story 02, D72)" do
     import BearCub.ChoresFixtures
 
@@ -696,6 +980,35 @@ defmodule BearCub.ChoresTest do
         count_queries(fn -> Chores.earnings_by_kid(Date.add(~D[2026-07-01], 60)) end)
 
       assert few_days_query_count == many_days_query_count
+    end
+
+    test "a whole-render read is two queries: one extras leg, one routine leg" do
+      kid = kid_fixture()
+      chore = chore_fixture(kid, %{name: "A", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      # The date-bounded roster count is nested inside the routine leg as a
+      # subquery (D81), not fetched per routine-day — asserting only that the
+      # count is *constant* would not notice it splitting into two statements.
+      assert count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end) == 2
+    end
+
+    test "the query count does not grow with the number of kids (SC-5, D81)" do
+      one_kid = kid_fixture(%{name: "Kid 1", position: 0})
+      chore = chore_fixture(one_kid, %{name: "A", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      one_kid_query_count = count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end)
+
+      for n <- 2..8 do
+        kid = kid_fixture(%{name: "Kid #{n}", position: n})
+        kid_chore = chore_fixture(kid, %{name: "A", routine: "morning"})
+        {:ok, _} = Chores.complete_chore(kid_chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      end
+
+      many_kids_query_count = count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end)
+
+      assert one_kid_query_count == many_kids_query_count
     end
   end
 
