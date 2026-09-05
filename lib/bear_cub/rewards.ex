@@ -76,7 +76,7 @@ defmodule BearCub.Rewards do
   the end of the flat position list — a single bucket, no discriminator
   to group by (D68). `kid_id` is set programmatically from the caller's
   kid selection and never cast from `attrs` (D58), matching
-  `Chores.create_chore/2`.
+  `Chores.create_chore/3`.
   """
   def create_reward(kid_or_nil, attrs) do
     %Reward{kid_id: kid_id_of(kid_or_nil)}

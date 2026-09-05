@@ -104,7 +104,11 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin/chores")
 
       {:ok, chore} =
-        Chores.create_chore(kid_a, %{name: "Water Plants", icon: "🪴", routine: "morning"})
+        Chores.create_chore(
+          kid_a,
+          %{name: "Water Plants", icon: "🪴", routine: "morning"},
+          LocalTime.now()
+        )
 
       assert has_element?(view, "#admin-chore-#{chore.id}")
     end
@@ -158,6 +162,27 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert created.name == "Make Bed"
       assert created.kid_id == kid_a.id
       assert created.position == 1
+    end
+
+    test "a chore created through the form is live from today's local date (D80, D86)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+
+      # the clock read lives at this edge, so the assertion brackets the
+      # submit rather than comparing against a second read — a UTC read
+      # in the form would land outside the bracket every evening
+      before_submit = DateTime.to_date(LocalTime.now())
+
+      view
+      |> form("#chore-form", chore: %{name: "Make Bed", icon: "🛏️"})
+      |> render_submit()
+
+      after_submit = DateTime.to_date(LocalTime.now())
+
+      [created] = Chores.list_chores(kid_a, "morning")
+
+      assert Date.compare(created.active_from, before_submit) != :lt
+      assert Date.compare(created.active_from, after_submit) != :gt
     end
 
     test "the evening + Add link also files the new chore into the evening bucket",

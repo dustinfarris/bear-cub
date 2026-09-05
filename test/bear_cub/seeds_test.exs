@@ -20,6 +20,24 @@ defmodule BearCub.SeedsTest do
     assert length(Chores.list_chores(kid_b, "morning")) == 5
   end
 
+  test "seeded chores are live from the local date they were seeded (D80)" do
+    # the seed script reads the clock itself (it is an edge, per D86), so
+    # the assertion brackets the run rather than comparing against a
+    # second read — that is both flake-free at a midnight boundary and
+    # still catches a UTC read, which lands outside the bracket every
+    # evening
+    before_seeds = DateTime.to_date(BearCub.LocalTime.now())
+    run_seeds()
+    after_seeds = DateTime.to_date(BearCub.LocalTime.now())
+
+    for chore <- Repo.all(Chore) do
+      assert Date.compare(chore.active_from, before_seeds) != :lt
+      assert Date.compare(chore.active_from, after_seeds) != :gt
+      assert chore.archived_on == nil
+      assert chore.recurring? == false
+    end
+  end
+
   test "seeds are idempotent" do
     run_seeds()
     run_seeds()

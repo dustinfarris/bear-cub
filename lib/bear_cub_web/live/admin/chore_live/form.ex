@@ -3,6 +3,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
 
   alias BearCub.Chores
   alias BearCub.Chores.Chore
+  alias BearCub.LocalTime
 
   @impl true
   def mount(params, _session, socket) do
@@ -55,7 +56,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     # from the submitted form
     params = Map.put(params, "routine", socket.assigns.chore.routine)
 
-    case Chores.create_chore(socket.assigns.kid, params) do
+    case Chores.create_chore(socket.assigns.kid, params, LocalTime.now()) do
       {:ok, _chore} ->
         {:noreply,
          socket

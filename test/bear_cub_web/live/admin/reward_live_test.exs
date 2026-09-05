@@ -113,7 +113,9 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
       # extra_contribution/2 is failed_at-first: once failed, the row
       # contributes -chore.points regardless of the earlier completion —
       # a clean, deterministic negative balance with no routine bonus involved.
-      {:ok, extra} = BearCub.Chores.create_chore(kid_a, %{name: "X", icon: "🪥", points: 5})
+      {:ok, extra} =
+        BearCub.Chores.create_chore(kid_a, %{name: "X", icon: "🪥", points: 5}, LocalTime.now())
+
       {:ok, _} = BearCub.Chores.complete_chore(extra, LocalTime.now(), "admin")
       {:ok, _} = BearCub.Chores.fail_chore(extra, LocalTime.now())
 

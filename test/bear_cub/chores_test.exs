@@ -102,60 +102,89 @@ defmodule BearCub.ChoresTest do
       assert Chores.list_chores(kid, "evening") == []
     end
 
-    test "create_chore/2 creates a chore owned by the kid" do
+    test "create_chore/3 creates a chore owned by the kid" do
       kid = kid_fixture()
       attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0}
 
-      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
       assert chore.kid_id == kid.id
       assert chore.icon == "🪥"
     end
 
-    test "create_chore/2 requires an icon" do
+    test "create_chore/3 stamps active_from from the caller's local datetime (D80, D86)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[19:30:00]))
+      assert chore.active_from == ~D[2026-07-10]
+    end
+
+    test "create_chore/3 never casts active_from from attrs (D86)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", active_from: ~D[2020-01-01]}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.active_from == ~D[2026-07-10]
+    end
+
+    test "create_chore/3 creates a live, one-off chore (D80, D82)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.archived_on == nil
+      assert chore.recurring? == false
+    end
+
+    test "create_chore/3 requires an icon" do
       kid = kid_fixture()
       attrs = %{name: "Brush Teeth", routine: "morning", position: 0}
 
-      assert {:error, changeset} = Chores.create_chore(kid, attrs)
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
       assert %{icon: ["can't be blank"]} = errors_on(changeset)
     end
 
-    test "create_chore/2 rejects an unknown routine" do
+    test "create_chore/3 rejects an unknown routine" do
       kid = kid_fixture()
       attrs = %{name: "Nap", icon: "😴", routine: "afternoon", position: 0}
 
-      assert {:error, changeset} = Chores.create_chore(kid, attrs)
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
       assert %{routine: ["is invalid"]} = errors_on(changeset)
     end
 
-    test "create_chore/2 with a nil routine creates an extra" do
+    test "create_chore/3 with a nil routine creates an extra" do
       kid = kid_fixture()
       attrs = %{name: "Wash Car", icon: "🚗", routine: nil, position: 0}
 
-      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
       assert chore.routine == nil
     end
 
-    test "create_chore/2 without points defaults to 5 (D39)" do
+    test "create_chore/3 without points defaults to 5 (D39)" do
       kid = kid_fixture()
       attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0}
 
-      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
       assert chore.points == 5
     end
 
-    test "create_chore/2 casts an explicit points value (D39)" do
+    test "create_chore/3 casts an explicit points value (D39)" do
       kid = kid_fixture()
       attrs = %{name: "Wash Car", icon: "🚗", routine: nil, points: 10}
 
-      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
       assert chore.points == 10
     end
 
-    test "create_chore/2 with routine omitted creates an extra" do
+    test "create_chore/3 with routine omitted creates an extra" do
       kid = kid_fixture()
       attrs = %{name: "Wash Car", icon: "🚗", position: 0}
 
-      assert {:ok, chore} = Chores.create_chore(kid, attrs)
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
       assert chore.routine == nil
     end
 
@@ -204,7 +233,7 @@ defmodule BearCub.ChoresTest do
   describe "chore ordering" do
     import BearCub.ChoresFixtures
 
-    test "create_chore/2 appends to the end of the kid's routine (D22)" do
+    test "create_chore/3 appends to the end of the kid's routine (D22)" do
       kid = kid_fixture()
 
       first = chore_fixture(kid)
@@ -221,12 +250,11 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
 
       {:ok, chore} =
-        Chores.create_chore(kid, %{
-          name: "Brush Teeth",
-          icon: "🪥",
-          routine: "morning",
-          position: 7
-        })
+        Chores.create_chore(
+          kid,
+          %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 7},
+          la(~D[2026-07-10], ~T[08:00:00])
+        )
 
       assert chore.position == 0
     end
@@ -276,7 +304,7 @@ defmodule BearCub.ChoresTest do
       assert {:ok, %{position: 0}} = Chores.move_chore(morning, :down)
     end
 
-    test "create_chore/2 appends extras (nil routine) to the end of their own bucket (D22)" do
+    test "create_chore/3 appends extras (nil routine) to the end of their own bucket (D22)" do
       kid = kid_fixture()
 
       first = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
@@ -824,12 +852,11 @@ defmodule BearCub.ChoresTest do
       assert_receive :chores_changed
 
       {:ok, chore} =
-        Chores.create_chore(kid, %{
-          name: "Brush Teeth",
-          icon: "🪥",
-          routine: "morning",
-          position: 0
-        })
+        Chores.create_chore(
+          kid,
+          %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 0},
+          noon()
+        )
 
       assert_receive :chores_changed
 
@@ -850,7 +877,7 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       :ok = Chores.subscribe()
 
-      {:error, _} = Chores.create_chore(kid, %{})
+      {:error, _} = Chores.create_chore(kid, %{}, la(~D[2026-07-10], ~T[08:00:00]))
       refute_receive :chores_changed, 50
     end
   end

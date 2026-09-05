@@ -101,15 +101,18 @@ defmodule BearCub.Chores do
 
   @doc """
   Creates a chore owned by `kid`, appended at the end of its routine's
-  list (D22). `kid_id` and `position` are never cast from attrs — the
-  ▲/▼ swap in `move_chore/2` is the only ordering control.
+  list (D22), live from the local date of `local_now` (D80, D86).
+  `kid_id`, `position` and `active_from` are never cast from attrs — the
+  ▲/▼ swap in `move_chore/2` is the only ordering control, and the clock
+  read behind `local_now` stays at the web edge.
   """
-  def create_chore(%Kid{} = kid, attrs) do
+  def create_chore(%Kid{} = kid, attrs, %DateTime{} = local_now) do
     changeset = Chore.changeset(%Chore{kid_id: kid.id}, attrs)
     routine = Ecto.Changeset.get_field(changeset, :routine)
 
     changeset
     |> Ecto.Changeset.put_change(:position, next_position(kid, routine))
+    |> Ecto.Changeset.put_change(:active_from, DateTime.to_date(local_now))
     |> Repo.insert()
     |> broadcast_change()
   end

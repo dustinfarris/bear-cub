@@ -77,7 +77,7 @@ defmodule BearCubWeb.Admin.RewardLive.Form do
   end
 
   # kid_id is set programmatically from this resolved selection, never
-  # cast from attrs (D58) — matching Chores.create_chore/2's kid_id
+  # cast from attrs (D58) — matching Chores.create_chore/3's kid_id
   # treatment.
   defp resolve_kid(nil), do: nil
   defp resolve_kid(""), do: nil
