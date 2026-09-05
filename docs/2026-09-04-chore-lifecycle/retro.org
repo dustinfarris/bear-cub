@@ -1,0 +1,31 @@
+#+title: RETRO — Bear Cub: Chore lifecycle
+
+* Batch 1 — 2026-09-05
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 6 | 34 | 13 | 29 | 4(37.9m) | 195.6k | 116 | 369 |  |
+| story-02 | 13 | 37 | 20 | 23 | 4(26.3m) | 220.3k | 43 | 321 | also touched story-03 |
+| story-03 | 9 | 8 | 6 | 9 | 2(5.9m) | 115.1k | 13 | 152 | also touched story-04, story-05 |
+| story-04 | 12 | 11 | 6 | 10 | 2(5.5m) | 160.7k | 109 | 235 | also touched story-05 |
+| story-05 | 4 | 6 | 15 | 10 | 2(4.4m) | 92.7k | -1 | 117 |  |
+| total | 44 | 97 | 59 | 81 | 14(80.0m) | 784.4k | 280 | 1194 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded.
+
+** Observations
+
+- Two stories ran verifier fix loops; three did not. Story 01 re-verified both its Acceptance Criteria and its Definition of Done after each first pass came back NOT MET (4 dispatches, 37.9 min — the batch's most expensive verification). Story 02 re-verified twice on the AC side (AC-3/AC-4, then AC-3 again). Stories 03, 04 and 05 each closed on one AC pass and one DoD pass with no re-verification.
+- Verification cost fell monotonically across the batch: 37.9 → 26.3 → 5.9 → 5.5 → 4.4 verifier minutes, and close-out minutes 34 → 37 → 8 → 11 → 6. The two stories that carried design pivots are the two expensive ones.
+- Three human questions were asked, all inside the first two stories: the backfill stamping ~active_from~ a day late for an evening-created chore never completed (story 01, 03:27, the day after implementation started); story 02's AC-7 being untestable against a ~NOT NULL~ column (13:46); and the disposition of the three dead ~is_nil(active_from)~ tolerances (15:01). The third was opened by the human at 15:00, not raised by the session.
+- Story 02's session window spans a roughly nine-hour idle gap between implementation start (04:30) and close-out (13:35); the 13 active implementation minutes exclude it, so the figure is not comparable to elapsed time.
+- One excerpt refresh propagated forward inside the batch: story 02's docs commit re-synced story 03's embedded excerpt. The other "also touched" notes (story 03 → 04 and 05, story 04 → 05) are sessions reading later story files during update-design's excerpt check; no commit of stories 03 or 04 edited a later story.
+- Story 05 was the smallest story by every measure — 4 implementation minutes, −1 net lines of production code, 117 lines of test — and is the only story whose net code delta is negative. It landed the design's nine-line ~list_extras/2~ change with no pivot.
+- Story 05's update-design ran twice (18:41 and 18:51); the second pass produced the carried-forward recurring-toggle-off coverage gap, which is the batch's only Deferred entry not raised by a story itself.
+- Test lines outweigh production lines roughly 4:1 across the batch (1194 vs 280).
+- Eleven Deferred discoveries were recorded and none fixed inline: seven from story 01, three from story 02, one from story 05's update-design pass.
+- All five story transcripts were found on this machine; no row is missing.
+
+** Retro

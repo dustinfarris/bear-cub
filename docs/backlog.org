@@ -26,13 +26,6 @@ This will be used to allow or restrict certain activities like screen time or ot
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 13:09]
 :END:
-* Roster drift (D72) — ~chores.inserted_at~-bounded roster handles additions but not deletions
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-~routine_day_contribution/3~ (now composed into ~Chores.routine_days_by_kid/1~, the rewards/redemption Story 02 grouped-query rewrite) evaluates historical routine-days against the kid's *current* chore roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping historical ~+R~; deleting one can retroactively complete past days and grant points never earned. Pinned as-is by Story 01 and preserved unchanged by Story 02 (D72) — this ships today and predates the redemption work, which only raises the stakes (a roster edit can now move a balance after a spend, potentially into debt with no fail involved). Needs its own ruling: a ~chores.inserted_at~-bounded roster (scoring a historical day against the roster live *on that day*, not today's) would handle additions correctly but not deletions, since a deleted chore leaves no row left to bound against. Not designed for in the rewards/redemption initiative.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01/02 discovery, D72).
 * Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]

@@ -256,12 +256,6 @@ Decisions for this initiative: [[file:../decisions.org]] — D78 through D84 wer
 
 This document previously said the select "is editable only while the chore has zero completion rows" and locks entirely "once any completion row exists", with §Testing asking that "reclassification is refused once completions exist". Do not reintroduce the blanket form, even though it reads as the simpler and safer rule and is exactly what [[file:../decisions.org::#d84][D84]] says: one control carries two independent settings, and locking both makes §Recurring extras' "two exits" and [[file:../decisions.org::#d82][D82]]'s intended resurrection of a retired extra unreachable, leaving archive as a recurring extra's only end. The lock now refuses a change of ~routine~ only. Rationale: [[file:../decisions.org::#d85][D85]].
 
-** [2026-09-04 Fri 19:58] Creation was described as already passing a local datetime (D86)
-
-/Sections affected: §Data Model/
-
-This document previously said both lifetime fields are set "from the local datetime the caller already passes". That was true of the archive path and false of creation: ~create_chore/2~ took no datetime, so a reader taking the sentence at face value would conclude the create path needed no signature change and would reach for the obvious alternative — a ~LocalTime.now()~ read inside ~create_chore~, or a ~local_now \\ LocalTime.now()~ default argument. Both put a clock read back into domain code, which the standing invariant forbids; creation now takes the argument explicitly. Rationale: [[file:../decisions.org::#d86][D86]].
-
 ** [2026-09-04 Fri 21:21] The backfill is no longer a SQL ~UPDATE~, and the ~MIN~ never absorbed the UTC skew (D87)
 
 /Sections affected: §Migration and backfill/

@@ -95,3 +95,14 @@ Triage [2026-07-14 Tue]: oneshot; candidate for absorption into the gamification
 Claimed [2026-07-15 Wed]: into initiative docs/2026-07-15-gamification-points/ (Gamification: Points) as a batch member (big-icon, §6.3).
 
 Done [2026-07-24 Fri]: shipped as gamification-points Story 08 (completion icon + tap-toggle, header bar retired; refined by D51/D52). Design-language recordings landed. Marked at backlog review.
+* DONE Roster drift (D72) — ~chores.inserted_at~-bounded roster handles additions but not deletions
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~routine_day_contribution/3~ (now composed into ~Chores.routine_days_by_kid/1~, the rewards/redemption Story 02 grouped-query rewrite) evaluates historical routine-days against the kid's *current* chore roster: adding a morning chore today retroactively makes every past morning-day incomplete, wiping historical ~+R~; deleting one can retroactively complete past days and grant points never earned. Pinned as-is by Story 01 and preserved unchanged by Story 02 (D72) — this ships today and predates the redemption work, which only raises the stakes (a roster edit can now move a balance after a spend, potentially into debt with no fail involved). Needs its own ruling: a ~chores.inserted_at~-bounded roster (scoring a historical day against the roster live *on that day*, not today's) would handle additions correctly but not deletions, since a deleted chore leaves no row left to bound against. Not designed for in the rewards/redemption initiative.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01/02 discovery, D72).
+
+Claimed [2026-09-04 Fri]: into initiative docs/2026-09-04-chore-lifecycle/ (Chore lifecycle), whose §Overview names closing this entry as its third change. The objection recorded above — that a date-bounded roster cannot handle deletions, since a deleted chore leaves no row to bound against — was removed rather than solved: [[file:decisions.org::#d78][D78]] replaces deletion with archive, so every chore keeps its row and its one lifetime interval ([[file:decisions.org::#d79][D79]]).
+
+Done [2026-09-05 Sat 12:12]: closed in both directions by [[file:decisions.org::#d81][D81]] — the roster bound landed on three query sites ([[file:decisions.org::#d89][D89]] corrected the classification from two), shipped as chore-lifecycle Story 02, with [[file:decisions.org::#d90][D90]] settling the bound's final form. Moved here at the Batch 1 gate per the initiative DESIGN's §Overview instruction. *Caveat carried forward:* the gate recorded the before/after per-kid balance comparison against a copy of the real database as a documented deferral, so the one-time balance shift this fix causes is still unverified against production data and is owed before the deploy.
