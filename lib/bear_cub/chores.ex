@@ -261,7 +261,9 @@ defmodule BearCub.Chores do
   end
 
   def change_chore(%Chore{} = chore, attrs \\ %{}) do
-    Chore.changeset(chore, attrs)
+    chore
+    |> Chore.with_default_shows_in()
+    |> Chore.changeset(attrs)
   end
 
   @doc """

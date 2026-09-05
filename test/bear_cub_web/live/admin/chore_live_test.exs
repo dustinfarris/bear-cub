@@ -219,10 +219,37 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert Chores.list_chores(kid_b, "morning") == []
     end
 
-    test "the routine field is not shown on create", %{conn: conn, kid_a: kid_a} do
+    test "the Shows in select is hidden when the Morning + Add link forces the bucket",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+
+      refute has_element?(view, "#chore_shows_in")
+    end
+
+    test "the Shows in select is hidden when the Evening + Add link forces the bucket",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=evening")
+
+      refute has_element?(view, "#chore_shows_in")
+    end
+
+    test "the Shows in select is shown when the Extras + Add link carries no routine param",
+         %{conn: conn, kid_a: kid_a} do
       {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
 
-      refute has_element?(view, "#chore_routine")
+      assert has_element?(view, "#chore_shows_in")
+    end
+
+    test "a forged shows_in cannot override the routine forced by the Morning + Add link",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+
+      render_submit(view, :save, %{
+        "chore" => %{"name" => "Sneaky", "icon" => "🕵️", "shows_in" => "extra_daily"}
+      })
+
+      assert [chore] = Chores.list_chores(kid_a, "morning")
+      assert chore.recurring? == false
     end
 
     test "creates an extra when the new-chore link carries no routine param",
@@ -238,6 +265,22 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       [created] = Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date())
       assert created.name == "Wash Car"
       assert created.routine == nil
+    end
+
+    test "the Extras + Add link's select creates a repeating extra in one step (D83)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      view
+      |> form("#chore-form", chore: %{name: "Water Plants", icon: "🪴", shows_in: "extra_daily"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      [created] = Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date())
+      assert created.name == "Water Plants"
+      assert created.routine == nil
+      assert created.recurring? == true
     end
 
     test "shows validation errors without saving", %{conn: conn, kid_a: kid_a} do
@@ -302,7 +345,7 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       refute render(edit_view) =~ "Delete"
     end
 
-    test "the edit form shows a single 'Shows in' select offering all three buckets",
+    test "the edit form shows a single 'Shows in' select offering all four buckets (D83)",
          %{conn: conn, kid_a: kid_a} do
       chore = chore_fixture(kid_a)
 
@@ -314,15 +357,38 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       options =
         html
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#chore_routine option")
+        |> LazyHTML.query("#chore_shows_in option")
 
-      assert LazyHTML.attribute(options, "value") == ["morning", "evening", ""]
+      assert LazyHTML.attribute(options, "value") == [
+               "morning",
+               "evening",
+               "extra",
+               "extra_daily"
+             ]
 
       assert options |> LazyHTML.to_tree() |> Enum.map(fn {"option", _, [text]} -> text end) == [
                "Morning routine",
                "Evening routine",
-               "After routines (extra)"
+               "After routines (extra)",
+               "After routines (repeats daily)"
              ]
+    end
+
+    test "the select preselects the stored bucket, including repeats daily (D83)",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", shows_in: "extra_daily"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      selected =
+        view
+        |> element("#chore_shows_in")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("option[selected]")
+        |> LazyHTML.attribute("value")
+
+      assert selected == ["extra_daily"]
     end
 
     test "reclassifying to extra via Edit saves routine nil and appends to the extras bucket",
@@ -333,7 +399,7 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
 
       view
-      |> form("#chore-form", chore: %{routine: ""})
+      |> form("#chore-form", chore: %{shows_in: "extra"})
       |> render_submit()
 
       assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
@@ -343,6 +409,54 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
       assert Enum.map(Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date()), & &1.id) ==
                [existing_extra.id, updated.id]
+    end
+
+    test "a one-off extra edits into a repeating one through the select",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", shows_in: "extra"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{shows_in: "extra_daily"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      updated = Chores.get_chore!(chore.id)
+      assert updated.routine == nil
+      assert updated.recurring? == true
+    end
+
+    test "a chore with completion history refuses a bucket change, with a hint to archive",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Brush Teeth", icon: "🪥", shows_in: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "admin")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      html =
+        view
+        |> form("#chore-form", chore: %{shows_in: "evening"})
+        |> render_submit()
+
+      assert html =~ "archive"
+      assert Chores.get_chore!(chore.id).routine == "morning"
+    end
+
+    test "a chore with completion history still allows the recurrence toggle (D85)",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", shows_in: "extra"})
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "admin")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{shows_in: "extra_daily"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+      assert Chores.get_chore!(chore.id).recurring? == true
     end
 
     test "the points input defaults to 5 and is present on the new-chore form",
@@ -390,7 +504,7 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
 
       view
-      |> form("#chore-form", chore: %{routine: "evening"})
+      |> form("#chore-form", chore: %{shows_in: "evening"})
       |> render_submit()
 
       assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")

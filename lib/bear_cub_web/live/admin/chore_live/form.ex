@@ -16,7 +16,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     chore = %Chore{kid_id: kid.id, routine: routine}
 
     socket
-    |> assign(page_title: "New Chore", kid: kid, chore: chore)
+    |> assign(page_title: "New Chore", kid: kid, chore: chore, show_shows_in?: is_nil(routine))
     |> assign(:form, to_form(Chores.change_chore(chore)))
   end
 
@@ -25,7 +25,7 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     kid = Chores.get_kid!(chore.kid_id)
 
     socket
-    |> assign(page_title: "Edit Chore", kid: kid, chore: chore)
+    |> assign(page_title: "Edit Chore", kid: kid, chore: chore, show_shows_in?: true)
     |> assign(:form, to_form(Chores.change_chore(chore)))
   end
 
@@ -49,10 +49,15 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
   end
 
   defp save_chore(socket, :new, params) do
-    # the routine field is hidden on create — the bucket comes from the
-    # URL param captured at mount (socket.assigns.chore.routine), not
-    # from the submitted form
-    params = Map.put(params, "routine", socket.assigns.chore.routine)
+    # the select is hidden when a routine was forced by the URL param —
+    # the bucket comes from that (socket.assigns.chore.routine), never
+    # from the submitted form; drop any forged "shows_in" so it cannot
+    # override the forced routine via the changeset's derivation
+    params =
+      case socket.assigns.chore.routine do
+        nil -> params
+        routine -> params |> Map.delete("shows_in") |> Map.put("routine", routine)
+      end
 
     case Chores.create_chore(socket.assigns.kid, params, LocalTime.now()) do
       {:ok, _chore} ->
@@ -94,14 +99,15 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
           <.input field={@form[:icon]} type="text" label="Icon (emoji)" placeholder="🪥" />
           <.input field={@form[:points]} type="number" label="Points" />
           <.input
-            :if={@live_action == :edit}
-            field={@form[:routine]}
+            :if={@show_shows_in?}
+            field={@form[:shows_in]}
             type="select"
             label="Shows in"
             options={[
               {"Morning routine", "morning"},
               {"Evening routine", "evening"},
-              {"After routines (extra)", ""}
+              {"After routines (extra)", "extra"},
+              {"After routines (repeats daily)", "extra_daily"}
             ]}
           />
 

@@ -223,6 +223,127 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "shows_in (Story 04, D83)" do
+    import BearCub.ChoresFixtures
+
+    test "shows_in \"morning\" derives routine morning and non-recurring" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", shows_in: "morning"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.routine == "morning"
+      assert chore.recurring? == false
+    end
+
+    test "shows_in \"evening\" derives routine evening and non-recurring" do
+      kid = kid_fixture()
+      attrs = %{name: "Pajamas On", icon: "🌙", shows_in: "evening"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.routine == "evening"
+      assert chore.recurring? == false
+    end
+
+    test "shows_in \"extra\" derives a nil-routine, non-recurring chore" do
+      kid = kid_fixture()
+      attrs = %{name: "Wash Car", icon: "🚗", shows_in: "extra"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.routine == nil
+      assert chore.recurring? == false
+    end
+
+    test "shows_in \"extra_daily\" derives a nil-routine, recurring chore" do
+      kid = kid_fixture()
+      attrs = %{name: "Wash Car", icon: "🚗", shows_in: "extra_daily"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.routine == nil
+      assert chore.recurring? == true
+    end
+
+    test "shows_in round-trips: change_chore/1 preselects the stored bucket" do
+      kid = kid_fixture()
+
+      for {shows_in, expected} <- [
+            {"morning", "morning"},
+            {"evening", "evening"},
+            {"extra", "extra"},
+            {"extra_daily", "extra_daily"}
+          ] do
+        attrs = %{name: "Chore", icon: "🧹", shows_in: shows_in}
+        {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+        assert Ecto.Changeset.get_field(Chores.change_chore(chore), :shows_in) == expected
+      end
+    end
+
+    test "reclassifying a recurring extra directly to a routine forces recurring? false (defence in depth)" do
+      kid = kid_fixture()
+
+      {:ok, chore} =
+        Chores.create_chore(
+          kid,
+          %{name: "Wash Car", icon: "🚗", shows_in: "extra_daily"},
+          la(~D[2026-07-10], ~T[08:00:00])
+        )
+
+      assert chore.recurring? == true
+
+      assert {:ok, updated} = Chores.update_chore(chore, %{routine: "morning"})
+      assert updated.routine == "morning"
+      assert updated.recurring? == false
+    end
+  end
+
+  describe "reclassification lock (Story 04, D84, D85)" do
+    import BearCub.ChoresFixtures
+
+    test "a chore with no completions can move to any other bucket" do
+      chore = chore_fixture(nil, %{routine: "morning"})
+
+      assert {:ok, updated} = Chores.update_chore(chore, %{shows_in: "extra"})
+      assert updated.routine == nil
+    end
+
+    test "a bucket change is refused once the chore has any completion" do
+      chore = chore_fixture(nil, %{routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "admin")
+
+      assert {:error, changeset} = Chores.update_chore(chore, %{shows_in: "evening"})
+      assert %{shows_in: [_]} = errors_on(changeset)
+      assert Chores.get_chore!(chore.id).routine == "morning"
+    end
+
+    test "an undone completion still counts as history for the lock" do
+      chore = chore_fixture(nil, %{routine: "morning"})
+      now = la(~D[2026-07-10], ~T[08:00:00])
+      {:ok, _} = Chores.complete_chore(chore, now, "admin")
+      {:ok, _} = Chores.undo_chore(chore, now)
+
+      assert {:error, _changeset} = Chores.update_chore(chore, %{shows_in: "extra"})
+    end
+
+    test "a failed completion still counts as history for the lock" do
+      chore = chore_fixture(nil, %{routine: "morning"})
+      now = la(~D[2026-07-10], ~T[08:00:00])
+      {:ok, _} = Chores.complete_chore(chore, now, "admin")
+      {:ok, _} = Chores.fail_chore(chore, now)
+
+      assert {:error, _changeset} = Chores.update_chore(chore, %{shows_in: "extra"})
+    end
+
+    test "the extra <-> extra_daily toggle stays open whatever the completion history (D85)" do
+      chore = chore_fixture(nil, %{routine: nil})
+      now = la(~D[2026-07-10], ~T[08:00:00])
+      {:ok, _} = Chores.complete_chore(chore, now, "admin")
+
+      assert {:ok, updated} = Chores.update_chore(chore, %{shows_in: "extra_daily"})
+      assert updated.recurring? == true
+      assert updated.routine == nil
+    end
+  end
+
   describe "chore ordering" do
     import BearCub.ChoresFixtures
 
