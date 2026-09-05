@@ -52,23 +52,79 @@ As a kid, I need the extras I am meant to do every day to come back every day �
 
 * Acceptance Criteria
 
-** [ ] A recurring extra completed yesterday is offered again today: it appears uncompleted at today's reveal and is tappable. (SC-2, D82)
-** [ ] A one-off extra completed on a prior day still never returns. (SC-2, D82, D28/D29 as narrowed)
-** [ ] Both kinds show as done for the rest of the day once tapped, and undo returns either to outstanding on the same day. (SC-2, D82)
-** [ ] Completing the same recurring extra on two days earns its points twice — the kid's total across those days is twice its value. (SC-2, D82)
-** [ ] Failing a recurring extra costs its points for that day only; the next day's card is unaffected. (SC-2, D82)
-** [ ] A recurring extra looks exactly like every other extra on the kiosk — no repeat marker and no other visual distinction. (D82)
-** [ ] An archived extra never appears, recurring or not. (SC-1, D82)
-** [ ] A recurring extra is never required and never part of a routine: completing or failing it moves no routine bonus. (SC-2, D82, D8)
-** [ ] Marking an already-retired one-off extra as repeating brings it back at the next reveal. (SC-2, D82)
-** [ ] On a day the morning routine is not completed inside its window the reveal does not happen and the recurring extra is unearnable that day, and the admin Today view's per-kid Extras section can still mark it on the kid's behalf. (D82, D33)
+** [X] A recurring extra completed yesterday is offered again today: it appears uncompleted at today's reveal and is tappable. (SC-2, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:38] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "list_extras/2 offers a recurring extra completed yesterday again today" and ~test/bear_cub_web/live/kiosk_live_test.exs~ "a recurring extra completed yesterday is present and tappable at today's reveal (Story 05, D82)", both passing. Implementation: the ~c.recurring? or c.id not in subquery(retired_ids)~ clause in ~list_extras/2~ (~lib/bear_cub/chores.ex~).
+:END:
+** [X] A one-off extra completed on a prior day still never returns. (SC-2, D82, D28/D29 as narrowed)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:38] \\
+  Verified by the pre-existing ~test/bear_cub/chores_test.exs~ "list_extras/2 excludes a retired extra — completed before today never returns", unmodified by this story and still passing against the new query — a non-recurring extra's ~recurring?~ defaults ~false~, so the ~c.id not in subquery(retired_ids)~ side of the disjunction still governs it.
+:END:
+** [X] Both kinds show as done for the rest of the day once tapped, and undo returns either to outstanding on the same day. (SC-2, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:38] \\
+  Non-recurring: pre-existing ~test/bear_cub/chores_test.exs~ "undoing a done-today extra returns it to outstanding in list_extras/2", unmodified, still passing. Recurring: new test "undoing a done-today recurring extra returns it to outstanding the same day" in the same file, passing — asserts done-today via ~current_completions/1~, then outstanding again after ~undo_chore/2~.
+:END:
+** [X] Completing the same recurring extra on two days earns its points twice — the kid's total across those days is twice its value. (SC-2, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:39] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "completing the same recurring extra on two days earns its points twice", passing — asserts ~earnings_by_kid/1~ is =5= after day one and =10= (2×5, cumulative-through-date) after day two, with no code change to ~extra_contribution/2~/~earnings_by_kid/1~ (confirmed via ~git diff~ scoped to ~lib/bear_cub/points.ex~ and ~lib/bear_cub/chores.ex~ — the points functions are untouched).
+:END:
+** [X] Failing a recurring extra costs its points for that day only; the next day's card is unaffected. (SC-2, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:39] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "failing a recurring extra costs its points that day only; the next day's card is unaffected", passing — asserts ~earnings_by_kid/1~ is =-5= on the fail day, then that the chore relists outstanding (no live completion) the next day via ~list_extras/2~ and ~current_completions/1~.
+:END:
+** [X] A recurring extra looks exactly like every other extra on the kiosk — no repeat marker and no other visual distinction. (D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:39] \\
+  Required no code change, verified rather than newly built: ~grep -rn "recurring" lib/bear_cub_web/~ returns zero matches, and ~git diff HEAD -- lib/bear_cub_web/live/kiosk_live.ex~ is empty — the kiosk template was genuinely untouched this session, so ~chore_row/1~ carries no recurring-related branch, class, or icon.
+:END:
+** [X] An archived extra never appears, recurring or not. (SC-1, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:39] \\
+  Non-recurring: pre-existing ~test/bear_cub/chores_test.exs~ "an archived extra vanishes from list_extras/2", unmodified, still passing. Recurring: new test "list_extras/2 excludes an archived recurring extra" in the same file, passing. Structurally guaranteed by query order: ~is_nil(c.archived_on)~ sits in the first ~where~ clause, evaluated before the recurring-or-retired disjunction (~lib/bear_cub/chores.ex~), so archival short-circuits regardless of ~recurring?~. LiveView: new test "an archived extra's card disappears live on the next :chores_changed broadcast" in ~kiosk_live_test.exs~, passing.
+:END:
+** [X] A recurring extra is never required and never part of a routine: completing or failing it moves no routine bonus. (SC-2, D82, D8)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  Structural, no new code needed. ~recurring?~ is not in the ~Chore~ changeset's ~cast/3~ allow-list (~lib/bear_cub/chores/chore.ex~) — it's only set via ~apply_shows_in/1~, which forces ~routine: nil~ whenever ~recurring?: true~ is chosen, and ~force_non_recurring_when_routine_present/1~ forces ~recurring?: false~ whenever ~routine~ is non-nil, so a recurring chore's ~routine~ is nil by construction in both directions. ~routine_day_contribution/3~ queries only ~c.routine == ^routine~ (=morning=/=evening=), so nil-routine chores can never enter its bonus computation. Full suite (548 tests) passes with no routine-bonus regression.
+:END:
+** [X] Marking an already-retired one-off extra as repeating brings it back at the next reveal. (SC-2, D82)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "flipping recurring? on for an already-retired extra brings it back at the next reveal", passing — retires a one-off extra, confirms ~list_extras/2~ excludes it, then ~update_chore(retired, %{shows_in: "extra_daily"})~ succeeds despite existing completion history (D85: ~check_reclassification_lock/2~ only fires on a ~routine~ change, and the extra↔extra_daily toggle never touches ~routine~), and ~list_extras/2~ then includes it again.
+:END:
+** [X] On a day the morning routine is not completed inside its window the reveal does not happen and the recurring extra is unearnable that day, and the admin Today view's per-kid Extras section can still mark it on the kid's behalf. (D82, D33)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  Verified as unchanged existing behavior — ~git diff HEAD -- lib/bear_cub_web/live/admin/today_live.ex~ is empty. Reveal gating is purely kiosk-side UI state (~kiosk_live.ex~'s band/reveal condition), never consulted by ~list_extras/2~ itself; ~admin/today_live.ex~ populates its per-kid extras section via the same ~list_extras/2~ with no dependency on kiosk reveal state, and its on-behalf toggle path (~toggle-chore~ → ~Chores.toggle_completion/3~) has no routine-window gate. No new test targets this AC specifically (it is a cross-cutting absence-of-gating property on unmodified code), but the mechanism was traced end to end and the full suite shows no regression.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  All 10 Acceptance Criteria above are marked ~[X]~ with LOGBOOK evidence; none left ~[ ]~ or ~[-]~.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  Six new tests in ~test/bear_cub/chores_test.exs~ ("recurring extras (Story 05, D82)" describe block) and two new tests in ~test/bear_cub_web/live/kiosk_live_test.exs~, plus the pre-existing extras tests that continue to pass against the changed query. ~mix precommit~ reports =Result: 548 passed=, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  ~mix format~ (part of ~mix precommit~) made no changes — the diff was already correctly formatted. The implementation is exactly the two-~where~-clause form specified in this story's Design excerpt, with an updated moduledoc; no debug statements or stray comments in the diff.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:40] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exits 0 with =Result: 548 passed=, run twice for confirmation.
+:END:
 
 * Technical Notes
 
