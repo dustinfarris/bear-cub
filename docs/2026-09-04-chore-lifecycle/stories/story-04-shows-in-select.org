@@ -55,21 +55,69 @@ As a parent, I need one control that says where a chore shows up — morning rou
 
 * Acceptance Criteria
 
-** [ ] The "Shows in" select offers four options — Morning routine, Evening routine, After routines (extra), After routines (repeats daily) — and each one round-trips: saving a chore under an option and reopening the form preselects that same option. (SC-2, D83)
-** [ ] The Extras "+ Add" link shows the select, so a parent creates a repeating extra in one step rather than creating it and then editing it. (SC-2, D83)
-** [ ] The Morning and Evening "+ Add" links still hide the select and file the new chore into the bucket that was tapped. (SC-2, D83)
-** [ ] A chore that shows in a routine is never marked as repeating: the invalid pair cannot be saved from any path, including the create path that sets the routine directly. (SC-2, D83)
-** [ ] A one-off extra can be edited into a repeating one through the select, and the change sticks on the chore. (SC-2, D83)
-** [ ] A chore with no completion rows at all can be re-filed into any other bucket — the "I filed it in the wrong bucket" case works. (SC-3, D84)
-** [ ] A chore with any completion row — including undone and failed ones — can no longer be moved between the morning, evening and extras buckets, and the parent is told to archive it and create a new one instead. (SC-3, SC-4, D84, human ruling [2026-09-04])
-** [ ] Switching an extra between one-off and repeating stays available whatever its completion history: the lock guards a change of routine bucket only. (SC-2, SC-3, D82, D84, human ruling [2026-09-04])
+** [X] The "Shows in" select offers four options — Morning routine, Evening routine, After routines (extra), After routines (repeats daily) — and each one round-trips: saving a chore under an option and reopening the form preselects that same option. (SC-2, D83)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~lib/bear_cub_web/live/admin/chore_live/form.ex:101-112~ binds the select to the virtual ~shows_in~ field with the four labeled options. ~test/bear_cub_web/live/admin/chore_live_test.exs:348-375~ ("the edit form shows a single 'Shows in' select offering all four buckets") asserts option values/labels; ~:377-392~ ("the select preselects the stored bucket, including repeats daily") confirms preselection. Unit-level round trip for all four values: ~test/bear_cub/chores_test.exs:265-279~. ~mix precommit~ green (540 tests).
+:END:
+** [X] The Extras "+ Add" link shows the select, so a parent creates a repeating extra in one step rather than creating it and then editing it. (SC-2, D83)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~lib/bear_cub_web/live/admin/chore_live/index.ex:117-124~'s Extras link carries no ~routine~ param; ~form.ex:19~ sets ~show_shows_in?: is_nil(routine)~. Verified by ~test/bear_cub_web/live/admin/chore_live_test.exs:236-241~ (select shown) and ~:270-284~ ("the Extras + Add link's select creates a repeating extra in one step (D83)").
+:END:
+** [X] The Morning and Evening "+ Add" links still hide the select and file the new chore into the bucket that was tapped. (SC-2, D83)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~form.ex:15-19~ pins ~routine~ from the URL param and hides the select. Verified by ~chore_live_test.exs:222-227~ and ~:229-234~ (select hidden for morning/evening), plus ~:149-165~/~:188-200~ (chore filed into the tapped bucket).
+:END:
+** [X] A chore that shows in a routine is never marked as repeating: the invalid pair cannot be saved from any path, including the create path that sets the routine directly. (SC-2, D83)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~recurring?~ is not in the changeset's ~cast/3~ field list (~chore.ex:39~), so it can never be forged directly; ~force_non_recurring_when_routine_present/1~ (~chore.ex:88-93~) is the defence-in-depth for the direct-~routine~ create path. Verified by ~chores_test.exs:281-296~ (direct routine set forces ~recurring?~ false) and ~chore_live_test.exs:243-253~ ("a forged shows_in cannot override the routine forced by the Morning + Add link").
+:END:
+** [X] A one-off extra can be edited into a repeating one through the select, and the change sticks on the chore. (SC-2, D83)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  Verified by ~chore_live_test.exs:414-429~ ("a one-off extra edits into a repeating one through the select").
+:END:
+** [X] A chore with no completion rows at all can be re-filed into any other bucket — the "I filed it in the wrong bucket" case works. (SC-3, D84)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  Verified by ~chores_test.exs:302-307~ ("a chore with no completions can move to any other bucket").
+:END:
+** [X] A chore with any completion row — including undone and failed ones — can no longer be moved between the morning, evening and extras buckets, and the parent is told to archive it and create a new one instead. (SC-3, SC-4, D84, human ruling [2026-09-04])
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~check_reclassification_lock/2~ (~chore.ex:101-119~) runs a ~Repo.exists?~ check over completions when the derived ~routine~ differs from the stored one, adding an error hinting to archive. Unit tests: ~chores_test.exs:309-316~ (plain completion), ~:318-325~ (undone), ~:327-334~ (failed) — all assert ~{:error, changeset}~ and an unchanged ~routine~. LiveView: ~chore_live_test.exs:431-445~ asserts the rendered error text contains "archive" and the stored routine is unchanged.
+:END:
+** [X] Switching an extra between one-off and repeating stays available whatever its completion history: the lock guards a change of routine bucket only. (SC-2, SC-3, D82, D84, human ruling [2026-09-04])
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:12] \\
+  ~check_reclassification_lock/2~ inspects only ~fetch_change(changeset, :routine)~, never ~:recurring?~, so the toggle structurally bypasses the lock. Verified by ~chores_test.exs:336-344~ and ~chore_live_test.exs:447-460~ ("a chore with completion history still allows the recurrence toggle (D85)").
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:14] \\
+  All 8 Acceptance Criteria checkboxes above are marked ~[X]~ with LOGBOOK entries citing specific tests; none required removal or deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:14] \\
+  ~mix test test/bear_cub/chores_test.exs test/bear_cub_web/live/admin/chore_live_test.exs~ → 144 passed, 0 failures. Full suite via ~mix precommit~ → 540 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:14] \\
+  Spot-checked ~chore.ex~, ~chores.ex~, ~form.ex~, ~index.ex~: ~<.form>~/~<.input>~ used throughout the template (no raw HTML form or changeset-in-template), ~recurring?~/~kid_id~/~position~ excluded from ~cast/3~, ~get_field~/~fetch_change~ used instead of struct/map access on the changeset, predicate naming (~recurring?~) correct. ~mix format --check-formatted~ clean on all touched files.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 11:14] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) run twice: exit code 0 both times, 540 tests passed, no compile warnings, no format diffs, nothing unused.
+:END:
 
 * Technical Notes
 
