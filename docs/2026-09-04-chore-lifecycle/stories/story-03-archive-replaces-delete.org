@@ -33,7 +33,7 @@ active_from <= D and (is_nil(archived_on) or archived_on > D)
 
 Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
 
-The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+The two halves are written differently, and deliberately. ~archived_on~ is compared through ~is_nil(archived_on) or archived_on > day~ because that column is genuinely nullable and nil *means* live. ~active_from~ is compared directly: §Migration and backfill gives it a ~NOT NULL~ constraint with a constant default, and SQLite enforces that on insert and update alike, so there is no null for a tolerant disjunction to catch ([[file:../../decisions.org::#d90][D90]]). The constraint is the protection, and it is the stronger kind — it makes the bad state impossible rather than survivable. What guards the reasoning behind it is a test asserting the database rejects a null ~active_from~: if anyone ever relaxes the column that test fails, and the three date bounds must regain the tolerant half before the change ships, or a null would read as "not yet live", shrink a historical roster and hand out a bonus nobody earned.
 
 
 ** Archive lifecycle
@@ -52,13 +52,13 @@ The ~on_delete: :delete_all~ FK on ~completions.chore_id~ (~priv/repo/migrations
 
 ** Which queries filter, and how
 
-All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
+All fifteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
 
 *Today's surfaces — filter on ~is_nil(archived_on)~ alone* (8 sites): ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses, both ~next_position/2~ clauses. The liveness predicate collapses to that for ~D = today~: ~active_from~ is set at creation and can never be in the future, so its half always holds today, and ~archived_on~ can only ever be today or in the past, so "not archived" and "live today" coincide. ~list_chores/2~ therefore keeps its current signature with no date argument. Excluding archived rows from ~neighbor/2~ and ~next_position/2~ mirrors ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left by archived rows are a non-issue.
 
-*The points derivation — full date-bounded predicate* (2 sites): the roster query inside ~routine_day_contribution/3~, and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~. These are the only two places that ask about days other than today.
+*The points derivation — full date-bounded predicate* (3 sites): the roster query inside ~routine_day_contribution/3~, the ~chores~ join inside ~routine_days_by_kid/1~'s per-~(kid_id, routine, local_date)~ chore-count subquery, and ~routine_days_by_kid/1~'s own main aggregate join. These are the only places that ask about days other than today. The main aggregate is in this group and not the next one because it is where completed and required are *compared*, and the two sides must be drawn from the same roster ([[file:../../decisions.org::#d89][D89]]) — see §The date-bounded roster.
 
-*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and ~routine_days_by_kid/1~'s main aggregate. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed.
+*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and the day-enumeration subquery inside ~routine_days_by_kid/1~ that derives the distinct ~(kid, routine, day)~ set. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed. The day-enumeration join belongs here for the same reason: which days get *asked about* is a question about completions, and a day whose roster turns out to be empty simply scores 0.
 
 
 ** Testing (excerpt)
@@ -105,7 +105,7 @@ The Design excerpt above is the source of truth for this story; DESIGN.org is br
 
 This story depends on Story 01 for the ~archived_on~ column and on Story 02 for the date-bounded roster — with the bound already shipped, the first chore a parent archives is scored correctly on every past day, which is the whole reason the roster story precedes this one.
 
-Eight of the fourteen ~Chore~ query sites change here, all in ~lib/bear_cub/chores.ex~ and all to the same ~is_nil(archived_on)~ shape: ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses and both ~next_position/2~ clauses. ~list_chores/2~ keeps its current signature — no date argument, per the excerpt's collapse argument. The archived-neighbour behaviour mirrors the shipped ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left behind by archived rows need no repair pass.
+Eight of the fifteen ~Chore~ query sites change here, all in ~lib/bear_cub/chores.ex~ and all to the same ~is_nil(archived_on)~ shape: ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses and both ~next_position/2~ clauses. ~list_chores/2~ keeps its current signature — no date argument, per the excerpt's collapse argument. The archived-neighbour behaviour mirrors the shipped ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left behind by archived rows need no repair pass.
 
 ~archive_chore/2~ takes the chore and the caller's local datetime, stamps ~archived_on~ and broadcasts through the existing ~broadcast_change/1~ path, so the kiosk card disappears with no new PubSub wiring. ~admin/chore_live/form.ex~'s ~"delete"~ handler becomes the archive handler in place — its current comment about deletion cascading completions (a deliberate contrast with mvp/FR-17) goes with it, since after this story nothing in the app cascades.
 

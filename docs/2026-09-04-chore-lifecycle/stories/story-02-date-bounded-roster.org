@@ -17,7 +17,7 @@ active_from <= D and (is_nil(archived_on) or archived_on > D)
 
 Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
 
-The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+The two halves are written differently, and deliberately. ~archived_on~ is compared through ~is_nil(archived_on) or archived_on > day~ because that column is genuinely nullable and nil *means* live. ~active_from~ is compared directly: §Migration and backfill gives it a ~NOT NULL~ constraint with a constant default, and SQLite enforces that on insert and update alike, so there is no null for a tolerant disjunction to catch ([[file:../../decisions.org::#d90][D90]]). The constraint is the protection, and it is the stronger kind — it makes the bad state impossible rather than survivable. What guards the reasoning behind it is a test asserting the database rejects a null ~active_from~: if anyone ever relaxes the column that test fails, and the three date bounds must regain the tolerant half before the change ships, or a null would read as "not yet live", shrink a historical roster and hand out a bonus nobody earned.
 
 
 ** Which queries filter, and how
@@ -70,20 +70,64 @@ As a parent, I need a past day's routine bonus scored against the chores that we
 
 * Acceptance Criteria
 
-** [ ] A routine chore added today leaves every past routine bonus exactly as it stood: a morning routine that was complete yesterday still scores its bonus after today's addition. (SC-3, D81)
-** [ ] A chore whose ~archived_on~ falls on a given local date counts toward that routine's roster for every day before that date and not for the date itself, so ending a chore can never retroactively grant a bonus that was never earned. (SC-3, SC-5, D81)
-** [ ] The two derivations agree pointwise: ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ produce the same contribution for every kid, routine and day over a fixture containing both a chore added mid-history and a chore archived mid-history. (SC-3, SC-5, D81)
-** [ ] The grouped derivation still runs as a single query whose count does not grow with the number of kids or the length of history, so it stays safe to re-run on every ~:chores_changed~ re-render. (SC-5, D81, D72)
-** [ ] A day on which a kid completed nothing still produces no row and contributes 0, exactly as before. (SC-3, D81)
-** [ ] Points already earned from extras are untouched by the bound: every completion of every ~routine = nil~ chore is still summed, whatever that chore's lifetime columns say. (SC-1, SC-5, D81)
-** [ ] A chore row carrying a null ~active_from~ is counted as live rather than skipped — the bound fails toward a larger roster, never toward a fabricated bonus. (SC-5, D80)
+** [X] A routine chore added today leaves every past routine bonus exactly as it stood: a morning routine that was complete yesterday still scores its bonus after today's addition. (SC-3, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a routine chore added today leaves a past completed routine-day at +R", which asserts through both ~routine_day_contribution/3~ and ~earnings_by_kid/1~, and by the inverted pinning test in ~test/bear_cub/points_test.exs~ "adding a routine chore today leaves a past routine-day's +R intact", which asserts through ~Points.balance/2~ and ~Points.balances/1~. Discriminating rather than vacuous: a story-verifier mutation deleting the ~active_from~ half of the bound from the roster query, and one deleting the whole bound, each fail these tests. The fixture dates its chores through ~create_chore/3~ ([[file:../../decisions.org::#d86][D86]]) — with the epoch default every chore would be live on the past day and the assertion would pass without meaning.
+:END:
+** [X] A chore whose ~archived_on~ falls on a given local date counts toward that routine's roster for every day before that date and not for the date itself, so ending a chore can never retroactively grant a bonus that was never earned. (SC-3, SC-5, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a chore counts for every day before its archive date and not for the date itself" (both edges in one test), "archiving a chore never retroactively grants a past day's bonus" (the fabrication direction the criterion names), and "a chore completed on the day it is archived stops counting toward that day's roster". Both boundary directions are pinned: mutations loosening ~archived_on > day~ to ~>=~, deleting the ~archived_on~ half, and rewriting the bound as archive-equals-delete each fail these tests.
+:END:
+** [X] The two derivations agree pointwise: ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ produce the same contribution for every kid, routine and day over a fixture containing both a chore added mid-history and a chore archived mid-history. (SC-3, SC-5, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by two tests in ~test/bear_cub/chores_test.exs~ that cover different axes and neither of which subsumes the other. "each (kid, routine, day) cell agrees across an addition and an archive" is the per-cell comparison the criterion names: it differences ~earnings_by_kid/1~ across consecutive cutoff dates to isolate one kid-day, and gives each kid a single routine so that kid-day is exactly one cell, then asserts equality against ~routine_day_contribution/3~ over a fixture with a chore added mid-history and one archived mid-history after being completed on its archive day. "the grouped and per-kid totals agree across an addition and an archive" carries the routine axis on a mixed fixture, and is the only test in the suite that catches a ~(kid, routine)~ confusion in the grouped joins. A first attempt at closing this — adding single-routine days to the mixed fixture — was proven inert by mutation testing and reverted; the per-cell test replaced it. Stated limitation, not hidden: any perturbation of the grouped per-cell values whose per-kid sum is zero at every cutoff date is unobservable through a public total, because ~routine_days_by_kid/1~ is private and ~earnings_by_kid/1~ aggregates.
+:END:
+** [X] The grouped derivation still runs as a single query whose count does not grow with the number of kids or the length of history, so it stays safe to re-run on every ~:chores_changed~ re-render. (SC-5, D81, D72)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by three tests in ~test/bear_cub/chores_test.exs~: "a whole-render read is two queries: one extras leg, one routine leg" pins the absolute count, "the query count for a whole-render read does not grow with days of history" (60 days) and "the query count does not grow with the number of kids" (8 kids) pin the growth axes. The absolute pin was added during close-out because the two constancy tests alone accept a routine leg split into two constant statements — a mutation doing exactly that fails only the new test. The routine leg's SQL was dumped and confirmed one statement with the date-bounded roster count nested as a subquery-in-subquery, no N+1; a mutation reintroducing a per-kid loop fails all three.
+:END:
+** [X] A day on which a kid completed nothing still produces no row and contributes 0, exactly as before. (SC-3, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a day on which the kid completed nothing produces no row and contributes 0", which asserts both the value through ~earnings/2~ and the map shape through ~earnings_by_kid/1~ (=%{}=, not a zero entry). Both legs derive their day set from ~completions~ through inner joins, so no phantom row is constructible; a mutation emitting a zero entry per kid fails this test.
+:END:
+** [X] Points already earned from extras are untouched by the bound: every completion of every ~routine = nil~ chore is still summed, whatever that chore's lifetime columns say. (SC-1, SC-5, D81)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:16] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "extras are never bounded: an archived extra's completions still sum (D81)", which stamps a deliberately impossible lifetime (~active_from~ in the future, ~archived_on~ in the past) and asserts the points still sum through both ~earnings/2~ and ~earnings_by_kid/1~. The diff confirms ~extras_by_kid/1~ and ~earnings/2~'s extras leg are untouched; a mutation applying the liveness bound to either extras leg fails this test, and it is the only guard on that invariant.
+:END:
+** [-] A chore row carrying a null ~active_from~ is counted as live rather than skipped — the bound fails toward a larger roster, never toward a fabricated bonus. (SC-5, D80)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 08:16] \\
+  Superseded, not merely unreachable — [[file:../../decisions.org::#d90][D90]] removes this criterion's subject. Close-out established that the tolerance could never be reached: [[file:../../decisions.org::#d80][D80]]'s own migration gives ~chores.active_from~ a ~NOT NULL~ constraint, SQLite enforces it on insert and update alike, and a mutation deleting ~is_nil(active_from) or~ from all three bound sites left the whole suite green. Ruled by the human on that evidence: the constraint is the protection and it strictly dominates a branch no row can reach, so the tolerant half is gone from all three queries and the bound compares ~active_from~ directly. What preserves [[file:../../decisions.org::#d80][D80]]'s safety argument is the tripwire rather than the branch — the test "the database rejects an update setting active_from to null" now carries a comment saying that if it ever fails, the bounds must regain their tolerance before the change ships. Rejected alternatives are recorded in [[file:../../decisions.org::#d90][D90]]: relaxing the column so the tolerance became real would let a null slip past the backfill's epoch-floor sentinel, and keeping the branch as defence in depth buys nothing from a layer that cannot fail, only rot.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 08:16] \\
+  AC-1 through AC-6 are ~[X]~ with mutation-tested evidence. AC-7 is ~[-]~ — a documented removal: the human ruled its subject away in [[file:../../decisions.org::#d90][D90]] rather than deferring it, and the ruling, its evidence and its rejected alternatives are recorded both in that entry and in the criterion's own LOGBOOK. Every criterion is now in one of the three permitted end-states.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 08:16] \\
+  Every criterion still standing is covered by named, discriminating tests; ~mix precommit~ is green at =Result: 508 passed=. Each AC-1..AC-6 test was confirmed non-vacuous by mutating the shipped bound and observing exactly the expected failures: deleting the ~active_from~ half fails the two AC-1 tests; ~archived_on > day~ loosened to ~>=~ fails the AC-2 boundary test; reverting the completion-leg bound fails the two AC-3 agreement tests and the archive-day test; injecting one extra constant query fails only the AC-4 absolute-count test; emitting a zero entry per kid fails the AC-5 test; bounding the extras leg fails only the AC-6 test. AC-7 no longer needs a test — [[file:../../decisions.org::#d90][D90]] removed the branch it described, and the constraint that makes that safe is itself pinned by the tripwire test named in AC-7's LOGBOOK.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:24] \\
+  Verified: ~mix format --check-formatted~ exits 0; ~compile --warnings-as-errors~ clean. No comment or doc line in the diff exceeds 80 columns (the moduledoc/comment wrap rule). No ~DateTime.utc_now~/~Date.utc_today~ in ~lib/bear_cub/chores.ex~ — the new private ~live_chore_counts/1~ takes the local date as an argument, matching the standing invariant; the new tests contain no clock reads and every date is a literal sigil. The ~fragment~ hazard is not tripped: the change introduces no fragments, and the ~recurring?~/~is_recurring~ mapping is never referenced by the changed code — confirmed against the dumped SQL, which spells ~active_from~ and ~archived_on~ correctly.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 07:24] \\
+  Verified: this repo declares ~mix precommit~ as its ~Verify command:~, and it exits 0 with =Result: 508 passed=, no warnings. Because that alias runs ~format~ (which rewrites) rather than ~format --check-formatted~, the stricter reading was evidenced separately: ~mix format --check-formatted~ exits 0, ~mix deps.unlock --check-unused~ exits 0, ~mix.lock~'s checksum is unchanged across the run, and ~git status~ lists the same files before and after — so the pass is not an artifact of the format step repairing the tree. Both the repo's declaration and the kit default parenthesised in this line pass.
+:END:
 
 * Technical Notes
 
@@ -100,3 +144,9 @@ Keeping ~routine_days_by_kid/1~ a single query is load-bearing, not tidiness —
 Story 01's ~create_chore/3~ ruling ([[file:../../decisions.org::#d86][D86]]) is what makes this story's tests expressible: ~chore_fixture~ (~test/support/fixtures/chores_fixtures.ex~) needs to express a chore that became live on a past day, or a "chore added today" assertion is silently vacuous — every fixture chore would carry today's ~active_from~, yesterday's roster would be empty, and the bonus the test claims to protect would never have existed.
 
 The ~fragment~ hazard from the Data Model applies inside ~routine_days_by_kid/1~, which is fragment-heavy: any raw SQL there must spell real column names.
+
+*Deferred discovery: the Design excerpt's site classification is wrong for one site.* The excerpt lists ~routine_days_by_kid/1~'s main aggregate among the four *deliberately unfiltered* sites, and Technical Notes says exactly two sites change. Three changed: the main aggregate's ~Completion~→~Chore~ join carries the bound too. It is forced, not gratuitous — ~routine_day_contribution/3~ scopes its completions fetch to the *live* roster, so a chore completed in the morning and archived that afternoon is excluded from ~complete?~ on the per-kid side; leaving the grouped side unbounded makes ~live_count~ count it while ~chore_count~ does not, and the two derivations disagree on exactly the archive day, costing the kid a bonus they earned. Confirmed by mutation: restoring the excerpt's unfiltered join fails both agreement tests and the archive-day test, and nothing else. The excerpt's own pointwise-agreement requirement contradicts its site classification; the code is right and the excerpt needs the amendment. Needs a D-entry, DESIGN body edit and Advisory via /workflow-kit:update-design.
+
+*Deferred discovery: the ~Chore~ query-site census moves from fourteen to fifteen.* ~live_chore_counts/1~'s ~routine_days~ subquery introduces a new ~join: ch in Chore~ that the excerpt's inventory does not account for. Story 03 is scoped as "the eight today's-surface sites" against the fourteen-site census, which now needs restating.
+
+*Deferred discovery: the before/after real-database comparison has no artifact.* The excerpt's §Testing requires the one-time balance shift to be verified by a before/after comparison against a copy of the real database, "not discovered on the fridge". Nothing in the tree evidences it, and the test suite cannot satisfy it — it is a pre-deploy human check that belongs to the batch gate alongside the PRD §7 on-device checklist.

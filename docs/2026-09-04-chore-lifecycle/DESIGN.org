@@ -106,7 +106,7 @@ active_from <= D and (is_nil(archived_on) or archived_on > D)
 
 Archiving today therefore drops the chore out of *today*, which matches what the kiosk shows the instant Archive is tapped — a card that is not there cannot be required.
 
-The bound is written *null-tolerant* in the queries (~is_nil(active_from) or active_from <= day~) so a stray null, should one ever appear, fails toward a larger roster rather than a fabricated bonus.
+The two halves are written differently, and deliberately. ~archived_on~ is compared through ~is_nil(archived_on) or archived_on > day~ because that column is genuinely nullable and nil *means* live. ~active_from~ is compared directly: §Migration and backfill gives it a ~NOT NULL~ constraint with a constant default, and SQLite enforces that on insert and update alike, so there is no null for a tolerant disjunction to catch ([[file:../decisions.org::#d90][D90]]). The constraint is the protection, and it is the stronger kind — it makes the bad state impossible rather than survivable. What guards the reasoning behind it is a test asserting the database rejects a null ~active_from~: if anyone ever relaxes the column that test fails, and the three date bounds must regain the tolerant half before the change ships, or a null would read as "not yet live", shrink a historical roster and hand out a bonus nobody earned.
 
 ** Archive lifecycle
 
@@ -124,13 +124,13 @@ The ~on_delete: :delete_all~ FK on ~completions.chore_id~ (~priv/repo/migrations
 
 ** Which queries filter, and how
 
-All fourteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
+All fifteen ~Chore~ query sites live in ~BearCub.Chores~, so filtering has exactly one home. They fall into three groups.
 
 *Today's surfaces — filter on ~is_nil(archived_on)~ alone* (8 sites): ~list_chores/2~, ~list_extras/2~, the four ~neighbor/2~ clauses, both ~next_position/2~ clauses. The liveness predicate collapses to that for ~D = today~: ~active_from~ is set at creation and can never be in the future, so its half always holds today, and ~archived_on~ can only ever be today or in the past, so "not archived" and "live today" coincide. ~list_chores/2~ therefore keeps its current signature with no date argument. Excluding archived rows from ~neighbor/2~ and ~next_position/2~ mirrors ~move_reward/2~; ~move_chore/2~ is already position-gap tolerant, so gaps left by archived rows are a non-issue.
 
-*The points derivation — full date-bounded predicate* (2 sites): the roster query inside ~routine_day_contribution/3~, and the ~chore_counts~ subquery inside ~routine_days_by_kid/1~. These are the only two places that ask about days other than today.
+*The points derivation — full date-bounded predicate* (3 sites): the roster query inside ~routine_day_contribution/3~, the ~chores~ join inside ~routine_days_by_kid/1~'s per-~(kid_id, routine, local_date)~ chore-count subquery, and ~routine_days_by_kid/1~'s own main aggregate join. These are the only places that ask about days other than today. The main aggregate is in this group and not the next one because it is where completed and required are *compared*, and the two sides must be drawn from the same roster ([[file:../decisions.org::#d89][D89]]) — see §The date-bounded roster.
 
-*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and ~routine_days_by_kid/1~'s main aggregate. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed.
+*Deliberately unfiltered* (4 sites): the ~Completion~→~Chore~ joins in ~earnings/2~ (both legs), ~extras_by_kid/1~, and the day-enumeration subquery inside ~routine_days_by_kid/1~ that derives the distinct ~(kid, routine, day)~ set. These enumerate what was *completed*, not what was required — an archived chore's completion days must still be scored, and its extra points must still be summed. The day-enumeration join belongs here for the same reason: which days get *asked about* is a question about completions, and a day whose roster turns out to be empty simply scores 0.
 
 ** The date-bounded roster
 
@@ -147,6 +147,8 @@ from c in Chore,
 ~routine_days_by_kid/1~ is the harder one. Today it precomputes one ~chore_count~ per ~(kid_id, routine)~ and joins it against the per-day aggregate — but roster size is now a function of the day, so that subquery must become per-~(kid_id, routine, local_date)~. The shape: derive the distinct ~(kid, routine, day)~ set from completions as it does now, then join ~chores~ against *that* on the range condition (~active_from <= day and (archived_on is null or archived_on > day)~) and count.
 
 Ecto expresses the range join directly, and it *stays one query*. Preserving that matters: the grouped-query property ([[file:../decisions.org::#d72][D72]] — constant queries regardless of kid count or history length) is what makes this safe to run on every ~:chores_changed~ re-render. A day with no completions still produces no row and contributes 0, exactly as now.
+
+*The completion leg carries the same bound, and this is not optional* ([[file:../decisions.org::#d89][D89]]). ~routine_day_contribution/3~ fetches completions only for chores in the bounded roster, so a chore that is off the roster for a day contributes nothing that day — not to ~complete?~, not to ~failed?~. The grouped aggregate must exclude the same rows or it compares a ~live_count~ that includes them against a ~chore_count~ that does not. The case is ordinary: a kid finishes a chore in the morning, a parent archives it that afternoon, ~archived_on~ is today, and the chore leaves today's roster while its completion for today still exists. Unbounded, the grouped query counts that completion, finds one more live chore than the roster holds, and scores the day incomplete — costing the kid a bonus they earned. So the aggregate's ~Completion~→~Chore~ join carries the predicate too, evaluated against ~c.local_date~.
 
 *What this fixes.* Adding a morning chore today stops retroactively voiding every past morning bonus, and archiving one stops retroactively granting bonuses never earned.
 
@@ -212,7 +214,7 @@ Per the mvp DESIGN's testing strategy (mvp/§11) and the repo's TDD conventions,
 
 *Changeset*: ~shows_in~ round-trips all four values; a non-nil ~routine~ forces ~recurring?: false~; a *bucket* change is refused once completions exist, while the =extra= ↔ =extra_daily= toggle is accepted whatever the chore's completion history.
 
-*Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
+*Roster — the tests that matter most*: a chore added today leaves yesterday's bonus intact; a chore archived today still counts for every day before the archive and not for today itself; a chore *completed in the morning and archived that afternoon* still scores the day's bonus, which is the case that separates the two derivations if either leg goes unbounded ([[file:../decisions.org::#d89][D89]]); and a *pointwise-equality test* between ~routine_days_by_kid/1~ and ~routine_day_contribution/3~ over a fixture containing both an addition and an archive — that pairing is what keeps the fast grouped query honest against the readable per-kid one.
 
 *LiveView, admin* (~admin/chore_live_test.exs~): the form archives with a flash and a redirect and offers no Delete anywhere; a repeating extra is created in one step from the Extras "+ Add"; a one-off edits into repeating; the select locks on a chore with history.
 
@@ -281,3 +283,15 @@ and asserted that taking the ~MIN~ "absorbs the UTC-versus-local skew in ~DATE(i
 /Sections affected: §Testing/
 
 This document previously said, without qualification, that "no new test derives a date from the wall clock". Read literally that forbids pinning the two paths that read the clock by design — the admin create form and the seed script — and implementation found a real bug on one of them, so the literal reading leaves a hole rather than enforcing rigor. It still looks like the stricter, safer rule, and the obvious way to keep it is an injectable clock at the web edge; [[file:../decisions.org::#d86][D86]] already rejected test expressibility as a reason to shape an API that way. Rationale: [[file:../decisions.org::#d88][D88]].
+
+** [2026-09-05 Sat 07:38] §Which queries filter listed the grouped aggregate as deliberately unfiltered, and the census said fourteen (D89)
+
+/Sections affected: §Which queries filter, and how; §The date-bounded roster/
+
+This document previously counted *fourteen* ~Chore~ query sites and split them 8 / 2 / 4, with ~routine_days_by_kid/1~'s main aggregate named among the four *deliberately unfiltered* — grouped there with ~earnings/2~'s two legs and ~extras_by_kid/1~ under the reasoning that they "enumerate what was completed, not what was required". §The date-bounded roster correspondingly described the change as landing on two sites. Both numbers are stale, and the classification is the part that could do damage: the reasoning is sound for the other three sites and reads as sound for this one, so a future session tidying the aggregate back to a plain ~on: ch.id == c.chore_id~ would look like it was restoring the design's own position. It would instead reintroduce the archive-day divergence — a chore completed in the morning and archived that afternoon inflates ~live_count~ past a ~chore_count~ that excludes it, and the kid loses a bonus they earned. The aggregate is a comparison, not an enumeration, and belongs with the date-bounded sites. Rationale: [[file:../decisions.org::#d89][D89]].
+
+** [2026-09-05 Sat 08:15] The date bound is no longer null-tolerant on ~active_from~ (D90)
+
+/Sections affected: §The liveness predicate; §The date-bounded roster/
+
+This document previously specified the bound as null-tolerant on *both* halves — ~is_nil(active_from) or active_from <= day~ — so that a stray null would fail toward a larger roster rather than a fabricated bonus, and the §The date-bounded roster snippet showed that form. The safety direction it picks is right, and that is exactly why it will keep looking like the careful choice: a reader meeting a bare ~active_from <= day~ may take it for an oversight and "restore" the disjunction. It is not an oversight. The column is ~NOT NULL~, so the tolerant half is unreachable — deleting it changed no test — and the constraint is the stronger protection because it makes the null impossible rather than survivable. Reintroducing the disjunction would not be wrong so much as inert, and it would restore the false impression of coverage this removed. The ~archived_on~ half keeps its ~is_nil~ check and always will: that column is nullable by design. Rationale: [[file:../decisions.org::#d90][D90]].
