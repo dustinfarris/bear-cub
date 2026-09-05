@@ -47,6 +47,10 @@ When code and these docs disagree, the docs win. DESIGN.org is amendable per the
 
 Pipeline from here: /workflow-kit:user-stories (batch-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close (gate close). One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
 
+Model routing: `.claude/settings.json` sets this repo's default model to Sonnet — builder altitude, where TDD implementation runs. Kit skills and agents pin their own model per stage (story-closeout and its verifier on Sonnet; user-stories, update-design, phase-close on Opus), so the one human routing step is the brainstorm: run `/model opus` before starting one. When a builder struggles, escalate context (the missing recipe in the story or CLAUDE.md) before escalating model.
+
+An implementation session refuses to start work over a dirty working tree; unexplained working-tree state is surfaced to the human, never classified-and-fixed by the session itself. (A session once misattributed and silently deleted the human's uncommitted scratch code — the incident this rule exists to prevent.)
+
 ## Design invariants (do not violate)
 
 - **Routines are app constants** (`:morning`/`:evening` — see `BearCub.Routines`), never DB rows. Windows live in `runtime.exs` (env-overridable). No routines table, no routine CRUD. (D8)
