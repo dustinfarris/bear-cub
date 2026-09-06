@@ -511,6 +511,86 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     end
   end
 
+  describe "standing row (Story 03, D96)" do
+    import BearCub.ChoresFixtures
+
+    setup do
+      kid = kid_fixture(%{name: "Kid C", color: "#a855f7", position: 2})
+      morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      evening_chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+
+      # captured once and reused everywhere below — never a second
+      # independent LocalTime.now() call, so a test that spans today's
+      # morning and yesterday's evening can't straddle a real midnight
+      now = LocalTime.now()
+      yesterday = DateTime.to_date(now) |> Date.add(-1)
+
+      %{
+        kid: kid,
+        morning_chore: morning_chore,
+        evening_chore: evening_chore,
+        now: now,
+        yesterday: yesterday
+      }
+    end
+
+    test "a kid with no chores at all is in good standing: three solid stars and the verdict text",
+         %{conn: conn} do
+      loner = kid_fixture(%{name: "Kid D", color: "#22c55e", position: 3})
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#standing-#{loner.id}", "In good standing")
+
+      document = LazyHTML.from_fragment(render(view))
+      stars = LazyHTML.query(document, "#standing-#{loner.id} .hero-star-solid")
+      assert Enum.count(stars) == 3
+    end
+
+    test "not in standing shows the muted verdict plus two chips labelled This morning / Last night",
+         %{conn: conn, kid: kid, morning_chore: morning_chore, now: now} do
+      {:ok, _} = Chores.complete_chore(morning_chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#standing-#{kid.id}", "Not in good standing")
+      assert has_element?(view, "#standing-chip-morning-#{kid.id}", "This morning ✓")
+      assert has_element?(view, "#standing-chip-evening-#{kid.id}", "Last night ✗")
+
+      # the copy hazard (design): never label the evening half "Evening"
+      standing_html = view |> element("#standing-#{kid.id}") |> render()
+      refute standing_html =~ "Evening"
+    end
+
+    test "a chip shows ✗ for a routine that was completed then failed, even after being redone",
+         %{conn: conn, kid: kid, evening_chore: evening_chore, yesterday: yesterday} do
+      t1 = la(yesterday, ~T[19:00:00])
+      t2 = la(yesterday, ~T[19:30:00])
+      t3 = la(yesterday, ~T[20:00:00])
+
+      {:ok, _} = Chores.complete_chore(evening_chore, t1, "kiosk")
+      {:ok, _} = Chores.fail_chore(evening_chore, t2)
+      {:ok, _} = Chores.complete_chore(evening_chore, t3, "admin")
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#standing-#{kid.id}", "Not in good standing")
+      assert has_element?(view, "#standing-chip-evening-#{kid.id}", "Last night ✗")
+    end
+
+    test "the standing row sits directly beneath the header and above the routine sections",
+         %{conn: conn, kid: kid} do
+      {:ok, _view, html} = live(conn, ~p"/admin")
+
+      {header_at, _} = :binary.match(html, kid.name)
+      {standing_at, _} = :binary.match(html, "standing-#{kid.id}")
+      {section_at, _} = :binary.match(html, "section-#{kid.id}-")
+
+      assert header_at < standing_at
+      assert standing_at < section_at
+    end
+  end
+
   describe "extras" do
     import BearCub.ChoresFixtures
 

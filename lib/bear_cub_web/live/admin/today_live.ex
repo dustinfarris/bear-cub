@@ -173,7 +173,8 @@ defmodule BearCubWeb.Admin.TodayLive do
           extras: extras,
           balance: Points.balance(kid, today),
           requests: Rewards.list_pending_redemptions(kid.id, today),
-          redemptions: Rewards.list_redemptions_today(kid.id, today)
+          redemptions: Rewards.list_redemptions_today(kid.id, today),
+          standing: Chores.standing(kid, today)
         }
       end
 
@@ -207,7 +208,8 @@ defmodule BearCubWeb.Admin.TodayLive do
               extras: extras,
               balance: balance,
               requests: requests,
-              redemptions: redemptions
+              redemptions: redemptions,
+              standing: standing
             } <- @cards
           }
           id={"today-kid-#{kid.id}"}
@@ -227,6 +229,8 @@ defmodule BearCubWeb.Admin.TodayLive do
               ★ {balance}
             </span>
           </header>
+
+          <.standing_row kid={kid} standing={standing} />
 
           <div :for={section <- sections} class="border-t border-base-200 first:border-t-0">
             <button
@@ -303,6 +307,42 @@ defmodule BearCubWeb.Admin.TodayLive do
     </Layouts.admin>
     """
   end
+
+  attr :kid, :map, required: true
+  attr :standing, :map, required: true
+
+  # Renders whenever Today renders, independent of the active routine
+  # window (D96) — the parent checking at 19:00 needs this settled
+  # regardless of which section is currently open.
+  defp standing_row(assigns) do
+    ~H"""
+    <div id={"standing-#{@kid.id}"} class="border-t border-base-200 px-5 py-3">
+      <div :if={@standing.standing?} class="flex items-center gap-1.5 text-success">
+        <.icon name="hero-star-solid" class="size-4" />
+        <.icon name="hero-star-solid" class="size-4" />
+        <.icon name="hero-star-solid" class="size-4" />
+        <span class="font-semibold">In good standing</span>
+      </div>
+
+      <div :if={!@standing.standing?} class="space-y-1.5">
+        <p class="font-semibold text-base-content/60">Not in good standing</p>
+        <div class="flex gap-3 text-sm">
+          <span id={"standing-chip-evening-#{@kid.id}"}>
+            Last night {half_mark(@standing.evening)}
+          </span>
+          <span id={"standing-chip-morning-#{@kid.id}"}>
+            This morning {half_mark(@standing.morning)}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # A half's chip is ✗ whenever unsatisfied *or* failed — the two causes
+  # are not distinguished on this surface (D96).
+  defp half_mark(%{complete?: true, failed?: false}), do: "✓"
+  defp half_mark(_), do: "✗"
 
   attr :row, :map, required: true
   attr :kid, :map, required: true
