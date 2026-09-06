@@ -1,0 +1,72 @@
+#+title: Story 03 — Admin: the standing verdict and which half broke it
+#+date: 2026-09-05
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Admin — ~Admin.TodayLive~
+
+A standing row directly beneath each kid's colored card header, above the routine sections. Phone-first and ~max-w-md~, so it stays compact.
+
+- *In standing*: three small ~hero-star-solid~ in success green with the text *In good standing*. Text is right here — admin's reader is a parent on a phone, not a pre-reader across a kitchen, so the kiosk's no-text rule does not carry over.
+- *Not in standing*: a muted *Not in good standing* verdict, followed by two half-chips.
+
+The half-chips are *Last night* and *This morning*, each showing ✓ or ✗. A chip shows ✗ whenever its half is unsatisfied *or* failed; the two causes are not distinguished on this surface.
+
+*** Why the chips are not redundant
+
+Admin already lists today's morning section with its ~done/total~, so "this morning" is partly visible. *Last night's evening routine is nowhere in the app today, on any surface.* That half is the genuinely new information and the one a parent cannot check any other way.
+
+*** The copy hazard
+
+Today's standing reads *last* night's evening routine; *tonight's* evening routine feeds *tomorrow's* standing. A parent glancing at the card at 20:00 while the evening routine is half-done can easily read the standing row as commenting on the routine in front of them. The chip label must be *Last night*, never *Evening*. This is a design constraint, not implementation taste.
+
+*** When it shows
+
+Whenever ~Admin.TodayLive~ renders, *independent of the routine window* — unlike the kiosk's morning-window-only lifetime. The parent checking at 19:00 whether today was a standing day is the case this exists for, and by then the verdict is settled.
+
+** Testing (excerpt)
+
+LiveView integration tests are acceptance criteria, not optional extras.
+
+*LiveView, admin* (~admin/today_live_test.exs~): the in-standing verdict; the not-in-standing verdict with the correct half-chips; the *Last night* label present.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d96][D96]] — Admin shows the verdict and which half broke it; the chips do not distinguish unfinished from failed.
+
+* User Story
+
+As a parent on my phone, I need to see at any hour whether each kid is in good standing today and — when they are not — which of the two routines broke it, so that I can settle the screen-time question without arguing from memory, and so I can finally see whether last night's evening routine was actually finished.
+
+* Acceptance Criteria
+
+** [ ] Each kid's card on the Today admin view carries a standing row directly beneath that kid's colored header and above the routine sections. (SC-4, D96)
+** [ ] A kid in good standing shows three small solid stars in success green together with the words *In good standing*. (SC-4, D96)
+** [ ] A kid not in good standing shows a muted *Not in good standing* verdict followed by two half-chips, one for each routine, each carrying a ✓ or an ✗. (SC-5, D96)
+** [ ] A half-chip shows ✗ whenever its routine was unfinished *or* was marked failed; the surface does not distinguish the two causes. (SC-5, D96)
+** [ ] The chip for the evening half is labelled *Last night* — never *Evening* — and the chip for the morning half is labelled *This morning*, so a parent looking at the card during tonight's routine cannot read the row as commenting on the routine in front of them. (SC-6, D96)
+** [ ] The standing row renders whenever the Today view renders, at any hour, independent of which routine window is active — including after the kids' screen is done for the night. (SC-4, D96)
+** [ ] The row stays phone-first and compact inside the view's existing ~max-w-md~ column. (SC-4, D96)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story's spec; DESIGN.org is broader context only.
+
+- This story depends on Story 02, which supplies ~Chores.standing/2~ and its per-half booleans.
+- It is sequenced before the kiosk story deliberately: this is the surface that says the verdict in words, so it makes standing observable while the kiosk's wordless treatment is being built and QA'd on-device.
+- ~Admin.TodayLive~'s ~load/2~ already receives a local datetime at every entry point and derives ~today~ from it; the standing call takes that same date. No clock read is added.
+- A chip's ✗ condition is "not satisfied or failed" — with ~standing/2~ returning raw ~empty?~/~complete?~/~failed?~ per half, the render resolves it; the derivation is not changed to pre-resolve an atom.
+- This surface is advisory only: nothing on this view gates or is gated on standing.

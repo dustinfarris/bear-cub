@@ -1,0 +1,106 @@
+#+title: Story 02 — ~Chores.standing/2~: the two-half standing rule
+#+date: 2026-09-05
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** The standing rule
+
+A kid is in good standing on ~local_date~ when *both* halves hold:
+
+1. the *morning* routine-day for ~local_date~ is satisfied and unfailed, and
+2. the *evening* routine-day for ~local_date - 1~ is satisfied and unfailed.
+
+where:
+
+- *satisfied* means every chore on that kid's roster for that routine has a live completion (~undone_at IS NULL~) on that date, *or the roster is empty*;
+- *unfailed* means no completion for that routine-day carries ~failed_at~.
+
+Standing is *binary*. There is no partial, graded, or two-star state.
+
+A failed-then-redone routine is satisfied but failed, and *denies* standing. A fail in this app is never automatic — it is a parent's deliberate act recording that something was not done properly — so a judgment that reached only the points abstraction and never the thing the child actually cares about would be a judgment with no teeth. The vocabulary stays explainable to a seven-year-old: good standing means what the green bonus badge means, twice over.
+
+** The roster is the one that was live that day
+
+The evening half reads a *past* routine-day, so it is scored against the chores that were live on that date, not the chores that are live now: ~active_from <= date~ and ~archived_on~ nil-or-later. This falls out of reusing the existing routine-day derivation rather than being new work — the bound is already carried there — and it is load-bearing rather than incidental. Without it, archiving a chore this afternoon would retroactively change whether last night was complete, and a kid could lose standing they had already earned because of an unrelated roster edit.
+
+** ~Chores.standing/2~ — shape
+
+Returns the halves, not a bare boolean, because admin must show which half failed:
+
+#+begin_src elixir
+Chores.standing(kid, local_date)
+#=> %{
+#     standing?: false,
+#     morning: %{empty?: false, complete?: true,  failed?: false},
+#     evening: %{empty?: false, complete?: false, failed?: true}
+#   }
+#+end_src
+
+The kiosk reads ~.standing?~ and ignores the rest. ~:morning~ is keyed to ~local_date~; ~:evening~ is keyed to ~local_date - 1~. The map does not carry its dates — callers already know which is which, and carrying them invites a caller to re-derive the offset.
+
+The halves carry raw booleans rather than a pre-resolved ~:incomplete | :failed~ atom. A half can be both incomplete and failed at once, so no single atom is faithful; and ~empty?~ and ~complete?~ must stay separable for the points consumer above regardless of what any surface renders.
+
+** Query cost
+
+Two ~routine_day_status/3~ calls per kid, two queries each: eight queries per render at two kids, on every kiosk tap, and only during the morning window since that is the only time the kiosk displays it. Real but small. Take the simple per-kid form now rather than pre-emptively writing grouped SQL for N=2.
+
+** Testing (excerpt)
+
+*Unit* — new ~test/bear_cub/chores/standing_test.exs~, alongside the existing ~completion_test.exs~:
+
+- both halves clean → standing
+- morning incomplete → denied
+- last night incomplete → denied
+- morning failed-then-redone → denied
+- last night failed-then-redone → denied
+- empty morning roster + clean evening → standing
+- empty evening roster + clean morning → standing
+- both rosters empty → standing
+- an ~undone_at~ row does not count as live
+- *date-leak guards*: a completion on *yesterday's morning* must not satisfy today's morning half, and one from *two nights ago* must not satisfy last night's
+- *roster-history guard*: a chore archived today must still count toward last night's evening half, and a chore created today must not
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d91][D91]] — Good standing: both routine-days clean, and a fail denies it.
+- [[file:../../decisions.org::#d92][D92]] — An empty roster is vacuously satisfied for standing.
+- [[file:../../decisions.org::#d94][D94]] — ~standing/2~ calls ~routine_day_status/3~ twice; the evening half inherits the date-bounded roster for free.
+
+* User Story
+
+As a parent, I need one unarguable answer to "is this kid in good standing today?" — last night's evening routine and this morning's morning routine both finished, neither marked failed — so that the morning screen-time question is settled by the app's own record rather than by memory, the same way every day.
+
+* Acceptance Criteria
+
+** [ ] A kid is in good standing on a date only when the morning routine for that date and the evening routine for the day *before* were each finished and neither was marked failed. (SC-2, D91)
+** [ ] Standing is a single yes-or-no answer — there is no partial, graded, or half-credit state. (SC-2, D91)
+** [ ] A routine that was marked failed and then redone denies standing, even though every chore on it ends up complete. (SC-2, D91)
+** [ ] A kid with no chores configured for a routine is not held out of standing by that absence, and a kid added yesterday or today with no history is likewise not held out; but a kid who has a roster and completed nothing on it is. (SC-7, D92)
+** [ ] The answer reports the morning half and the evening half separately, so a caller can tell which one broke standing without re-deriving either. (SC-5, SC-6, D96)
+** [ ] The evening half is scored against the chores that were live *that night*: a chore archived today still counts toward last night, and a chore created today does not. (SC-6, D94)
+** [ ] Completions on a neighbouring date never satisfy the wrong half — yesterday's morning does not satisfy today's morning, and a completion from two nights ago does not satisfy last night. (SC-2)
+** [ ] A completion that has been undone does not count as live for either half. (SC-2)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story's spec; DESIGN.org is broader context only.
+
+- This story depends on Story 01, because ~standing/2~ is two calls to ~routine_day_status/3~ and nothing else. Stories 03 and 05 depend on this one for their data.
+- ~standing/2~ lives in ~BearCub.Chores~. It reads ~chores~ and ~completions~ only, so it adds no dependency across the ~Chores~ ⇏ ~Calendars~ or ~Chores~ ⇏ ~Rewards~ fences. It does not belong in ~BearCub.Points~ — that module composes the ledger, and standing is not currency.
+- Nothing is stored and nothing is scheduled: standing is a predicate over ~completions~ for two dates, per the repo's derived-day-state invariant.
+- The caller supplies the local date, per the repo's "all time logic takes a local datetime argument" invariant — no clock read inside the derivation.
+- Per-kid form only. A grouped ~standing_by_kid/1~ is explicitly out of scope for this design.
+- Nothing in this story adds a way to write a completion for a past date; standing lost to a missed night has no in-app recourse ([[file:../../decisions.org::#d93][D93]]) and the verbal channel covers it.

@@ -1,0 +1,22 @@
+#+title: PLAN — Bear Cub: Good standing
+#+date: 2026-09-05
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+Implementation order and why: the shared predicate comes out first (01) so nothing is written against a rule that is about to move; the derivation follows (02) since every surface reads it; admin (03) is sequenced ahead of the kiosk because it states the verdict in words, which makes standing observable while the wordless kiosk treatment is built and QA'd; the design-language ruling (04) lands before the kiosk (05) because CLAUDE.md makes that file binding on kids'-view styling — the ruling must govern the band, not be written afterwards to describe it.
+
+** TODO [[file:stories/story-01-routine-day-status.org][Story 01 — ~Chores.routine_day_status/3~: one routine-day predicate, two implementations]]
+** TODO [[file:stories/story-02-standing-derivation.org][Story 02 — ~Chores.standing/2~: the two-half standing rule]]
+** TODO [[file:stories/story-03-admin-standing-row.org][Story 03 — Admin: the standing verdict and which half broke it]]
+** TODO [[file:stories/story-04-design-language-ruling.org][Story 04 — Design-language ruling: the standing band and ring are not the bonus badge]]
+** TODO [[file:stories/story-05-kiosk-band-and-ring.org][Story 05 — Kiosk: the green band and column ring, morning window only]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

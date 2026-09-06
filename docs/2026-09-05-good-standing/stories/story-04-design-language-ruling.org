@@ -1,0 +1,50 @@
+#+title: Story 04 — Design-language ruling: the standing band and ring are not the bonus badge
+#+date: 2026-09-05
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Kiosk — placement and appearance
+
+Between the ~<header>~ banner and the column body; the column's ~grid-rows-[auto_1fr]~ becomes ~grid-rows-[auto_auto_1fr]~. The band therefore survives the reward shop as well — standing is a property of the child's day, not of which body view is open.
+
+- *Band*: full width, ~bg-success~, about ~h-14~, carrying *three* centered ~hero-star-solid~ glyphs at roughly ~size-9~. *No text* — it must read for a pre-reader.
+- *Ring*: ~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing.
+
+*** The vocabulary collision, stated rather than hidden
+
+This treatment reuses *both* of the app's existing "you earned something" signals at once: ~bg-success~ green is the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~ is the points badge glyph. Three large stars in a full-width band is distinguishable from one small star beside a numeral in a pill — different count, scale, container, and no number — but the distinction is carried by *scale and pattern only*, not by hue or glyph. The ~docs/design-language.org~ ruling this initiative produces must therefore say so explicitly, so a future session cannot collapse the two by treating them as the same token.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d97][D97]] — Standing renders as a green three-star band plus a column ring, and the scale is what separates it from the bonus badge.
+
+* User Story
+
+As a future session working on the kids' view, I need the standing band and ring recorded as a ruling in the design language — including the fact that they deliberately reuse the app's existing earned-something green and star — so that I cannot quietly collapse standing and the routine bonus into a single token because they look alike.
+
+* Acceptance Criteria
+
+** [ ] ~docs/design-language.org~ carries a dated ruling for the standing signal describing the band (full width, ~bg-success~, about ~h-14~, three centered ~hero-star-solid~ at roughly ~size-9~, and no text so it reads for a pre-reader) and the ring (~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge). (SC-1, D97)
+** [ ] The ruling states explicitly that this treatment reuses both of the app's existing "you earned something" signals — ~bg-success~ green, already the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~, already the points badge glyph. (D97)
+** [ ] The ruling states that what distinguishes the standing band from the bonus badge is *scale and pattern only* — count, scale, container, and the absence of a number — never hue or glyph, so a future session cannot treat the two as the same token. (D97)
+** [ ] The ruling carries its rationale as an org link to the shared decision log, matching the citation form the file's existing rulings already use. (D97)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story's spec; DESIGN.org is broader context only.
+
+- This story has no code dependency on Stories 01–03, but it is sequenced immediately before Story 05 on purpose: CLAUDE.md makes ~docs/design-language.org~ binding on any change to kids'-view styling, so the ruling must exist before the band and ring are built, not be written afterwards to match whatever got built.
+- The ruling goes under the file's existing ~* Rulings~ section, in the file's established voice: dated, stating what may not be re-litigated without a further ruling, with a ~Rationale:~ link.
+- This is a documentation-only story. The Definition of Done's testing item is expected to be marked deferred with its reason recorded, per the org-conventions checkbox semantics.
+- Design tokens themselves live in ~assets/css/app.css~; this story adds no token — ~bg-success~ and ~ring-success~ already exist.

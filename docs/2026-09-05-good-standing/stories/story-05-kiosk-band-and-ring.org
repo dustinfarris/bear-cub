@@ -1,0 +1,83 @@
+#+title: Story 05 — Kiosk: the green band and column ring, morning window only
+#+date: 2026-09-05
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** Kiosk — lifetime
+
+The band and ring render when the active routine is *morning* — the 05:00–17:00 window — and ~standing?~ is true. They *disappear entirely when the evening window opens at 17:00*.
+
+No new machinery makes them vanish: ~Routines.next_boundary/2~ already schedules a re-render at every window edge, and 17:00 is one. The night screen is outside the morning window by construction and is untouched — it stays a single dark screen with one moon and nothing else.
+
+This has a structural payoff beyond its own merits: the band can never coexist with expanded *evening* chore rows, so FR-6's five-chore no-scroll budget is untouched by construction rather than by measurement.
+
+** Kiosk — appearance timing
+
+Gated on ~standing? and not delaying?~, reusing the collapse-delay flag ~build_column/10~ already computes. The sequence on the last morning tap is: the chore shows done → 400ms → the routine collapses *and* the band and ring appear together. One celebratory moment, not two staggered ones.
+
+Not gated on the existing ~reveal?~ flag, which is the obvious choice and the wrong one: ~reveal?~ derives from ~complete?~ as the kiosk computes it locally (~chores != [] and ...~), which is false for an empty roster, so the vacuously-satisfied kid's band would never appear. ~delaying?~ is false for that kid — they never enter ~pending_collapse~ — so gating on it shows their band from window open, which is correct.
+
+** Kiosk — placement and appearance
+
+Between the ~<header>~ banner and the column body; the column's ~grid-rows-[auto_1fr]~ becomes ~grid-rows-[auto_auto_1fr]~. The band therefore survives the reward shop as well — standing is a property of the child's day, not of which body view is open.
+
+- *Band*: full width, ~bg-success~, about ~h-14~, carrying *three* centered ~hero-star-solid~ glyphs at roughly ~size-9~. *No text* — it must read for a pre-reader.
+- *Ring*: ~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing.
+
+The five-chore budget is affected in exactly one situation — the kid taps the completion icon to manually re-expand their completed *morning* routine. Those rows are all done, so they render at the shrunk ~h-20~ rather than the pending ~h-24~: five come to 400px against the 480px the budget already tolerates, 80px of slack against a ~56px band. It fits, and is confirmed on the tablet regardless.
+
+*** The vocabulary collision, stated rather than hidden
+
+This treatment reuses *both* of the app's existing "you earned something" signals at once: ~bg-success~ green is the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~ is the points badge glyph. Three large stars in a full-width band is distinguishable from one small star beside a numeral in a pill — different count, scale, container, and no number — but the distinction is carried by *scale and pattern only*, not by hue or glyph. The ~docs/design-language.org~ ruling this initiative produces must therefore say so explicitly, so a future session cannot collapse the two by treating them as the same token.
+
+** Testing (excerpt)
+
+LiveView integration tests are acceptance criteria, not optional extras.
+
+*LiveView, kiosk* (~kiosk_live_test.exs~): band and ring present when standing inside the morning window; absent when not standing; absent during the *evening* window even when ~standing?~ is true; absent on the night screen; present for the zero-morning-chore kid; *not* present during the collapse delay, only after it.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+
+*On-device (manual, never CI'd)*: Fully Kiosk rendering of the band and ring, the five-chore no-scroll fit in the manual re-expand case, band legibility from across the room, and the 17:00 disappearance.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d95][D95]] — The kiosk signal lives only in the morning window, and is gated on ~delaying?~ rather than ~reveal?~.
+- [[file:../../decisions.org::#d97][D97]] — Standing renders as a green three-star band plus a column ring, and the scale is what separates it from the bonus badge.
+
+* User Story
+
+As a kid at the fridge, I need to see from across the kitchen — without reading a word — that I am in good standing this morning, so that the screen-time question is already answered before anyone asks it.
+
+* Acceptance Criteria
+
+** [ ] During the morning window, a kid in good standing sees a full-width green band carrying three stars and no text, sitting between their name banner and the body of their column, and a green ring around their whole column running from the banner to the bottom. (SC-1, D97)
+** [ ] A kid who is not in good standing sees neither the band nor the ring. (SC-1, D95)
+** [ ] The band and the ring disappear entirely when the evening window opens at 17:00, even for a kid who is still in good standing, and the change arrives without anyone touching the tablet. (SC-3, D95)
+** [ ] The night screen is unchanged — one dark screen with a single moon, no band and no ring. (SC-3, D95)
+** [ ] On the last morning tap, the completed chore stays visible briefly, and then the routine collapses and the band and ring appear together as one moment — the band never appears while that collapse delay is still running. (SC-1, D95)
+** [ ] A kid with no morning chores configured sees their band and ring from the moment the morning window opens, rather than never seeing them. (SC-7, SC-1, D92, D95)
+** [ ] The band and ring stay visible while that kid has their reward shop open — standing belongs to the child's day, not to which view is open in the column body. (SC-1, D97)
+** [ ] On the tablet in Fully Kiosk: the band and ring render as designed, the band reads from across the room, the band plus five manually re-expanded done morning chore rows fit without scrolling, and the band disappears at 17:00. Verified by hand at gate close — never in CI. (SC-1, SC-3)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story's spec; DESIGN.org is broader context only.
+
+- This story depends on Story 02 for ~Chores.standing/2~, and on Story 04 for the binding design-language ruling that governs the band and ring's visual vocabulary.
+- ~standing?~ is computed per kid in ~build_column/10~ (which gains an argument), alongside the ~delaying?~ flag it already computes. Compute it only while the active routine is morning — that is the only time the kiosk displays it, and the design accepts the per-kid two-query form rather than grouped SQL at N=2.
+- Gate on ~standing? and not delaying?~. Do *not* gate on ~reveal?~ — the excerpt above explains why that obvious choice is wrong for the empty-roster kid.
+- The 17:00 disappearance needs no new scheduling: ~Routines.next_boundary/2~ already re-renders at every window edge.
+- The vocabulary-collision subsection is included above as binding context for the visual; recording the ruling in ~docs/design-language.org~ is Story 04's deliverable, not this story's.
+- The kiosk reads only ~.standing?~ and ignores the per-half booleans.

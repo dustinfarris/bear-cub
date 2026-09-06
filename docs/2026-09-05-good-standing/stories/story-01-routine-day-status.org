@@ -1,0 +1,81 @@
+#+title: Story 01 — ~Chores.routine_day_status/3~: one routine-day predicate, two implementations
+#+date: 2026-09-05
+
+Design: [[file:../DESIGN.org]]
+
+* Design
+
+Verbatim from DESIGN.org for this story's scope; org links are repointed one level up so they resolve from ~stories/~.
+
+** ~Chores.routine_day_status/3~ — the shared per-routine-day predicate
+
+"Every roster chore has a live completion, and any completion carries ~failed_at~" is currently written twice: in ~routine_day_contribution/3~ (per-kid, two queries) and in ~routine_days_by_kid/1~ (the grouped-SQL aggregate). Standing would make it three. Extract the per-~(kid, routine, date)~ half out of ~routine_day_contribution/3~:
+
+#+begin_src elixir
+Chores.routine_day_status(kid, "evening", ~D[2026-09-04])
+#=> %{empty?: false, complete?: true, failed?: false}
+#+end_src
+
+~routine_day_contribution/3~ becomes a thin points wrapper over it, and ~standing/2~ calls it twice. The implementation count stays at two rather than rising to three.
+
+Deliberately *not* touched: ~routine_days_by_kid/1~. Folding the grouped SQL into the same abstraction is a larger change than this item earns.
+
+** ~complete?~ is vacuously true for an empty roster
+
+~complete?~ means "every chore on this roster has a live completion", which holds trivially when there are none. ~empty?~ is carried *separately* rather than folded into it, so each consumer applies its own reading:
+
+| Consumer                     | Condition                  | Empty roster yields |
+|------------------------------+----------------------------+---------------------|
+| ~standing/2~                 | ~complete?~                | satisfied           |
+| ~routine_day_contribution/3~ | ~complete? and not empty?~ | no ~+R~ bonus       |
+
+This is an inversion of the pre-existing points reading, and it is the pivot the whole empty-roster ruling turns on. For points, a kid with no chores must not collect ~+R~ for free. For standing, nothing was asked, so nothing was missed. Both readings live in their consumers rather than in the shared status, and neither has to re-derive the other's rule.
+
+One rule settles three cases:
+
+| Case                                            | Result                       |
+|-------------------------------------------------+------------------------------|
+| Kid has zero evening chores configured          | evening half satisfied       |
+| Kid added yesterday or today (no history)       | evening half satisfied       |
+| Roster exists, nothing tapped (away, sleepover) | evening half *not* satisfied |
+
+The consequence for the *morning* half, which takes the same reading for consistency: a kid with zero morning chores is vacuously satisfied all day, so their band appears at window open rather than at a completion. Degenerate but coherent, and the kiosk timing below handles it explicitly.
+
+** Testing (excerpt)
+
+*Refactor safety*: the existing points tests must pass untouched. That is the whole evidence that extracting ~routine_day_status/3~ was behavior-preserving. Add one test the existing suite may not carry explicitly — *an empty roster earns no ~+R~* — since the empty-roster condition moves from inside ~complete?~ out to the points consumer, and nothing else would catch it regressing.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+
+** Decision Log entries in scope
+
+- [[file:../../decisions.org::#d94][D94]] — ~routine_day_status/3~ extracted so the routine-day predicate has two implementations, not three.
+- [[file:../../decisions.org::#d92][D92]] — An empty roster is vacuously satisfied for standing, and still earns no bonus for points.
+
+* User Story
+
+As a developer of Bear Cub, I need the "was this routine-day finished, and was it failed?" rule to exist in one place that both points and standing read — so that the one meaning of a finished routine cannot drift into two, and so that adding standing does not add a third copy of a rule the existing two have already disagreed over once.
+
+* Acceptance Criteria
+
+** [ ] Asking for one kid's routine-day status on a given date reports three facts separately: whether that kid's roster for that routine was empty that day, whether every chore on it carries a live completion on that date, and whether any completion for it was marked failed. (SC-2, D94)
+** [ ] ~complete?~ is true for an empty roster — "every chore has a live completion" holds when there are none — and ~empty?~ is reported alongside it rather than folded into it, so a consumer can apply either reading without re-deriving the other's. (SC-7, D92)
+** [ ] Points behavior is unchanged by the extraction: a routine still earns ~+R~ only when it is complete and its roster is non-empty, and a failed routine-day still costs ~−R~, with the existing points tests passing untouched — no edits to them. (D92, D94)
+** [ ] A kid with no chores configured for a routine earns no ~+R~ bonus for that routine, pinned by a test the suite did not previously carry. (SC-7, D92)
+** [ ] The grouped aggregate ~routine_days_by_kid/1~ is left as its own implementation — the predicate has two implementations after this story, not one and not three. (D94)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story's spec; DESIGN.org is broader context only.
+
+- This story has no dependencies on earlier stories in this batch. Stories 02–05 all depend on it: ~standing/2~ calls ~routine_day_status/3~ twice.
+- The roster query being extracted already carries the chore-lifetime bound from the chore-lifecycle initiative (~active_from <= date~ and ~archived_on~ nil-or-later). That bound must survive the extraction verbatim — it is what makes standing's evening half score against the chores that were live *last night* for free. The existing points tests, which cover the archive-day case, are the guard; Story 02 adds the roster-history guard at the standing level.
+- The three-case table in the excerpt describes standing-level consequences of this story's ~empty?~/~complete?~ split; those cases are Story 02's acceptance criteria, not this story's.
+- ~routine_day_contribution/3~ keeps its arity and its meaning — it becomes a wrapper computing ~+R~ on ~complete? and not empty?~ and ~−R~ on ~failed?~.
