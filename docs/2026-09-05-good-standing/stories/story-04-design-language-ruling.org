@@ -28,17 +28,49 @@ As a future session working on the kids' view, I need the standing band and ring
 
 * Acceptance Criteria
 
-** [ ] ~docs/design-language.org~ carries a dated ruling for the standing signal describing the band (full width, ~bg-success~, about ~h-14~, three centered ~hero-star-solid~ at roughly ~size-9~, and no text so it reads for a pre-reader) and the ring (~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge). (SC-1, D97)
-** [ ] The ruling states explicitly that this treatment reuses both of the app's existing "you earned something" signals — ~bg-success~ green, already the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~, already the points badge glyph. (D97)
-** [ ] The ruling states that what distinguishes the standing band from the bonus badge is *scale and pattern only* — count, scale, container, and the absence of a number — never hue or glyph, so a future session cannot treat the two as the same token. (D97)
-** [ ] The ruling carries its rationale as an org link to the shared decision log, matching the citation form the file's existing rulings already use. (D97)
+** [X] ~docs/design-language.org~ carries a dated ruling for the standing signal describing the band (full width, ~bg-success~, about ~h-14~, three centered ~hero-star-solid~ at roughly ~size-9~, and no text so it reads for a pre-reader) and the ring (~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge). (SC-1, D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:57] \\
+  Verified: ~docs/design-language.org~ line 31 carries the ~[2026-09-05]~-dated "Standing band and ring" ruling, describing the band (full width, ~bg-success~, ~h-14~, three centered ~hero-star-solid~ at ~size-9~, no text/pre-reader rationale) and the ring (~ring-4 ring-inset ring-success~, column ~<section>~, banner-to-bottom, overlaying the child-color banner edge), matching the story's Design excerpt and D97 verbatim.
+:END:
+** [X] The ruling states explicitly that this treatment reuses both of the app's existing "you earned something" signals — ~bg-success~ green, already the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~, already the points badge glyph. (D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:57] \\
+  Verified: the same paragraph states "This treatment reuses *both* of the app's existing 'you earned something' signals at once: ~bg-success~ green is already the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~ is already the points badge glyph."
+:END:
+** [X] The ruling states that what distinguishes the standing band from the bonus badge is *scale and pattern only* — count, scale, container, and the absence of a number — never hue or glyph, so a future session cannot treat the two as the same token. (D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:57] \\
+  Verified: the paragraph states "What distinguishes the standing signal from the bonus badge is *scale and pattern only* — count, scale, container, and the absence of a number — never hue or glyph." and closes with "Do not collapse the two into one token without a ruling."
+:END:
+** [X] The ruling carries its rationale as an org link to the shared decision log, matching the citation form the file's existing rulings already use. (D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:57] \\
+  Verified: the paragraph ends "Rationale: [[file:decisions.org::#d97][D97]]." — matching the citation form of the file's other rulings (e.g. D56, D66, D65/D75 at lines 23, 25, 29) — and the anchor resolves to ~docs/decisions.org:300~ (~* D97 ... :CUSTOM_ID: d97~).
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:59] \\
+  Verified: all four Acceptance Criteria above are marked ~[X]~ with LOGBOOK evidence, independently re-checked against the actual text of ~docs/design-language.org:31~ and the ~D97~ anchor in ~docs/decisions.org~.
+:END:
+** [-] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:59] \\
+  Deferred — documentation-only story; the change touches only ~docs/design-language.org~ and this story file, no ~.ex~/~.exs~/~.heex~ files, and no LiveView flow is touched, so DESIGN §11's "wherever a flow is touched" testing requirement does not apply. Per this story's own Technical Notes.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:59] \\
+  Verified: the new ruling paragraph uses ~code~ markup consistently for CSS classes/identifiers, contains no line-initial asterisks (~grep -n "^\*"~ shows only the file's three real headings), is a single unwrapped line per the repo's no-hard-wrap convention, and closes with a ~Rationale:~ citation link matching the exact form used by the file's other rulings.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:59] \\
+  Verified: ~mix precommit~ (compile with ~--warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exited 0 with 570 tests passed, 0 failures, and no formatting changes to the tree.
+:END:
 
 * Technical Notes
 
