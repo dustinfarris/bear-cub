@@ -78,21 +78,69 @@ As a parent, I need one unarguable answer to "is this kid in good standing today
 
 * Acceptance Criteria
 
-** [ ] A kid is in good standing on a date only when the morning routine for that date and the evening routine for the day *before* were each finished and neither was marked failed. (SC-2, D91)
-** [ ] Standing is a single yes-or-no answer — there is no partial, graded, or half-credit state. (SC-2, D91)
-** [ ] A routine that was marked failed and then redone denies standing, even though every chore on it ends up complete. (SC-2, D91)
-** [ ] A kid with no chores configured for a routine is not held out of standing by that absence, and a kid added yesterday or today with no history is likewise not held out; but a kid who has a roster and completed nothing on it is. (SC-7, D92)
-** [ ] The answer reports the morning half and the evening half separately, so a caller can tell which one broke standing without re-deriving either. (SC-5, SC-6, D96)
-** [ ] The evening half is scored against the chores that were live *that night*: a chore archived today still counts toward last night, and a chore created today does not. (SC-6, D94)
-** [ ] Completions on a neighbouring date never satisfy the wrong half — yesterday's morning does not satisfy today's morning, and a completion from two nights ago does not satisfy last night. (SC-2)
-** [ ] A completion that has been undone does not count as live for either half. (SC-2)
+** [X] A kid is in good standing on a date only when the morning routine for that date and the evening routine for the day *before* were each finished and neither was marked failed. (SC-2, D91)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  ~Chores.standing/2~ (~lib/bear_cub/chores.ex:474-483~): ~morning = routine_day_status(kid, "morning", local_date)~, ~evening = routine_day_status(kid, "evening", Date.add(local_date, -1))~, ~standing? = morning.complete? and not morning.failed? and evening.complete? and not evening.failed?~. Verified by "both halves clean is standing", "morning incomplete denies standing", "last night incomplete denies standing" (~test/bear_cub/chores/standing_test.exs~), all passing.
+:END:
+** [X] Standing is a single yes-or-no answer — there is no partial, graded, or half-credit state. (SC-2, D91)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  ~standing?~ is a strict boolean composed only of ~and~/~not~ (~chores.ex:478-480~), never a three-way atom. Every full-equality test in ~standing_test.exs~ asserts ~standing?: true~ or ~standing?: false~ via ~==~, confirmed by the story-verifier subagent's independent read.
+:END:
+** [X] A routine that was marked failed and then redone denies standing, even though every chore on it ends up complete. (SC-2, D91)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  "morning failed-then-redone denies standing" and "last night failed-then-redone denies standing" (~standing_test.exs~) each call ~complete_chore~ → ~fail_completion~ (stamps ~undone_at~+~failed_at~ on that row) → a second, independent ~complete_chore~ call producing a fresh live row. ~routine_day_status/3~ reports ~complete?: true, failed?: true~ for that half, and ~standing?~ comes back ~false~ in both. Verified by the story-verifier subagent tracing the row lineage, not just the assertion.
+:END:
+** [X] A kid with no chores configured for a routine is not held out of standing by that absence, and a kid added yesterday or today with no history is likewise not held out; but a kid who has a roster and completed nothing on it is. (SC-7, D92)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  Empty-roster-not-penalized: "empty morning roster with a clean evening is standing", "empty evening roster with a clean morning is standing", "both rosters empty is standing". Non-empty-with-nothing-done-denied: "morning incomplete denies standing", "last night incomplete denies standing". "Kid added yesterday/today with no history" collapses into the empty-roster case since kids carry no activity window of their own — only chores do — so it is covered in substance though not under a distinctly-named test.
+:END:
+** [X] The answer reports the morning half and the evening half separately, so a caller can tell which one broke standing without re-deriving either. (SC-5, SC-6, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  Return shape at ~chores.ex:482~: ~%{standing?: standing?, morning: morning, evening: evening}~, each half a full ~%{empty?:, complete?:, failed?:}~ map matching the design's worked example exactly. Confirmed by every full-equality assertion in ~standing_test.exs~, e.g. "both halves clean is standing".
+:END:
+** [X] The evening half is scored against the chores that were live *that night*: a chore archived today still counts toward last night, and a chore created today does not. (SC-6, D94)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  "roster-history guard: a chore archived today still counts toward last night" stamps ~archived_on: ~D[2026-09-05]~ on a chore left undone the evening of 2026-09-04 being scored — ~archived_on > local_date~ still holds, so the chore counts and denies standing. "roster-history guard: a chore created today does not count toward last night" creates a new evening chore via the real ~create_chore/3~ path dated 2026-09-05 (~active_from: 2026-09-05~), excluded from the 2026-09-04 roster bound (~active_from <= local_date~), and standing stays true. Both guards independently confirmed by the story-verifier subagent to use genuinely different, correctly-offset dates rather than same-day coincidence.
+:END:
+** [X] Completions on a neighbouring date never satisfy the wrong half — yesterday's morning does not satisfy today's morning, and a completion from two nights ago does not satisfy last night. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  "date-leak guard: yesterday's morning does not satisfy today's morning" completes a morning chore on 2026-09-04 while standing is checked for 2026-09-05; morning reports incomplete. "date-leak guard: two nights ago does not satisfy last night" completes an evening chore on 2026-09-03 while the evening half scored is 2026-09-04 (the day before the 2026-09-05 check date); evening reports incomplete. Both use genuinely distinct, adjacent-but-wrong dates.
+:END:
+** [X] A completion that has been undone does not count as live for either half. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:09] \\
+  "an undone completion does not count as live for either half" completes then undoes an evening chore and asserts ~evening: %{... complete?: false ...}~. Both halves route through the identical ~routine_day_status/3~ predicate and the same ~is_nil(&1.undone_at)~ check (~chores.ex:433~), so this is a shared code path proven for both halves even though only the evening side has a distinctly-named test.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:11] \\
+  All 8 Acceptance Criteria above are ~[X]~ with LOGBOOK evidence; none required removal or deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:11] \\
+  ~test/bear_cub/chores/standing_test.exs~ (13 tests, ~describe "standing/2 (Story 02, D91, D92, D94)"~) maps 1:1 onto the Design excerpt's Testing section. Ran standalone: ~Finished in 0.06 seconds ... Result: 13 passed~, 0 failures; also covered inside the full ~mix precommit~ run (566 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:11] \\
+  ~mix format --check-formatted~ exit code 0. Spot-checked ~chores.ex:461-483~ (~standing/2~): full ~@doc~ citing D91/D92/D96, matching the doc style of every other public function in the module; ~standing?~ predicate naming follows the ~?~-suffix convention; body is a thin two-call composition with no added abstraction, matching the Design excerpt's shape exactly.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:11] \\
+  Repo declares ~Verify command: mix precommit~. Ran fresh: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~ all succeeded, ~Result: 566 passed~, exit code 0.
+:END:
 
 * Technical Notes
 
