@@ -178,7 +178,7 @@ LiveView integration tests are acceptance criteria, not optional extras.
 
 *Refactor safety*: the existing points tests must pass untouched. That is the whole evidence that extracting ~routine_day_status/3~ was behavior-preserving. Add one test the existing suite may not carry explicitly — *an empty roster earns no ~+R~* — since the empty-roster condition moves from inside ~complete?~ out to the points consumer, and nothing else would catch it regressing.
 
-*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+*Test hygiene*, by layer — the repo lesson behind this (=docs/learnings.org= [2026-07-17]) is about inheriting the routine *window*, not about reading the clock, and the two layers can meet it differently. *Unit*: pass fixed local dates as literal ~Date~ sigils; ~routine_day_status/3~ and ~standing/2~ take the date as an argument, so nothing there touches the wall clock. *LiveView*: the view calls ~LocalTime.now()~ itself and there is no injection seam — clock mocking stays forbidden repo-wide — so these tests cannot be handed a fixed date and read the real clock deliberately. What they must do instead is capture the local now *once* per test or ~setup~ and derive every fixture date from that one binding, never a second ~LocalTime.now()~ call inside the same test: standing straddles two calendar dates (this morning, last night), so two independent reads can score the two halves against different days. *Pinning ~:routine_windows~* binds wherever the surface under test reads the window — required for the kiosk band, which is window-gated ([[file:../decisions.org::#d95][D95]]), and vacuous for the admin standing row, which renders independent of it ([[file:../decisions.org::#d96][D96]]).
 
 *On-device (manual, never CI'd)*: Fully Kiosk rendering of the band and ring, the five-chore no-scroll fit in the manual re-expand case, band legibility from across the room, and the 17:00 disappearance.
 
@@ -204,3 +204,9 @@ Decisions for this initiative: [[file:../decisions.org]] — D91–D97.
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-09-06 Sun 07:51] §Testing no longer asks LiveView tests to pass fixed local dates
+
+/Sections affected: §Testing (Test hygiene)/
+
+This document previously stated one blanket bar for every layer: "every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock." It still looks right, and it *is* right for the unit layer, which is exactly why it invites being applied everywhere — but a LiveView test cannot meet it. ~Admin.TodayLive~ and ~KioskLive~ call ~LocalTime.now()~ themselves at mount with no injection seam, so nothing can hand them a fixed date; they read the real clock by design. Do not add a clock seam, a ~current_time~ assign, or any other injection point to satisfy the old sentence — clock mocking is forbidden repo-wide, and the seam would exist only for tests. The closed story files 01, 02 and 03 still quote the old sentence verbatim in their Design excerpts; Story 05's excerpt was corrected to match the current text. No D-entry: this corrects the rule's stated scope against =docs/learnings.org= [2026-07-17], which was always about inheriting the routine window rather than about reading the clock.
