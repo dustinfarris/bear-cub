@@ -124,8 +124,8 @@ Not gated on the existing ~reveal?~ flag, which is the obvious choice and the wr
 
 Between the ~<header>~ banner and the column body; the column's ~grid-rows-[auto_1fr]~ becomes ~grid-rows-[auto_auto_1fr]~. The band therefore survives the reward shop as well — standing is a property of the child's day, not of which body view is open.
 
-- *Band*: full width, ~bg-success~, about ~h-14~, carrying *three* centered ~hero-star-solid~ glyphs at roughly ~size-9~. *No text* — it must read for a pre-reader.
-- *Ring*: ~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing.
+- *Band*: full width, ~bg-success~, about ~h-16~, carrying *thirteen* ~hero-star-solid~ glyphs in a five/three/five arc (~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-12~, ~size-12~, ~size-12~, ~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-9~) rather than a flat row of three (D98). *No text* — it must read for a pre-reader.
+- *Ring*: ~ring-4 shadow-[0_0_8px_6px_rgba(245,245,0,0.92)] ring-success~ on the column ~<section>~ — no ~ring-inset~ — hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing. The glow reopens the exact treatment D97 rejected for uneven box-shadow rendering on Fully Kiosk's Android WebView (D98); it is provisional pending the next on-device gate and reverts to a bare ring if the tablet render is uneven.
 
 The five-chore budget is affected in exactly one situation — the kid taps the completion icon to manually re-expand their completed *morning* routine. Those rows are all done, so they render at the shrunk ~h-20~ rather than the pending ~h-24~: five come to 400px against the 480px the budget already tolerates, 80px of slack against a ~56px band. It fits, and is confirmed on the tablet regardless.
 
@@ -194,7 +194,7 @@ LiveView integration tests are acceptance criteria, not optional extras.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D91–D97.
+Decisions for this initiative: [[file:../decisions.org]] — D91–D98.
 
 * Advisories
 
@@ -210,3 +210,9 @@ Decisions for this initiative: [[file:../decisions.org]] — D91–D97.
 /Sections affected: §Testing (Test hygiene)/
 
 This document previously stated one blanket bar for every layer: "every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock." It still looks right, and it *is* right for the unit layer, which is exactly why it invites being applied everywhere — but a LiveView test cannot meet it. ~Admin.TodayLive~ and ~KioskLive~ call ~LocalTime.now()~ themselves at mount with no injection seam, so nothing can hand them a fixed date; they read the real clock by design. Do not add a clock seam, a ~current_time~ assign, or any other injection point to satisfy the old sentence — clock mocking is forbidden repo-wide, and the seam would exist only for tests. The closed story files 01, 02 and 03 still quote the old sentence verbatim in their Design excerpts; Story 05's excerpt was corrected to match the current text. No D-entry: this corrects the rule's stated scope against =docs/learnings.org= [2026-07-17], which was always about inheriting the routine window rather than about reading the clock.
+
+** [2026-09-06 Sun 11:34] §Kiosk — placement and appearance: band/ring values changed, glow reopens D97's rejection
+
+/Sections affected: §Screens (Kiosk — placement and appearance)/
+
+This document previously specified a *three*-star band at ~size-9~ and a ~ring-4 ring-inset ring-success~ ring with no shadow. Both values changed (D98): the band is now thirteen stars in a five/three/five ~size-9~/~size-12~/~size-9~ arc, and the ring drops ~ring-inset~ for a ~shadow-[0_0_8px_6px_rgba(245,245,0,0.92)]~ yellow glow. The glow is the same treatment D97 explicitly rejected — "Fully Kiosk's Android WebView renders large box-shadows unevenly and a diffuse glow washes out under kitchen light" — reopened here on hands-on say-so and *not yet verified on the actual tablet*. If the next on-device gate (PRD §7) shows the predicted unevenness, the fix is reverting to a bare ~ring-4 ring-success~, not re-litigating the ring's existence. Rationale: D98.
