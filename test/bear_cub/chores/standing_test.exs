@@ -27,11 +27,11 @@ defmodule BearCub.Chores.StandingTest do
       {:ok, _} = Chores.complete_chore(evening, la(~D[2026-09-04], ~T[19:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(morning, la(~D[2026-09-05], ~T[07:00:00]), "kiosk")
 
-      assert Chores.standing(kid, ~D[2026-09-05]) == %{
+      assert %{
                standing?: true,
                morning: %{empty?: false, complete?: true, failed?: false},
                evening: %{empty?: false, complete?: true, failed?: false}
-             }
+             } = Chores.standing(kid, ~D[2026-09-05])
     end
 
     test "morning incomplete denies standing" do
@@ -43,7 +43,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.morning == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.morning
     end
 
     test "last night incomplete denies standing" do
@@ -55,7 +55,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.evening == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.evening
     end
 
     test "morning failed-then-redone denies standing" do
@@ -71,7 +71,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.morning == %{empty?: false, complete?: true, failed?: true}
+      assert %{empty?: false, complete?: true, failed?: true} = result.morning
     end
 
     test "last night failed-then-redone denies standing" do
@@ -87,7 +87,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.evening == %{empty?: false, complete?: true, failed?: true}
+      assert %{empty?: false, complete?: true, failed?: true} = result.evening
     end
 
     test "empty morning roster with a clean evening is standing" do
@@ -96,11 +96,11 @@ defmodule BearCub.Chores.StandingTest do
 
       {:ok, _} = Chores.complete_chore(evening, la(~D[2026-09-04], ~T[19:00:00]), "kiosk")
 
-      assert Chores.standing(kid, ~D[2026-09-05]) == %{
+      assert %{
                standing?: true,
                morning: %{empty?: true, complete?: true, failed?: false},
                evening: %{empty?: false, complete?: true, failed?: false}
-             }
+             } = Chores.standing(kid, ~D[2026-09-05])
     end
 
     test "empty evening roster with a clean morning is standing" do
@@ -109,21 +109,21 @@ defmodule BearCub.Chores.StandingTest do
 
       {:ok, _} = Chores.complete_chore(morning, la(~D[2026-09-05], ~T[07:00:00]), "kiosk")
 
-      assert Chores.standing(kid, ~D[2026-09-05]) == %{
+      assert %{
                standing?: true,
                morning: %{empty?: false, complete?: true, failed?: false},
                evening: %{empty?: true, complete?: true, failed?: false}
-             }
+             } = Chores.standing(kid, ~D[2026-09-05])
     end
 
     test "both rosters empty is standing" do
       kid = kid_fixture()
 
-      assert Chores.standing(kid, ~D[2026-09-05]) == %{
+      assert %{
                standing?: true,
                morning: %{empty?: true, complete?: true, failed?: false},
                evening: %{empty?: true, complete?: true, failed?: false}
-             }
+             } = Chores.standing(kid, ~D[2026-09-05])
     end
 
     test "an undone completion does not count as live for either half" do
@@ -139,7 +139,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.evening == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.evening
     end
 
     test "date-leak guard: yesterday's morning does not satisfy today's morning" do
@@ -152,7 +152,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.morning == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.morning
     end
 
     test "date-leak guard: two nights ago does not satisfy last night" do
@@ -165,7 +165,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.evening == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.evening
     end
 
     test "roster-history guard: a chore archived today still counts toward last night" do
@@ -185,7 +185,7 @@ defmodule BearCub.Chores.StandingTest do
 
       result = Chores.standing(kid, ~D[2026-09-05])
       assert result.standing? == false
-      assert result.evening == %{empty?: false, complete?: false, failed?: false}
+      assert %{empty?: false, complete?: false, failed?: false} = result.evening
     end
 
     test "roster-history guard: a chore created today does not count toward last night" do
@@ -201,11 +201,11 @@ defmodule BearCub.Chores.StandingTest do
       _new_tonight =
         chore_fixture(kid, %{name: "Floss", routine: "evening"}, la(~D[2026-09-05], ~T[07:30:00]))
 
-      assert Chores.standing(kid, ~D[2026-09-05]) == %{
+      assert %{
                standing?: true,
                morning: %{empty?: false, complete?: true, failed?: false},
                evening: %{empty?: false, complete?: true, failed?: false}
-             }
+             } = Chores.standing(kid, ~D[2026-09-05])
     end
   end
 end

@@ -339,6 +339,12 @@ defmodule BearCubWeb.KioskLive do
       auto == :morning and not night? and
         Chores.standing(kid, today).standing? and not delaying?
 
+    # Early bird (D100, D101): read only where the bird can render — the
+    # completion icon's morning form — so the evening column and the
+    # incomplete column pay nothing for it. Forfeiture on a fail is inside
+    # the predicate, matching the bonus badge's own "not if failed" rule.
+    early_bird? = reveal? and auto == :morning and Chores.early_bird?(kid, today)
+
     state =
       cond do
         night? -> :night
@@ -371,6 +377,7 @@ defmodule BearCubWeb.KioskLive do
       routine: auto,
       reveal?: reveal?,
       standing?: standing?,
+      early_bird?: early_bird?,
       failed?: failed?,
       chores: chore_rows,
       extras: extras,
@@ -501,6 +508,7 @@ defmodule BearCubWeb.KioskLive do
               routine: routine,
               reveal?: reveal?,
               standing?: standing?,
+              early_bird?: early_bird?,
               failed?: failed?,
               chores: chores,
               extras: extras,
@@ -558,6 +566,25 @@ defmodule BearCubWeb.KioskLive do
                   class="absolute -right-2 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
                 >
                   +{Routines.bonus()}
+                </span>
+              </span>
+              <%!-- Early bird (D100, D101): a bird beside the sun, carrying
+                   its own +E badge in the bonus badge's exact style. It is
+                   one signal with the badge — earned or not — so a fail
+                   removes bird and badge together rather than leaving a
+                   bird with no number. Emoji, like the gift button: the
+                   hero set has no bird. --%>
+              <span
+                :if={early_bird?}
+                id={"early-bird-#{kid.id}"}
+                class="relative ml-4 flex items-center justify-center text-4xl leading-none drop-shadow-sm"
+              >
+                🐦
+                <span
+                  id={"early-bird-badge-#{kid.id}"}
+                  class="absolute -right-3 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
+                >
+                  +{Routines.early_bird_bonus()}
                 </span>
               </span>
             </button>

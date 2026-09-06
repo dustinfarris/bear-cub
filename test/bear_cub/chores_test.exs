@@ -497,7 +497,7 @@ defmodule BearCub.ChoresTest do
 
     test "leaves the chore's completions intact" do
       chore = chore_fixture()
-      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       {:ok, _} = Chores.archive_chore(chore, la(~D[2026-07-11], ~T[08:00:00]))
 
@@ -509,8 +509,8 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
 
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
 
       {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
@@ -597,7 +597,7 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
 
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
 
       {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
@@ -610,7 +610,7 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
 
@@ -793,27 +793,27 @@ defmodule BearCub.ChoresTest do
 
     test "a second complete on the same local day is rejected by the partial index" do
       chore = chore_fixture()
-      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert {:error, changeset} =
-               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:01]), "kiosk")
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:01]), "kiosk")
 
       assert %{chore_id: ["has already been taken"]} = errors_on(changeset)
     end
 
     test "undo_chore/2 stamps undone_at and keeps the row (FR-17)" do
       chore = chore_fixture()
-      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
-      assert {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      assert {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[08:05:00]))
       assert undone.id == completion.id
-      assert undone.undone_at == ~U[2026-07-10 14:05:00Z]
+      assert undone.undone_at == ~U[2026-07-10 15:05:00Z]
     end
 
     test "undo_chore/2 without a current completion is a no-op error" do
       chore = chore_fixture()
 
-      assert {:error, :not_completed} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:00:00]))
+      assert {:error, :not_completed} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[08:00:00]))
     end
 
     test "undo_chore/2 never reaches back across midnight — yesterday is history" do
@@ -826,9 +826,9 @@ defmodule BearCub.ChoresTest do
     test "complete → undo → complete leaves one current row and full history (FR-8 AC)" do
       chore = chore_fixture()
 
-      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:01:00]))
-      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:02:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[08:01:00]))
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:02:00]), "kiosk")
 
       completions = Repo.all(BearCub.Chores.Completion)
       assert length(completions) == 2
@@ -897,14 +897,19 @@ defmodule BearCub.ChoresTest do
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-09-04], ~T[18:01:00]), "kiosk")
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: false, complete?: true, failed?: false}
+               %{
+                 empty?: false,
+                 complete?: true,
+                 failed?: false,
+                 last_completed_at: ~U[2026-09-05 01:01:00Z]
+               }
     end
 
     test "an empty roster is empty and vacuously complete (D92)" do
       kid = kid_fixture()
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: true, complete?: true, failed?: false}
+               %{empty?: true, complete?: true, failed?: false, last_completed_at: nil}
     end
 
     test "a non-empty roster left partly undone is not complete" do
@@ -914,7 +919,12 @@ defmodule BearCub.ChoresTest do
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-09-04], ~T[18:00:00]), "kiosk")
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: false, complete?: false, failed?: false}
+               %{
+                 empty?: false,
+                 complete?: false,
+                 failed?: false,
+                 last_completed_at: ~U[2026-09-05 01:00:00Z]
+               }
     end
 
     test "a failed completion reports failed?: true independent of complete?" do
@@ -924,7 +934,7 @@ defmodule BearCub.ChoresTest do
       fail_completion(ca, ~U[2026-09-04 23:00:00Z])
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: false, complete?: false, failed?: true}
+               %{empty?: false, complete?: false, failed?: true, last_completed_at: nil}
     end
   end
 
@@ -935,8 +945,8 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
     end
@@ -946,7 +956,7 @@ defmodule BearCub.ChoresTest do
       chores = for n <- 1..4, do: chore_fixture(kid, %{name: "Chore #{n}", routine: "morning"})
 
       for chore <- chores do
-        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       end
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
@@ -956,7 +966,7 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       _b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
     end
@@ -965,8 +975,8 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
 
@@ -977,8 +987,8 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
       fail_completion(cb, ~U[2026-07-10 15:01:00Z])
@@ -990,8 +1000,8 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
 
@@ -1009,6 +1019,139 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "early bird (backlog 2026-09-06, D100)" do
+    import BearCub.ChoresFixtures
+
+    defp r, do: Routines.bonus()
+    defp e, do: Routines.early_bird_bonus()
+
+    defp two_morning_chores(kid) do
+      {chore_fixture(kid, %{name: "A", routine: "morning"}),
+       chore_fixture(kid, %{name: "B", routine: "morning"})}
+    end
+
+    test "a morning finished strictly before the cutoff earns R + E" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:44:59]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == r() + e()
+    end
+
+    test "a last tap exactly at the cutoff is not early — strictly before" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:45:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == r()
+    end
+
+    test "the *last* live tap decides: one early chore and one late chore is not early" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == r()
+    end
+
+    test "the cutoff is local wall-clock — winter (UTC-8) compares the same as summer" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-01-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-01-10], ~T[07:30:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-01-10]) == r() + e()
+    end
+
+    test "an early completion later undone and redone after the cutoff is not early" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:10:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(b, la(~D[2026-07-10], ~T[07:20:00]))
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == r()
+    end
+
+    test "a fail forfeits the early bird along with the bonus, even when the redo is early" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:10:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == r() + e()
+
+      fail_completion(ca, ~U[2026-07-10 14:15:00Z])
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -r()
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:30:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+    end
+
+    test "the evening routine never earns an early bird, whatever the clock says" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "admin")
+
+      assert Chores.routine_day_contribution(kid, "evening", ~D[2026-07-10]) == r()
+    end
+
+    test "an incomplete morning earns nothing, however early the taps that did land" do
+      kid = kid_fixture()
+      {a, _b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+    end
+
+    test "early_bird?/2 is the kiosk's reading of the same predicate: earned, unfailed, early" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+
+      refute Chores.early_bird?(kid, ~D[2026-07-10])
+
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      refute Chores.early_bird?(kid, ~D[2026-07-10])
+
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:30:00]), "kiosk")
+      assert Chores.early_bird?(kid, ~D[2026-07-10])
+
+      fail_completion(ca, ~U[2026-07-10 14:35:00Z])
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:40:00]), "kiosk")
+      refute Chores.early_bird?(kid, ~D[2026-07-10])
+    end
+
+    test "routine_day_status/3 carries the last live completion instant, nil when none" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+
+      assert Chores.routine_day_status(kid, "morning", ~D[2026-07-10]).last_completed_at == nil
+
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:30:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(a, la(~D[2026-07-10], ~T[07:35:00]))
+
+      assert Chores.routine_day_status(kid, "morning", ~D[2026-07-10]).last_completed_at ==
+               ~U[2026-07-10 14:30:00Z]
+    end
+
+    test "earnings/2 and earnings_by_kid/1 both carry the early bird (D72 agreement)" do
+      kid = kid_fixture()
+      {a, b} = two_morning_chores(kid)
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:30:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-11], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-11], ~T[09:00:00]), "kiosk")
+
+      assert Chores.earnings(kid, ~D[2026-07-11]) == 2 * r() + e()
+      assert Chores.earnings_by_kid(~D[2026-07-11]) == %{kid.id => 2 * r() + e()}
+    end
+  end
+
   describe "the date-bounded routine roster (Story 02, D81)" do
     import BearCub.ChoresFixtures
 
@@ -1021,8 +1164,8 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
 
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
 
@@ -1035,7 +1178,7 @@ defmodule BearCub.ChoresTest do
     test "a chore added today is required today, so today's routine-day is incomplete" do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-20], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-20], ~T[08:00:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-20]) == Routines.bonus()
 
@@ -1050,7 +1193,7 @@ defmodule BearCub.ChoresTest do
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
 
       # 2026-07-09 was never fully complete: b was live and left undone
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == 0
 
       stamp(b, archived_on: ~D[2026-07-10])
@@ -1064,9 +1207,9 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
 
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-09], ~T[07:01:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-09], ~T[08:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       stamp(b, archived_on: ~D[2026-07-10])
 
@@ -1085,7 +1228,7 @@ defmodule BearCub.ChoresTest do
 
       # the kid finished everything this morning; b is archived this afternoon
       for chore <- [a, b, c] do
-        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       end
 
       stamp(b, archived_on: ~D[2026-07-10])
@@ -1121,12 +1264,12 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
 
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
       assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 0}
 
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
       assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => Routines.bonus()}
@@ -1152,7 +1295,7 @@ defmodule BearCub.ChoresTest do
     test "a day on which the kid completed nothing produces no row and contributes 0" do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Chores.earnings(kid, ~D[2026-07-09]) == 0
       assert Chores.earnings_by_kid(~D[2026-07-09]) == %{}

@@ -1155,6 +1155,93 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "early bird (backlog 2026-09-06, D100, D101)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    # A completion stamped at a chosen local wall-clock time today — the
+    # kiosk renders against the real clock, but the early bird is decided
+    # by `completed_at`, which the domain takes as an argument.
+    defp today_at(time) do
+      DateTime.new!(DateTime.to_date(LocalTime.now()), time, LocalTime.timezone())
+    end
+
+    test "a morning finished before the cutoff shows a bird beside the sun, with its own +E badge",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[07:00:00]), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id}", "🐦")
+      assert has_element?(view, "#early-bird-badge-#{kid.id}", "+#{Routines.early_bird_bonus()}")
+    end
+
+    test "a morning finished after the cutoff shows the sun alone", %{conn: conn, kid: kid} do
+      morning_active()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[09:00:00]), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
+      refute has_element?(view, "#early-bird-#{kid.id}")
+      refute has_element?(view, "#early-bird-badge-#{kid.id}")
+    end
+
+    test "a fail forfeits the bird entirely, even when the redo lands before the cutoff",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, today_at(~T[07:10:00]))
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[07:20:00]), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+      refute has_element?(view, "#completion-badge-#{kid.id}")
+      refute has_element?(view, "#early-bird-#{kid.id}")
+    end
+
+    test "the evening moon never gets a bird, however early the taps", %{conn: conn, kid: kid} do
+      evening_active()
+      chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[07:00:00]), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
+      refute has_element?(view, "#early-bird-#{kid.id}")
+    end
+
+    test "the points badge includes the early bird on top of the routine bonus",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, today_at(~T[07:00:00]), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(
+               view,
+               "#points-badge-#{kid.id}",
+               "#{Routines.bonus() + Routines.early_bird_bonus()}"
+             )
+    end
+  end
+
   describe "collapse-delay before the routine list collapses (Story 07)" do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})

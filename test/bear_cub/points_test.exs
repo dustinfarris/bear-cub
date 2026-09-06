@@ -66,7 +66,7 @@ defmodule BearCub.PointsTest do
       base = chore_fixture(kid, %{name: "Base", routine: nil, points: 20})
       chore = chore_fixture(kid, %{name: "Extra", routine: nil, points: 7})
 
-      {:ok, _} = Chores.complete_chore(base, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(base, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, completion} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       fail_completion(completion, ~U[2026-07-10 15:00:00Z])
 
@@ -92,7 +92,7 @@ defmodule BearCub.PointsTest do
       chores = for n <- 1..4, do: chore_fixture(kid, %{name: "Chore #{n}", routine: "morning"})
 
       for chore <- chores do
-        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+        {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       end
 
       assert Points.balance(kid, ~D[2026-07-10]) == Routines.bonus()
@@ -102,7 +102,7 @@ defmodule BearCub.PointsTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       _b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Points.balance(kid, ~D[2026-07-10]) == 0
     end
@@ -114,8 +114,8 @@ defmodule BearCub.PointsTest do
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
 
       {:ok, _} = Chores.complete_chore(base, la(~D[2026-07-10], ~T[06:00:00]), "kiosk")
-      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
       fail_completion(cb, ~U[2026-07-10 15:01:00Z])
@@ -128,7 +128,7 @@ defmodule BearCub.PointsTest do
       morning = chore_fixture(kid, %{name: "Morning", routine: "morning"})
       evening = chore_fixture(kid, %{name: "Evening", routine: "evening"})
 
-      {:ok, _} = Chores.complete_chore(morning, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(morning, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(evening, la(~D[2026-07-10], ~T[19:00:00]), "kiosk")
 
       assert Points.balance(kid, ~D[2026-07-10]) == 2 * Routines.bonus()
@@ -141,7 +141,7 @@ defmodule BearCub.PointsTest do
       chore = chore_fixture(kid, %{name: "A", routine: "morning"})
 
       for day <- [~D[2026-07-01], ~D[2026-07-02], ~D[2026-07-03]] do
-        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[07:00:00]), "kiosk")
+        {:ok, _} = Chores.complete_chore(chore, la(day, ~T[08:00:00]), "kiosk")
       end
 
       # day-rollover behavior is exercised by passing a different local
@@ -160,7 +160,7 @@ defmodule BearCub.PointsTest do
       extras =
         for n <- 1..3, do: chore_fixture(kid, %{name: "Extra #{n}", routine: nil, points: 4})
 
-      {:ok, _} = Chores.complete_chore(routine, la(~D[2026-07-01], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(routine, la(~D[2026-07-01], ~T[08:00:00]), "kiosk")
 
       for {chore, day} <- Enum.zip(extras, [~D[2026-07-01], ~D[2026-07-02], ~D[2026-07-03]]) do
         {:ok, _} = Chores.complete_chore(chore, la(day, ~T[08:00:00]), "kiosk")
@@ -228,8 +228,8 @@ defmodule BearCub.PointsTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-01], ~T[08:01:00]))
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
       assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
@@ -251,7 +251,7 @@ defmodule BearCub.PointsTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       assert Points.balance(kid, ~D[2026-07-20]) == 0
       assert Points.balances(~D[2026-07-20]) == %{kid.id => 0}
@@ -303,8 +303,8 @@ defmodule BearCub.PointsTest do
     test "the map forms agree with the per-kid forms" do
       kid = kid_fixture()
       chore = chore_fixture(kid, %{name: "A", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-09], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-09], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
 
       for date <- [~D[2026-07-09], ~D[2026-07-10]] do
         assert Points.balances(date)[kid.id] == Points.balance(kid, date)
@@ -401,8 +401,8 @@ defmodule BearCub.PointsTest do
       kid = kid_fixture()
       a = chore_fixture(kid, %{name: "A", routine: "morning"})
       b = chore_fixture(kid, %{name: "B", routine: "morning"})
-      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
-      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[07:01:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
       assert Points.total(kid, ~D[2026-07-10]) == Routines.bonus()
     end

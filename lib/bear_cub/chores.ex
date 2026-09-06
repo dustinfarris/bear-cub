@@ -413,7 +413,10 @@ defmodule BearCub.Chores do
   live completion" holds when there are none — with `empty?` carried
   alongside rather than folded in, so each consumer applies its own
   reading of what an empty roster means (points: no bonus; standing:
-  nothing was asked, so nothing was missed).
+  nothing was asked, so nothing was missed). `last_completed_at` is the
+  UTC instant of the latest *live* completion on the roster, `nil` when
+  there is none — the raw fact behind the early bird (D100); the cutoff
+  comparison is the points consumer's reading, not this predicate's.
 
   The roster is the chores that were *live on `local_date`* (D81), not
   today's: `active_from <= day and (archived_on is null or archived_on >
@@ -448,7 +451,18 @@ defmodule BearCub.Chores do
 
     failed? = Enum.any?(completions, & &1.failed_at)
 
-    %{empty?: chore_ids == [], complete?: complete?, failed?: failed?}
+    last_completed_at =
+      completions
+      |> Enum.reject(& &1.undone_at)
+      |> Enum.map(& &1.completed_at)
+      |> Enum.max(DateTime, fn -> nil end)
+
+    %{
+      empty?: chore_ids == [],
+      complete?: complete?,
+      failed?: failed?,
+      last_completed_at: last_completed_at
+    }
   end
 
   @doc """
@@ -461,15 +475,57 @@ defmodule BearCub.Chores do
   scale with chore count (SC-2). A thin wrapper over
   `routine_day_status/3` (D94) applying the points reading of
   `complete?`/`empty?`.
+
+  Plus the early bird `+E` (D100): a *morning* routine-day that earns
+  `+R`, is unfailed, and whose last live completion landed strictly
+  before `Routines.early_bird_cutoff/0` in local wall-clock time. A fail
+  forfeits it the way it forfeits the bonus, an undo-and-redo after the
+  cutoff loses it (only live rows count), and the evening never
+  qualifies.
   """
   def routine_day_contribution(%Kid{} = kid, routine, %Date{} = local_date)
       when routine in ~w(morning evening) do
-    %{empty?: empty?, complete?: complete?, failed?: failed?} =
+    %{empty?: empty?, complete?: complete?, failed?: failed?, last_completed_at: last_at} =
       routine_day_status(kid, routine, local_date)
 
-    r = Routines.bonus()
-    if(complete? and not empty?, do: r, else: 0) + if(failed?, do: -r, else: 0)
+    contribution(routine, complete? and not empty?, failed?, last_at)
   end
+
+  @doc """
+  Whether `kid` earned the early bird on `local_date` (D100): the morning
+  routine-day is earned (complete, non-empty), unfailed, and its last live
+  completion landed before the cutoff. The kiosk's bird (D101) reads this;
+  the points derivations apply the same predicate through `contribution/4`.
+  """
+  def early_bird?(%Kid{} = kid, %Date{} = local_date) do
+    %{empty?: empty?, complete?: complete?, failed?: failed?, last_completed_at: last_at} =
+      routine_day_status(kid, "morning", local_date)
+
+    early_bird?("morning", complete? and not empty?, failed?, last_at)
+  end
+
+  # The one place the routine-day booleans turn into points, shared by
+  # the per-kid and grouped derivations so the two cannot drift on the
+  # arithmetic (D72, D89): +R if earned, -R if failed, +E if early.
+  defp contribution(routine, earned?, failed?, last_completed_at) do
+    r = Routines.bonus()
+    early? = early_bird?(routine, earned?, failed?, last_completed_at)
+
+    if(earned?, do: r, else: 0) + if(failed?, do: -r, else: 0) +
+      if(early?, do: Routines.early_bird_bonus(), else: 0)
+  end
+
+  # `completed_at` is stored in UTC; the cutoff is local wall-clock, so
+  # the instant is shifted into the configured zone before comparing —
+  # which is what keeps 07:30 early in both PST and PDT.
+  defp early_bird?("morning", true = _earned?, false = _failed?, %DateTime{} = last_at) do
+    last_at
+    |> DateTime.shift_zone!(BearCub.LocalTime.timezone())
+    |> DateTime.to_time()
+    |> Time.compare(Routines.early_bird_cutoff()) == :lt
+  end
+
+  defp early_bird?(_routine, _earned?, _failed?, _last_completed_at), do: false
 
   @doc """
   Whether `kid` is in good standing on `local_date` (D91): both the
@@ -609,8 +665,6 @@ defmodule BearCub.Chores do
   end
 
   defp routine_days_by_kid(%Date{} = local_date) do
-    r = Routines.bonus()
-
     # The completion leg carries the same bound as the count leg: a chore
     # completed this morning and archived this afternoon is off today's
     # roster, so its completion must not be weighed against a count that
@@ -632,14 +686,19 @@ defmodule BearCub.Chores do
         chore_count: cc.chore_count,
         live_count:
           fragment("COUNT(DISTINCT CASE WHEN ? IS NULL THEN ? END)", c.undone_at, ch.id),
-        any_failed: fragment("MAX(CASE WHEN ? IS NOT NULL THEN 1 ELSE 0 END)", c.failed_at)
+        any_failed: fragment("MAX(CASE WHEN ? IS NOT NULL THEN 1 ELSE 0 END)", c.failed_at),
+        last_completed_at:
+          type(
+            fragment("MAX(CASE WHEN ? IS NULL THEN ? END)", c.undone_at, c.completed_at),
+            :utc_datetime
+          )
       }
     )
     |> Repo.all()
     |> Enum.reduce(%{}, fn row, acc ->
       complete? = row.chore_count > 0 and row.live_count == row.chore_count
       failed? = row.any_failed == 1
-      contribution = if(complete?, do: r, else: 0) + if failed?, do: -r, else: 0
+      contribution = contribution(row.routine, complete?, failed?, row.last_completed_at)
 
       Map.update(acc, row.kid_id, contribution, &(&1 + contribution))
     end)

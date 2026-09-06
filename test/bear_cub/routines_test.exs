@@ -17,6 +17,16 @@ defmodule BearCub.RoutinesTest do
     end
   end
 
+  describe "early bird (backlog 2026-09-06)" do
+    test "early_bird_cutoff/0 reads the configured local wall-clock cutoff (07:45 default)" do
+      assert Routines.early_bird_cutoff() == ~T[07:45:00]
+    end
+
+    test "early_bird_bonus/0 reads the configured bonus E (2 default)" do
+      assert Routines.early_bird_bonus() == 2
+    end
+  end
+
   describe "current/2" do
     test "the morning window opens at exactly 05:00" do
       assert Routines.current(la(~T[04:59:59]), @windows) == {:upcoming, :morning}

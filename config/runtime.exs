@@ -61,6 +61,33 @@ config :bear_cub,
        :routine_bonus,
        String.to_integer(System.get_env("BEAR_CUB_ROUTINE_BONUS", "5"))
 
+# Early bird bonus E (backlog 2026-09-06, D100): the extra points on top of
+# R when the *last* live completion of the morning routine lands before the
+# cutoff (local wall-clock, strictly before). Same treatment as the routine
+# bonus: app constants, env-overridable. A bonus of 0 switches it off. The
+# cutoff must fall inside the morning window — an early bird outside the
+# only window it can be earned in is a misconfiguration, caught at boot.
+early_bird_cutoff =
+  case System.get_env("BEAR_CUB_EARLY_BIRD_CUTOFF", "07:45") do
+    <<_::binary-size(2), ":", _::binary-size(2)>> = value -> Time.from_iso8601!(value <> ":00")
+    value -> raise "BEAR_CUB_EARLY_BIRD_CUTOFF must look like 07:45, got: #{inspect(value)}"
+  end
+
+{morning_starts, morning_ends} =
+  parse_window!.("BEAR_CUB_MORNING_WINDOW", {~T[05:00:00], ~T[17:00:00]})
+
+if Time.compare(early_bird_cutoff, morning_starts) != :gt or
+     Time.compare(early_bird_cutoff, morning_ends) != :lt do
+  raise "BEAR_CUB_EARLY_BIRD_CUTOFF must fall inside the morning window " <>
+          "(#{morning_starts}-#{morning_ends}), got: #{early_bird_cutoff}"
+end
+
+config :bear_cub, :early_bird_cutoff, early_bird_cutoff
+
+config :bear_cub,
+       :early_bird_bonus,
+       String.to_integer(System.get_env("BEAR_CUB_EARLY_BIRD_BONUS", "2"))
+
 # Calendar refresh pipeline (design §6): fetch interval within the ~15-minute
 # freshness target (FR-18), and the staleness threshold (FR-20, ~2h proposed).
 config :bear_cub,

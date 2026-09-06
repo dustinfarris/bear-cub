@@ -60,6 +60,21 @@ defmodule BearCub.Routines do
     Application.fetch_env!(:bear_cub, :routine_bonus)
   end
 
+  @doc """
+  The early bird cutoff (backlog 2026-09-06, D100): the local wall-clock
+  time the morning routine's last live completion must land *strictly
+  before* to earn `early_bird_bonus/0` on top of `bonus/0`. App constant
+  from config, guaranteed at boot to fall inside the morning window.
+  """
+  def early_bird_cutoff do
+    Application.fetch_env!(:bear_cub, :early_bird_cutoff)
+  end
+
+  @doc "The early bird bonus `E` (D100), from app config; `0` disables it."
+  def early_bird_bonus do
+    Application.fetch_env!(:bear_cub, :early_bird_bonus)
+  end
+
   defp next_opening(time, windows) do
     {slug, _window} =
       Enum.min_by(windows, fn {_slug, {starts, _ends}} ->
