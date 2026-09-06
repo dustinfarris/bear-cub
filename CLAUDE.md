@@ -9,7 +9,7 @@ Active initiative: docs/2026-09-05-good-standing/
 - Stories are batch-scoped: /workflow-kit:user-stories is always invoked with an explicit batch scope and only excerpts the DESIGN sections that batch implements. ("Phase N" is at most a decorative label an initiative puts on a batch heading — never a repo-level concept.)
 - Gate close (`/workflow-kit:phase-close`) includes the PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) as a manual human checklist — never CI'd, never skipped.
 - Testing per DESIGN §11: LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
-- Brainstorm session outputs belong in docs/superpowers/specs/; initiative directories (docs/YYYY-MM-DD-<slug>/) contain only chain documents (PRD, DESIGN, PLAN, stories/).
+- Brainstorm session outputs belong in docs/superpowers/specs/; initiative directories (docs/YYYY-MM-DD-<slug>/) contain only chain documents (PRD, DESIGN, PLAN, stories/) plus SKETCH.org — the scratch file the PRD conversation parks design material in, kit-authored, committed with the PRD lock, never cited by a chain document.
 
 ## Weight class
 
@@ -24,7 +24,7 @@ The live chain is the active initiative (see the `Active initiative:` line above
 Repo-level, cumulative across initiatives (not scoped to any one chain):
 
 - `docs/learnings.org` — Repo lessons: update rather than duplicate; delete entries that prove wrong.
-- `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms. Holds open work only — entries marked DONE move to `docs/completed.org`.
+- `docs/backlog.org` — Repo-level backlog: deferred work swept in from initiative PLAN Deferred sections at close, plus ad-hoc discovery; input for future initiative brainstorms. Ideas the PRD conversation sets aside land here too, one dated heading each. Holds open work only — entries marked DONE move to `docs/completed.org`.
 - `docs/completed.org` — Completed backlog items, full capture/triage/done trail intact; append-only archive.
 - `docs/decisions.org` — Repo-level Decision Log: one monotonic D-sequence across all initiatives, never inside an initiative directory; each DESIGN.org's `* Decision Log` section is a pointer to it, with entry rules living in the workflow-kit org-conventions skill.
 
@@ -45,9 +45,11 @@ When code and these docs disagree, the docs win. DESIGN.org is amendable per the
 
 ## Workflow
 
-Pipeline from here: /workflow-kit:user-stories (batch-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close (gate close). One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
+Pipeline: /workflow-kit:create-prd (the conversation that turns an idea into PRD.org) → design brainstorm (Superpowers, from PRD.org and SKETCH.org) → /workflow-kit:promote-design → /workflow-kit:user-stories (batch-scoped) → per story: TDD implementation, then /workflow-kit:story-closeout, then /workflow-kit:update-design → /workflow-kit:phase-close (gate close). One story per session, working from the story file's embedded Design excerpt as the source of truth. Out-of-scope discoveries are recorded as Deferred (story Technical Notes → PLAN.org), never fixed inline. Chain documents are org format, never markdown.
 
-Model routing: `.claude/settings.json` sets this repo's default model to Sonnet — builder altitude, where TDD implementation runs. Kit skills and agents pin their own model per stage (story-closeout and its verifier on Sonnet; user-stories, update-design, phase-close on Opus), so the one human routing step is the brainstorm: run `/model opus` before starting one. When a builder struggles, escalate context (the missing recipe in the story or CLAUDE.md) before escalating model.
+A request for a new feature, capability, or initiative goes to `/workflow-kit:create-prd` first, whether or not the request names it: that skill is the conversation that settles what is wanted, and a session does not invoke `superpowers:brainstorming` for such a request. Brainstorming is the design conversation: it runs once PRD.org exists, treats the PRD's Success Criteria as settled, and starts from SKETCH.org in the initiative directory. Bugs, bounded changes to existing behavior, and refactors go straight to Superpowers.
+
+Model routing: `.claude/settings.json` sets this repo's default model to Sonnet — builder altitude, where TDD implementation runs. Kit skills and agents pin their own model per stage (story-closeout and its verifier on Sonnet; create-prd, promote-design, user-stories, update-design, phase-close on Opus), so the one human routing step is the brainstorm: run `/model opus` before starting one. When a builder struggles, escalate context (the missing recipe in the story or CLAUDE.md) before escalating model.
 
 An implementation session refuses to start work over a dirty working tree; unexplained working-tree state is surfaced to the human, never classified-and-fixed by the session itself. (A session once misattributed and silently deleted the human's uncommitted scratch code — the incident this rule exists to prevent.)
 
