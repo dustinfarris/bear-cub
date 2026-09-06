@@ -32,7 +32,10 @@ defmodule BearCub.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # `dev/` holds the local-review scenarios (BearCub.Dev.Scenarios): compiled
+  # for dev and test, absent from the release.
+  defp elixirc_paths(:test), do: ["lib", "test/support", "dev"]
+  defp elixirc_paths(:dev), do: ["lib", "dev"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.

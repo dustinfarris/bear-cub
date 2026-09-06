@@ -1174,7 +1174,7 @@ defmodule BearCubWeb.KioskLiveTest do
       DateTime.new!(DateTime.to_date(LocalTime.now()), time, LocalTime.timezone())
     end
 
-    test "a morning finished before the cutoff shows the sparrow glyph beside the sun, with its own +E badge",
+    test "a morning finished before the cutoff shows the inline sparrow beside the sun, with its own +E badge",
          %{conn: conn, kid: kid} do
       morning_active()
       chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
@@ -1184,7 +1184,8 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
       assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
-      assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id}", "𓅪")
+      assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id} svg.sparrow")
+      refute has_element?(view, "#early-bird-#{kid.id}", "𓅪")
       refute has_element?(view, "#early-bird-#{kid.id}", "🐦")
       assert has_element?(view, "#early-bird-badge-#{kid.id}", "+#{Routines.early_bird_bonus()}")
     end

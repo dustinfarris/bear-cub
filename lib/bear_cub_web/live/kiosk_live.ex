@@ -568,24 +568,25 @@ defmodule BearCubWeb.KioskLive do
                   +{Routines.bonus()}
                 </span>
               </span>
-              <%!-- Early bird (D100, D101, D102): a bird beside the sun,
-                   carrying its own +E badge in the bonus badge's exact
+              <%!-- Early bird (D100, D101, D102, D103): a sparrow beside the
+                   sun, carrying its own +E badge in the bonus badge's exact
                    style. It is one signal with the badge — earned or not —
                    so a fail removes bird and badge together rather than
-                   leaving a bird with no number. The glyph is the Egyptian
-                   sparrow hieroglyph (U+1316A), a plain text character
-                   rather than a color emoji, so it takes the sun's white
-                   (D102 — provisional: Android ships no font for this
-                   block, so the on-device gate decides whether it stays). --%>
+                   leaving a bird with no number. The sparrow is the Egyptian
+                   hieroglyph G37 (U+1316A) as Noto's outline, inlined as SVG
+                   (D103): a text glyph drew at different sizes in Safari and
+                   Chrome and would have drawn as tofu on Android, which has
+                   no font for the block. The gap clears the sun badge's
+                   overhang so the two badges never collide. --%>
               <span
                 :if={early_bird?}
                 id={"early-bird-#{kid.id}"}
-                class="relative ml-4 flex items-center justify-center text-4xl leading-none text-white drop-shadow-sm"
+                class="relative ml-6 flex items-center justify-center text-white drop-shadow-sm"
               >
-                𓅪
+                <.sparrow class="h-10 w-auto" />
                 <span
                   id={"early-bird-badge-#{kid.id}"}
-                  class="absolute -right-3 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
+                  class="absolute -right-2 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
                 >
                   +{Routines.early_bird_bonus()}
                 </span>
@@ -940,6 +941,29 @@ defmodule BearCubWeb.KioskLive do
 
   defp chore_card_style(false, false, routine, kid_color),
     do: "background-color: var(--routine-#{routine}-tint); border-left-color: #{kid_color}"
+
+  # The early bird sparrow (D103): Egyptian hieroglyph G37 (U+1316A) from
+  # Noto Sans Egyptian Hieroglyphs (OFL), outline extracted with fontTools
+  # and inlined so it renders identically everywhere and needs no font.
+  # Takes `currentColor` like the hero icons, so the banner's white applies.
+  attr :class, :string, default: nil
+
+  defp sparrow(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 1035 776"
+      fill="currentColor"
+      aria-hidden="true"
+      class={["sparrow", @class]}
+    >
+      <path d={sparrow_path()} />
+    </svg>
+    """
+  end
+
+  @sparrow_path "M151 776C188 773 248 769 282 769C291 769 305 769 318 770L317 776C354 773 414 769 448 769C473 769 526 773 560 776L557 736L498 718C488 714 484 699 489 686C500 662 517 627 522 616C591 608 698 574 727 562C777 584 885 616 952 616C991 616 1019 608 1035 604V579C983 567 872 526 815 496C837 489 855 470 825 457C675 397 575 289 459 176C437 154 397 141 381 137C349 78 279 0 203 0C127 0 91 44 83 54L0 103C34 115 84 133 97 138C110 165 140 259 159 326C188 425 271 509 356 564V597C350 609 316 655 297 682C281 705 261 716 236 721L160 736ZM339 759 341 750 409 736C430 732 444 713 452 692L480 628L479 603C369 565 220 453 178 320C157 248 125 146 111 122H109C111 114 112 104 112 95C112 82 110 68 104 59C118 44 150 19 203 19C272 19 338 97 368 155C382 157 425 170 446 190C595 337 659 409 784 461C798 467 806 471 806 475C806 479 797 483 777 487C746 493 709 497 679 497C500 497 349 478 242 310L225 321C337 497 493 517 679 517C723 517 776 507 793 504C850 537 952 577 1009 593C995 596 972 596 952 596C888 596 774 563 728 540C701 551 592 587 519 597L496 561L479 571L504 609L472 679C460 709 470 731 497 737L539 752L540 759C515 756 473 751 448 751C421 751 370 756 339 759ZM172 99C180 99 187 92 187 83C187 75 180 68 172 68C163 68 157 75 157 83C157 92 163 99 172 99ZM48 89 92 71C94 76 95 82 96 89ZM93 116 49 105H95C95 109 94 113 93 116ZM173 759 175 750 252 736C274 732 303 706 315 687C335 658 372 611 375 601V577L392 586V597C387 610 354 661 334 687C318 709 304 729 326 736L322 753C308 752 293 751 282 751C255 751 204 756 173 759ZM364 728C333 717 336 717 350 696C370 666 409 611 412 601V597C428 605 444 612 460 618L461 625L435 684C428 700 418 715 399 720Z"
+  defp sparrow_path, do: @sparrow_path
 
   defp completion_icon_name(:morning), do: "hero-sun-solid"
   defp completion_icon_name(:evening), do: "hero-moon-solid"
