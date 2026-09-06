@@ -58,18 +58,54 @@ As a developer of Bear Cub, I need the "was this routine-day finished, and was i
 
 * Acceptance Criteria
 
-** [ ] Asking for one kid's routine-day status on a given date reports three facts separately: whether that kid's roster for that routine was empty that day, whether every chore on it carries a live completion on that date, and whether any completion for it was marked failed. (SC-2, D94)
-** [ ] ~complete?~ is true for an empty roster — "every chore has a live completion" holds when there are none — and ~empty?~ is reported alongside it rather than folded into it, so a consumer can apply either reading without re-deriving the other's. (SC-7, D92)
-** [ ] Points behavior is unchanged by the extraction: a routine still earns ~+R~ only when it is complete and its roster is non-empty, and a failed routine-day still costs ~−R~, with the existing points tests passing untouched — no edits to them. (D92, D94)
-** [ ] A kid with no chores configured for a routine earns no ~+R~ bonus for that routine, pinned by a test the suite did not previously carry. (SC-7, D92)
-** [ ] The grouped aggregate ~routine_days_by_kid/1~ is left as its own implementation — the predicate has two implementations after this story, not one and not three. (D94)
+** [X] Asking for one kid's routine-day status on a given date reports three facts separately: whether that kid's roster for that routine was empty that day, whether every chore on it carries a live completion on that date, and whether any completion for it was marked failed. (SC-2, D94)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:33] \\
+  ~BearCub.Chores.routine_day_status/3~ (~lib/bear_cub/chores.ex:413-439~) returns ~%{empty?: ..., complete?: ..., failed?: ...}~ computed from three independent facts. Verified by ~describe "routine_day_status/3 (Story 01, D94, D92)"~ in ~test/bear_cub/chores_test.exs:869-909~ (4 tests), all passing under ~mix precommit~ (553 passed).
+:END:
+** [X] ~complete?~ is true for an empty roster — "every chore has a live completion" holds when there are none — and ~empty?~ is reported alongside it rather than folded into it, so a consumer can apply either reading without re-deriving the other's. (SC-7, D92)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:33] \\
+  ~complete?~ is ~Enum.all?(chore_ids, ...)~ (~chores.ex:431-434~), vacuously true when ~chore_ids == []~; ~empty?~ is set independently at ~chores.ex:438~. Verified by "an empty roster is empty and vacuously complete (D92)", ~test/bear_cub/chores_test.exs:883-888~, asserting ~%{empty?: true, complete?: true, failed?: false}~.
+:END:
+** [X] Points behavior is unchanged by the extraction: a routine still earns ~+R~ only when it is complete and its roster is non-empty, and a failed routine-day still costs ~−R~, with the existing points tests passing untouched — no edits to them. (D92, D94)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:34] \\
+  Wrapper at ~chores.ex:452-459~ computes ~if(complete? and not empty?, do: r, else: 0) + if(failed?, do: -r, else: 0)~. ~git diff HEAD~1 -- test/bear_cub/points_test.exs~ is empty (untouched, 27 tests passing standalone); pre-existing ~describe "routine_day_contribution/3 (Story 02, D40)"~ tests (~chores_test.exs:911-982~) are unedited per diff and pass under ~mix precommit~ (553 passed).
+:END:
+** [X] A kid with no chores configured for a routine earns no ~+R~ bonus for that routine, pinned by a test the suite did not previously carry. (SC-7, D92)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:34] \\
+  New test "a kid with no chores configured for a routine earns no +R bonus (SC-7, D92)", ~test/bear_cub/chores_test.exs:984-988~, confirmed by ~git diff HEAD~1~ as a pure addition (no prior test edited). Passing under ~mix precommit~.
+:END:
+** [X] The grouped aggregate ~routine_days_by_kid/1~ is left as its own implementation — the predicate has two implementations after this story, not one and not three. (D94)
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:34] \\
+  ~git diff HEAD~1 -- lib/bear_cub/chores.ex~ shows edits confined to ~routine_day_contribution/3~/~routine_day_status/3~ (~chores.ex~ ~393-459~); ~routine_days_by_kid/1~ (~chores.ex:574~) and ~earnings_by_kid/1~ are untouched, remaining a separate SQL aggregate.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:36] \\
+  All 5 Acceptance Criteria above are ~[X]~ with LOGBOOK evidence; none required removal or deferral.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:37] \\
+  New ~describe "routine_day_status/3 (Story 01, D94, D92)"~ block (~test/bear_cub/chores_test.exs:869-909~, 4 tests) plus the new empty-roster points test (~:984-988~), both passing in isolation and under ~mix precommit~ (553 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:37] \\
+  Spot-checked ~lib/bear_cub/chores.ex:393-459~: doc-comment lines ≤75 cols, predicate names (~empty?~, ~complete?~, ~failed?~) follow the ~?~-suffix convention, ~routine_day_contribution/3~ stays a thin wrapper with no added indirection, and ~mix format --check-formatted~/~mix compile --warnings-as-errors~ both pass clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-05 Sat 22:37] \\
+  Repo declares ~Verify command: mix precommit~. Ran fresh: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~ all succeeded, ~Result: 553 passed~, exit code 0.
+:END:
 
 * Technical Notes
 
