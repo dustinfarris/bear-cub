@@ -568,18 +568,21 @@ defmodule BearCubWeb.KioskLive do
                   +{Routines.bonus()}
                 </span>
               </span>
-              <%!-- Early bird (D100, D101): a bird beside the sun, carrying
-                   its own +E badge in the bonus badge's exact style. It is
-                   one signal with the badge — earned or not — so a fail
-                   removes bird and badge together rather than leaving a
-                   bird with no number. Emoji, like the gift button: the
-                   hero set has no bird. --%>
+              <%!-- Early bird (D100, D101, D102): a bird beside the sun,
+                   carrying its own +E badge in the bonus badge's exact
+                   style. It is one signal with the badge — earned or not —
+                   so a fail removes bird and badge together rather than
+                   leaving a bird with no number. The glyph is the Egyptian
+                   sparrow hieroglyph (U+1316A), a plain text character
+                   rather than a color emoji, so it takes the sun's white
+                   (D102 — provisional: Android ships no font for this
+                   block, so the on-device gate decides whether it stays). --%>
               <span
                 :if={early_bird?}
                 id={"early-bird-#{kid.id}"}
-                class="relative ml-4 flex items-center justify-center text-4xl leading-none drop-shadow-sm"
+                class="relative ml-4 flex items-center justify-center text-4xl leading-none text-white drop-shadow-sm"
               >
-                🐦
+                𓅪
                 <span
                   id={"early-bird-badge-#{kid.id}"}
                   class="absolute -right-3 -top-1 flex items-center rounded-full bg-success px-1.5 py-0.5 text-xs font-bold text-success-content drop-shadow-sm"
