@@ -393,12 +393,14 @@ defmodule BearCub.Chores do
   end
 
   @doc """
-  The capped per-`(kid, routine, local_date)` contribution (D40, D41):
-  `+R` when every one of the kid's `routine` chores has a live
-  completion on `local_date`, `-R` when one or more has a failed
-  completion that day. `failed?` is a boolean per routine-day, never a
-  per-row sum, so two or more fails still cost a single `-R` and routine
-  points never scale with chore count (SC-2).
+  The per-`(kid, routine, local_date)` status (D94, D92): whether that
+  routine's roster was empty that day, whether every chore on it has a
+  live completion, and whether any completion for it was marked failed.
+  `complete?` is vacuously true for an empty roster — "every chore has a
+  live completion" holds when there are none — with `empty?` carried
+  alongside rather than folded in, so each consumer applies its own
+  reading of what an empty roster means (points: no bonus; standing:
+  nothing was asked, so nothing was missed).
 
   The roster is the chores that were *live on `local_date`* (D81), not
   today's: `active_from <= day and (archived_on is null or archived_on >
@@ -408,7 +410,7 @@ defmodule BearCub.Chores do
   directly: the column is `NOT NULL`, so the null case the bound used to
   tolerate cannot occur (D90).
   """
-  def routine_day_contribution(%Kid{} = kid, routine, %Date{} = local_date)
+  def routine_day_status(%Kid{} = kid, routine, %Date{} = local_date)
       when routine in ~w(morning evening) do
     chore_ids =
       Repo.all(
@@ -427,15 +429,33 @@ defmodule BearCub.Chores do
       )
 
     complete? =
-      chore_ids != [] and
-        Enum.all?(chore_ids, fn chore_id ->
-          Enum.any?(completions, &(&1.chore_id == chore_id and is_nil(&1.undone_at)))
-        end)
+      Enum.all?(chore_ids, fn chore_id ->
+        Enum.any?(completions, &(&1.chore_id == chore_id and is_nil(&1.undone_at)))
+      end)
 
     failed? = Enum.any?(completions, & &1.failed_at)
 
+    %{empty?: chore_ids == [], complete?: complete?, failed?: failed?}
+  end
+
+  @doc """
+  The capped per-`(kid, routine, local_date)` contribution (D40, D41):
+  `+R` when every one of the kid's `routine` chores has a live
+  completion on `local_date` and the roster is non-empty (D92 — an empty
+  roster earns no bonus), `-R` when one or more has a failed completion
+  that day. `failed?` is a boolean per routine-day, never a per-row sum,
+  so two or more fails still cost a single `-R` and routine points never
+  scale with chore count (SC-2). A thin wrapper over
+  `routine_day_status/3` (D94) applying the points reading of
+  `complete?`/`empty?`.
+  """
+  def routine_day_contribution(%Kid{} = kid, routine, %Date{} = local_date)
+      when routine in ~w(morning evening) do
+    %{empty?: empty?, complete?: complete?, failed?: failed?} =
+      routine_day_status(kid, routine, local_date)
+
     r = Routines.bonus()
-    if(complete?, do: r, else: 0) + if failed?, do: -r, else: 0
+    if(complete? and not empty?, do: r, else: 0) + if(failed?, do: -r, else: 0)
   end
 
   @doc """

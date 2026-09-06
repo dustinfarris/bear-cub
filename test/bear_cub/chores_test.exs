@@ -866,6 +866,48 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "routine_day_status/3 (Story 01, D94, D92)" do
+    import BearCub.ChoresFixtures
+
+    test "a fully-complete non-empty roster is complete, not failed, not empty" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "evening"})
+      b = chore_fixture(kid, %{name: "B", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-09-04], ~T[18:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(b, la(~D[2026-09-04], ~T[18:01:00]), "kiosk")
+
+      assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
+               %{empty?: false, complete?: true, failed?: false}
+    end
+
+    test "an empty roster is empty and vacuously complete (D92)" do
+      kid = kid_fixture()
+
+      assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
+               %{empty?: true, complete?: true, failed?: false}
+    end
+
+    test "a non-empty roster left partly undone is not complete" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "evening"})
+      _b = chore_fixture(kid, %{name: "B", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(a, la(~D[2026-09-04], ~T[18:00:00]), "kiosk")
+
+      assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
+               %{empty?: false, complete?: false, failed?: false}
+    end
+
+    test "a failed completion reports failed?: true independent of complete?" do
+      kid = kid_fixture()
+      a = chore_fixture(kid, %{name: "A", routine: "evening"})
+      {:ok, ca} = Chores.complete_chore(a, la(~D[2026-09-04], ~T[18:00:00]), "kiosk")
+      fail_completion(ca, ~U[2026-09-04 23:00:00Z])
+
+      assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
+               %{empty?: false, complete?: false, failed?: true}
+    end
+  end
+
   describe "routine_day_contribution/3 (Story 02, D40)" do
     import BearCub.ChoresFixtures
 
@@ -937,6 +979,12 @@ defmodule BearCub.ChoresTest do
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
 
       {:ok, _redo} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
+    end
+
+    test "a kid with no chores configured for a routine earns no +R bonus (SC-7, D92)" do
+      kid = kid_fixture()
+
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
     end
   end
