@@ -10,14 +10,6 @@ Size tags: oneshot (compiled single-session prompt), hand (inert edit, no sessio
 :CREATED:  [2026-09-06 Sun 13:05]
 :END:
 Set aside [2026-09-06 Sun] while implementing the ntfy oneshot (now in docs/completed.org): web push would keep notifications first-party with no relay and no extra phone app, and delivery reaches the phone anywhere via Apple's/Google's push relays. What ruled it out for that session was the machinery, not the outcome: a secure context (TLS for the admin — a Tailscale cert for the MagicDNS name plus reverse proxy or Bandit TLS in the NixOS module), a service worker plus a per-phone subscribe flow in the admin UI, a subscriptions table and a VAPID keypair as a new server secret, a web-push encryption dep (~web_push_elixir~ or ~web_push_encryption~), and iOS only delivering to a Home Screen PWA (so a manifest too). Untagged deliberately: this is initiative-scale (promote) if picked up, and would replace rather than sit beside the ntfy path. Trigger to revisit: the public-relay trade ("<kid> finished <chore>" through ntfy.sh) stops being acceptable, or TLS lands for another reason.
-* TODO [#B] Early bird bonus! :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 09:34]
-:END:
-
-When a kid completes their morning routing before a certain time (e.g. 7:45 AM) they get an Early Bird bonus, perhaps indicated by a bird emoji/icon next to the sun icon with another configurable bonus, e.g. +2.
-
-Triage [2026-09-06 Sun]: oneshot, #B — smaller than it looks: ~completions.completed_at~ already exists, so "last morning chore tapped before 7:45" is a plain query, no new column. Config-only threshold/bonus, mirroring ~:routine_bonus~/~:routine_windows~ (~config/runtime.exs~, env-overridable) rather than an admin form. One ruling to settle before coding, not after: where the bonus composes into ~Chores.earnings/2~. D42's =other_signed_inputs= seam is already occupied by ~Rewards.spend_total~ (see ~lib/bear_cub/points.ex~), so this is a third term, not that seam — and whichever term it becomes must also land in ~earnings_by_kid/1~'s grouped rewrite, not just the per-kid path, or the two derivations disagree the way [[file:decisions.org::#d89][D89]] found them disagree once already. Kids' view visual (bird icon beside the sun icon) — ~docs/design-language.org~ read is binding; on-device gate applies.
 * TODO On-device gate for the good-standing band and ring is still owed :hand:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:08]
@@ -41,6 +33,11 @@ Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute f
 
 What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
 
+* TODO snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 14:10]
+:END:
+Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
 * TODO [#B] The extra chores need to show how many points they're worth. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 14:18]
