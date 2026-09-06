@@ -42,6 +42,8 @@ defmodule BearCubWeb.Router do
     live "/rewards/new", RewardLive.Form, :new
     live "/rewards/:id/edit", RewardLive.Form, :edit
     live "/rewards/history", RewardLive.History
+
+    live "/notifications", NotificationLive
   end
 
   # Other scopes may use custom stacks.

@@ -41,15 +41,15 @@ in
       description = "Open the HTTP port in the firewall.";
     };
 
-    environmentFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = null;
-      example = "/etc/bear-cub/secrets.env";
+    ntfyServer = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "https://ntfy.sh";
       description = ''
-        Hand-placed, root-readable KEY=VALUE file of application secrets
-        that must stay out of git and the Nix store — today that is
-        BEAR_CUB_NTFY_URL, the ntfy topic URL for parent push
-        notifications (unset means notifications are off).
+        ntfy server for parent push notifications. The topic itself is
+        the secret and is generated into the state directory on first
+        boot (the SECRET_KEY_BASE pattern), never placed by hand; the
+        admin Notifications page shows it for subscribing. Set to null
+        to turn notifications off.
       '';
     };
 
@@ -72,15 +72,22 @@ in
         RELEASE_COOKIE = "bear-cub-no-distribution";
       };
 
-      # SECRET_KEY_BASE is generated into the state directory on first
-      # boot: with ICS URLs living in the DB (D9), the box carries zero
-      # hand-placed application secrets (design §7).
+      # SECRET_KEY_BASE and the ntfy topic are generated into the state
+      # directory on first boot: with ICS URLs living in the DB (D9), the
+      # box carries zero hand-placed application secrets (design §7).
       script = ''
         if [ ! -f "$STATE_DIRECTORY/secret_key_base" ]; then
           (umask 077; tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 64 \
             > "$STATE_DIRECTORY/secret_key_base")
         fi
         export SECRET_KEY_BASE="$(cat "$STATE_DIRECTORY/secret_key_base")"
+      '' + lib.optionalString (cfg.ntfyServer != null) ''
+        if [ ! -f "$STATE_DIRECTORY/ntfy_topic" ]; then
+          (umask 077; printf 'bear-cub-%s' "$(tr -dc 'a-z0-9' < /dev/urandom | head -c 32)" \
+            > "$STATE_DIRECTORY/ntfy_topic")
+        fi
+        export BEAR_CUB_NTFY_URL="${cfg.ntfyServer}/$(cat "$STATE_DIRECTORY/ntfy_topic")"
+      '' + ''
         export DATABASE_PATH="$STATE_DIRECTORY/bear_cub.db"
         export RELEASE_TMP="$STATE_DIRECTORY/tmp"
         mkdir -p "$RELEASE_TMP"
@@ -90,7 +97,6 @@ in
       serviceConfig = {
         DynamicUser = true;
         StateDirectory = "bear-cub";
-        EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
         Restart = "on-failure";
         RestartSec = 5;
       };

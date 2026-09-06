@@ -61,7 +61,18 @@ defmodule BearCubWeb.Admin.ChoreLive.Index do
     ~H"""
     <Layouts.admin flash={@flash} active={:chores} static_reload_href={@static_reload_href}>
       <div id="admin-chores" class="mx-auto max-w-md px-4 py-6">
-        <.header>Chores</.header>
+        <.header>
+          Chores
+          <:actions>
+            <.link
+              id="view-notifications"
+              navigate={~p"/admin/notifications"}
+              class="text-sm font-semibold text-base-content/60"
+            >
+              Notifications
+            </.link>
+          </:actions>
+        </.header>
 
         <div
           :if={@kids != []}

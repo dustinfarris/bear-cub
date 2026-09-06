@@ -51,12 +51,18 @@ defmodule BearCub.Notifications do
   end
 
   @doc """
+  The configured topic URL, or nil when notifications are off. Shown on
+  the admin notifications page so a parent can subscribe; never logged.
+  """
+  def topic_url, do: Application.get_env(:bear_cub, :ntfy_url)
+
+  @doc """
   Sends `message` to the configured topic. Returns `{:ok, pid}` of the
   task carrying the request, or `:ignore` when no topic URL is set.
   Failures are logged with the message and status only.
   """
   def push(message) when is_binary(message) do
-    case Application.get_env(:bear_cub, :ntfy_url) do
+    case topic_url() do
       nil ->
         :ignore
 
