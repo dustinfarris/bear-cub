@@ -596,16 +596,15 @@ defmodule BearCubWeb.KioskLive do
             </div>
           </header>
 
-          <%!-- Standing band (Story 05, D95, D97, D98): renders only while
-               `standing?` (already window- and delay-gated in
+          <%!-- Standing band (Story 05, D95, D97, D98, D99): renders only
+               while `standing?` (already window- and delay-gated in
                `build_column/10`) — never text, just stars, so it reads for
-               a pre-reader across the room. Thirteen stars in a five/three/
-               five arc (D98, amending D97's flat row of three) so the band
-               reads as a single celebratory shape rather than a row of
-               identical glyphs. It survives the reward shop below (D97:
-               standing is a property of the child's day, not of which body
-               view is open), which is why it sits above both branches
-               rather than inside either. --%>
+               a pre-reader across the room. Thirteen uniform size-9 stars
+               (D99, dropping D98's five/three/five size arc after on-screen
+               review). It survives the reward shop below (D97: standing is
+               a property of the child's day, not of which body view is
+               open), which is why it sits above both branches rather than
+               inside either. --%>
           <div
             :if={standing?}
             id={"standing-band-#{kid.id}"}
@@ -613,9 +612,9 @@ defmodule BearCubWeb.KioskLive do
           >
             <div class="w-max whitespace-nowrap">
               <.icon
-                :for={size <- [9, 9, 9, 9, 9, 12, 12, 12, 9, 9, 9, 9, 9]}
+                :for={_ <- 1..13}
                 name="hero-star-solid"
-                class={"size-#{size} text-success-content"}
+                class="size-9 text-success-content"
               />
             </div>
           </div>
