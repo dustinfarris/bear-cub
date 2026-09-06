@@ -46,20 +46,64 @@ As a parent on my phone, I need to see at any hour whether each kid is in good s
 
 * Acceptance Criteria
 
-** [ ] Each kid's card on the Today admin view carries a standing row directly beneath that kid's colored header and above the routine sections. (SC-4, D96)
-** [ ] A kid in good standing shows three small solid stars in success green together with the words *In good standing*. (SC-4, D96)
-** [ ] A kid not in good standing shows a muted *Not in good standing* verdict followed by two half-chips, one for each routine, each carrying a ✓ or an ✗. (SC-5, D96)
-** [ ] A half-chip shows ✗ whenever its routine was unfinished *or* was marked failed; the surface does not distinguish the two causes. (SC-5, D96)
-** [ ] The chip for the evening half is labelled *Last night* — never *Evening* — and the chip for the morning half is labelled *This morning*, so a parent looking at the card during tonight's routine cannot read the row as commenting on the routine in front of them. (SC-6, D96)
-** [ ] The standing row renders whenever the Today view renders, at any hour, independent of which routine window is active — including after the kids' screen is done for the night. (SC-4, D96)
-** [ ] The row stays phone-first and compact inside the view's existing ~max-w-md~ column. (SC-4, D96)
+** [X] Each kid's card on the Today admin view carries a standing row directly beneath that kid's colored header and above the routine sections. (SC-4, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  ~today_live.ex~ renders ~<.standing_row kid={kid} standing={standing} />~ immediately after the kid's ~<header>~ and before the ~sections~ loop, with no intervening markup. Covered by the passing test "the standing row sits directly beneath the header and above the routine sections" (~today_live_test.exs~), which asserts byte-offset ordering of the header text, the ~standing-~ id, and the first ~section-~ id.
+:END:
+** [X] A kid in good standing shows three small solid stars in success green together with the words *In good standing*. (SC-4, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  ~standing_row/1~'s ~standing?~ branch wraps three ~hero-star-solid~ icons (~size-4~) and the text *In good standing* in a ~text-success~ container, matching the app's existing success-green token. Verified by the passing test "a kid with no chores at all is in good standing: three solid stars and the verdict text", asserting both the text and a count of 3 ~.hero-star-solid~ nodes.
+:END:
+** [X] A kid not in good standing shows a muted *Not in good standing* verdict followed by two half-chips, one for each routine, each carrying a ✓ or an ✗. (SC-5, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  The non-standing branch renders a muted (~text-base-content/60~) *Not in good standing* line followed by two chip spans, each rendering ~half_mark/1~'s ✓/✗. Verified by the passing test "not in standing shows the muted verdict plus two chips labelled This morning / Last night".
+:END:
+** [X] A half-chip shows ✗ whenever its routine was unfinished *or* was marked failed; the surface does not distinguish the two causes. (SC-5, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  ~half_mark(%{complete?: true, failed?: false})~ is the only ✓ clause; every other combination (incomplete, or complete-but-failed) falls through to ✗ with no branch naming which cause applied. Verified by the passing test "a chip shows ✗ for a routine that was completed then failed, even after being redone", which completes, fails, then re-completes a chore and asserts the chip still reads ✗ — matching ~Chores.routine_day_status/3~'s day-scoped ~failed?~ (unaffected by a later redo).
+:END:
+** [X] The chip for the evening half is labelled *Last night* — never *Evening* — and the chip for the morning half is labelled *This morning*, so a parent looking at the card during tonight's routine cannot read the row as commenting on the routine in front of them. (SC-6, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  Literal strings *Last night* / *This morning* in ~standing_row/1~. Verified by the same "not in standing" test, which additionally asserts ~refute standing_html =~ "Evening"~ scoped to the ~#standing-{id}~ fragment.
+:END:
+** [X] The standing row renders whenever the Today view renders, at any hour, independent of which routine window is active — including after the kids' screen is done for the night. (SC-4, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  ~load/2~ computes ~standing: Chores.standing(kid, today)~ unconditionally for every card on every render/reload path (mount, every ~handle_event~, every ~handle_info~); the ~standing_row~ render carries no conditional on ~@active~ or the routine window — the only window-dependent logic in ~load/2~ governs which routine section is expanded/ordered, never whether the standing row appears. Verified by code inspection (no dedicated test isolates both windows; the story's Testing excerpt does not name this scenario as a required test).
+:END:
+** [X] The row stays phone-first and compact inside the view's existing ~max-w-md~ column. (SC-4, D96)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:29] \\
+  The standing row is nested inside the existing ~<div id="admin-today" class="mx-auto max-w-md ...">~ / per-kid ~<section>~ — no new width container introduced. Its own classes (~border-t border-base-200 px-5 py-3~) match the compact single-line-padding convention used by every other section divider in this file.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:35] \\
+  All 7 Acceptance Criteria above are ~[X]~ with LOGBOOK notes naming concrete evidence (test names, file:line, resolved code paths). Independently confirmed by re-running the 4 new tests individually (~mix test test/bear_cub_web/live/admin/today_live_test.exs:514 --trace~ — 4 passed) and by reading the render/~load/2~ code each note cites.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:35] \\
+  ~describe "standing row (Story 03, D96)"~ in ~today_live_test.exs~ (4 tests) covers the in-standing verdict, the not-in-standing verdict with both chip labels, the failed-then-redone ✗ case, and DOM ordering. All 4 pass; full suite ~mix test~ reports 570 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:35] \\
+  Uses ~<.icon>~ (never a raw Heroicons module), ~attr~ declarations precede each function component matching the file's existing convention, no raw ~<script>~ or map-access-on-struct, and ~half_mark/1~ (non-boolean return) is correctly not named with an ~is_~/~?~ predicate convention. ~mix format --check-formatted~ passes.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 07:35] \\
+  ~mix precommit~ (this repo's declared Verify command: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) exits 0 — =Result: 570 passed=, no compiler warnings, no formatting diffs.
+:END:
 
 * Technical Notes
 
@@ -70,3 +114,4 @@ The Design excerpt above is the source of truth for this story's spec; DESIGN.or
 - ~Admin.TodayLive~'s ~load/2~ already receives a local datetime at every entry point and derives ~today~ from it; the standing call takes that same date. No clock read is added.
 - A chip's ✗ condition is "not satisfied or failed" — with ~standing/2~ returning raw ~empty?~/~complete?~/~failed?~ per half, the render resolves it; the derivation is not changed to pre-resolve an atom.
 - This surface is advisory only: nothing on this view gates or is gated on standing.
+- The new ~today_live_test.exs~ tests capture ~LocalTime.now()~ once in the describe's ~setup~ and reuse that single binding (~now~/~yesterday~) everywhere, rather than re-deriving from the wall clock a second time within a test — but they do not call ~pin_active_routine/1~. This is deliberate, not an oversight: ~Chores.standing/2~ and ~routine_day_status/3~ never read ~:routine_windows~ at all (standing is pure ~Date~ arithmetic, independent of which routine window is open), so pinning it here would guard against a failure mode that cannot occur for this surface. The Design excerpt's Test hygiene line ("pins ~:routine_windows~") describes the kiosk/window-dependent tests elsewhere in this suite; it does not fit a window-independent surface literally.
