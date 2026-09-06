@@ -459,6 +459,30 @@ defmodule BearCub.Chores do
   end
 
   @doc """
+  Whether `kid` is in good standing on `local_date` (D91): both the
+  morning routine-day for `local_date` and the evening routine-day for
+  the *day before* are satisfied (`complete?`, including vacuously on an
+  empty roster, D92) and unfailed. Returns the two halves alongside the
+  verdict, not just the boolean, so a caller can show which half broke
+  standing without re-deriving either (D96).
+
+  The evening half's roster is bounded by `local_date - 1` inside
+  `routine_day_status/3` (D81), so it is scored against what was live
+  that night, not what is live now (D94) — this falls out of reusing
+  the same predicate rather than being separate logic.
+  """
+  def standing(%Kid{} = kid, %Date{} = local_date) do
+    morning = routine_day_status(kid, "morning", local_date)
+    evening = routine_day_status(kid, "evening", Date.add(local_date, -1))
+
+    standing? =
+      morning.complete? and not morning.failed? and
+        evening.complete? and not evening.failed?
+
+    %{standing?: standing?, morning: morning, evening: evening}
+  end
+
+  @doc """
   The *raw signed* cumulative all-time earnings for `kid` as of
   `local_date` (D41, D57): `Σ routine-day contributions + Σ extra
   contributions`, purely derived from `completions` — nothing stored, no
