@@ -1,0 +1,33 @@
+#+title: PRD — Bear Cub: Good standing
+#+date: 2026-09-05
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+Every morning this family asks the same question out loud — "did you earn screen time today?" — and answers it from memory, which means it is arguable, and it gets argued. The answer turns on two routines: last night's evening routine and this morning's morning routine, both finished, neither one done badly enough that a parent marked it failed. Bear Cub already holds every fact needed to settle it, and shows none of them: the kiosk says nothing about standing at all, and last night's evening routine is not visible anywhere in the app, on any surface, once the night is over. So the one piece of evidence the verdict most depends on is the one piece nobody can check. Nothing off the shelf fits, because the rule is this family's own — it is phrased in this app's routines and its own notion of a failed chore.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. A kid can tell whether they are in good standing today by looking at the fridge from across the kitchen, without reading a word.
+2. Standing has one unarguable meaning, the same every day: last night's evening routine and this morning's morning routine were both finished, and neither was marked failed.
+3. A kid's signal is a morning thing — it is there through the morning and gone by evening, when it would only be stale.
+4. A parent can get the verdict on their phone at any hour of the day, including after the kids' screen is done for the night.
+5. When a kid is not in good standing, the parent's phone says which of the two routines broke it.
+6. A parent can find out whether last night's evening routine was finished — something no surface in the app shows today.
+7. A kid with no chores configured for a routine is never held out of standing by that absence.
+
+* Out of Scope
+
+- Streaks, or any multi-day history of standing.
+- Gating anything on standing: no reward, chore, or shop behavior consults it. It informs the parent's decision; it never makes it.
+- Any change to points, badges, or the rewards economy — standing awards nothing and costs nothing.
+- Repairing a missed night after the fact: nothing in the app can restore standing lost to a sleepover.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
