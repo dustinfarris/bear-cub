@@ -5,6 +5,9 @@ Things we learned building the MVP that are *not* recorded in commit
 messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
 of each section are fine; every entry carries the date it was learned.
 
+* [2026-09-06 Sun] Gate on a local kiosk review, verify on the tablet after deploy
+The on-device gate was paradoxical: the deployed Fully Kiosk WebView was the first place a kids' view change could be judged, so judging it required shipping it. Two things fixed that. First, the tablet's CSS viewport is knowable — the Lenovo IdeaTab's 2560 × 1600 panel is 1280 × 800 CSS px at 2× DPR — so a desktop browser window at that size is a faithful layout check for everything except what only Android can answer (font coverage, large box-shadow rendering, touch, sleep/wake). Second, staging a kiosk state by hand (wipe today's completions, stamp a few rows, override a config key) was the real cost of looking locally, so it became code: ~BearCub.Dev.Scenarios~, compiled in dev and test only, one named function per reviewable state, run inside the server VM so overrides and broadcasts take effect live. The Android-only questions get designed out where possible — the early bird's sparrow shipped first as a hieroglyph text glyph (U+1316A), which Safari and Chrome drew at different sizes and Android would not have drawn at all; it became an inline SVG path extracted from the OFL Noto font with fontTools, identical everywhere. What is left for the tablet is a short post-deploy checklist, not a gate. A delivered PRD's gate wording does not bind ops process; the human ruled that explicitly.
+
 * [2026-07-12 Sun] A pinned ~nil~ in an Ecto query comparison raises, it doesn't match
 Comparing a field against a pinned ~nil~ (~c.routine == ^value~, where ~value~
 is ~nil~) raises ~ArgumentError~ at query time rather than silently matching
