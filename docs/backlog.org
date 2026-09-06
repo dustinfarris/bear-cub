@@ -5,6 +5,29 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO On-device gate for the good-standing band and ring is still owed :hand:
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 09:08]
+:END:
+
+Swept [2026-09-06 Sun 09:08] from the good-standing Batch 1 gate, where the human ruled it a documented deferral. Story 05's AC8 stays ~[-]~: the tablet cannot be exercised without a deploy, so nothing on this machine can close it.
+
+Still owed, on the tablet in Fully Kiosk, during the morning window, for a kid in good standing:
+
+1. band and ring render as designed;
+2. *both* read from across the room — the ring is a 4px inset ring against ~bg-base-100~ and read as a thin line in the desktop spot-check, so it needs the legibility check as much as the band does;
+3. band plus five manually re-expanded done morning chore rows fit without scrolling;
+4. band and ring disappear at 17:00 without anyone touching the tablet;
+5. standing still renders correctly after sleep/wake reconnect.
+
+Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute for the tablet, but it makes items 3 and 4 checkable before a deploy, which is what was missing:
+
+- Force the morning window to cover the current time and push evening past it: ~BEAR_CUB_MORNING_WINDOW=05:00-22:00 BEAR_CUB_EVENING_WINDOW=22:00-23:00 mix phx.server~. ~config/runtime.exs~ is not guarded by ~config_env()~, so both vars apply in dev; confirmed by reading ~:routine_windows~ back after an override. On an overlap ~Routines.current/2~ takes the first matching window in config order, which is morning.
+- Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
+- Watch the disappearance without waiting for 17:00: set the morning end a few minutes ahead of now, e.g. ~BEAR_CUB_MORNING_WINDOW=05:00-09:25 BEAR_CUB_EVENING_WINDOW=09:25-23:00~. ~Routines.next_boundary/2~ schedules a re-render at every window edge, so the band and ring vanish on their own at that edge.
+
+What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
+
 * TODO disable pinch-to-zoom on the kiosk
 :PROPERTIES:
 :CREATED:  [2026-09-01 Tue 17:09]

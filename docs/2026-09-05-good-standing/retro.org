@@ -1,0 +1,29 @@
+#+title: Retro — Bear Cub: Good standing
+
+* Batch 1 — 2026-09-06
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 6 | 34 | 25 | 33 | 6(42.2m) | 240.8k | 287 | 1194 | also touched story-02 |
+| story-02 | 13 | 37 | 38 | 32 | 6(30.6m) | 293.8k | 215 | 1084 | also touched story-01, story-03 |
+| story-03 | 9 | 8 | 39 | 16 | 4(13.8m) | 230.7k | 207 | 843 | also touched story-04, story-05 |
+| story-04 | 12 | 11 | 11 | 11 | 4(7.7m) | 180.3k | 194 | 691 | also touched story-05 |
+| story-05 | 4 | 6 | 30 | 16 | 4(11.6m) | 184.5k | 120 | 582 | also touched story-03, story-07 |
+| total | 44 | 97 | 143 | 108 | 24(105.8m) | 1130.2k | 1023 | 4394 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded.
+
+** Observations
+
+- The table above conflates two initiatives and should not be read as this batch's cost. The metrics script matches sessions by story *number*, not by initiative path, so every row folds in the previous chore-lifecycle chain's same-numbered story from 2026-09-05 alongside this chain's from 2026-09-06. The giveaway is in the table itself: story-05's Note cites =story-07=, which does not exist in this initiative — this batch has five stories. Left verbatim per the org-conventions rule that Metrics tables are never edited; the correction belongs in the kit, not here.
+- This batch's sessions are the 2026-09-06 ones only, and they show no fix loops: each of the five stories dispatched exactly two verifiers — acceptance criteria, then Definition of Done — and each passed on its first run, with no re-verify round. The re-verify rounds visible in the script's timeline (story-01's "Re-verify story 01 acceptance criteria", story-02's AC-3 round) are all 09-05 chore-lifecycle sessions.
+- No human questions were asked during this batch. Both ~question:~ events in the timeline belong to 09-05 chore-lifecycle sessions.
+- update-design ran longer than implementation in every story, and by a wide margin in aggregate. The gap was widest on story-05, where the DoD verifier finished at 15:20 and update-design did not start until 15:55.
+- Story 05 was the only story to reconnoitre before writing tests, dispatching an Explore agent over the kiosk LiveView and standing logic (1.9 min) ahead of the TDD skill.
+- Story 04 was documentation-only — the design-language ruling — and drew the batch's two shortest verifier dispatches (0.8 min, 1.4 min). Its DoD testing item is the batch's other deferral, ~[-]~ as not applicable rather than skipped.
+- Story 02's session carried a long idle gap between the implementation start (05:40) and the close-out request (14:06); the active-time figure excludes it, so the elapsed wall-clock day is much longer than the table's 13 minutes suggests.
+- Deferred at the gate: the on-device check (story-05 AC8) was not run. The tablet cannot be exercised without a deploy, and no local recipe existed for reproducing a standing kid to check against first. Recorded in =docs/backlog.org= with a verified dev-server recipe; the Fully Kiosk items themselves are still owed.
+
+** Retro
