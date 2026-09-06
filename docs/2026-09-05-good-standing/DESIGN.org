@@ -1,0 +1,206 @@
+#+title: DESIGN — Bear Cub: Good standing
+#+date: 2026-09-05
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+A child is in *good standing* when they finished last night's evening routine and this morning's morning routine, both cleanly. Standing is a predicate over ~completions~ for two dates — nothing is stored, nothing is scheduled, no table is added. It surfaces twice: wordlessly on the kiosk during the morning window, as a full-width green band and a ring around the child's whole column; and in words on ~Admin.TodayLive~ at any hour, as a verdict that also names which half broke it.
+
+It is a signal, not an enforcement. Nothing in the app consults it. Its job is to make a decision the parent already makes fast and unarguable, which is why it is carried twice on the kiosk (band and ring) and why it says *why* on the phone.
+
+The derivation lives in ~BearCub.Chores~ — it reads ~chores~ and ~completions~ and nothing else, so it adds no dependency in either direction across the ~Chores~ ⇏ ~Calendars~ or ~Chores~ ⇏ ~Rewards~ fences. It does not belong in ~BearCub.Points~: that module composes the ledger, and standing is not currency.
+
+* Data Model
+
+No schema changes. Standing is derived entirely from columns that already exist:
+
+- ~chores.routine~ — =morning= / =evening=; an extra has ~routine = nil~ and is never read by standing.
+- ~chores.active_from~, ~chores.archived_on~ — the chore lifetime bound, so a past routine-day is scored against the roster that was live *that day*.
+- ~completions.local_date~ — the day the completion belongs to.
+- ~completions.undone_at~ — a non-nil value means the row is not live.
+- ~completions.failed_at~ — a non-nil value means a parent marked it failed.
+
+* Key Behaviors
+
+** The standing rule
+
+A kid is in good standing on ~local_date~ when *both* halves hold:
+
+1. the *morning* routine-day for ~local_date~ is satisfied and unfailed, and
+2. the *evening* routine-day for ~local_date - 1~ is satisfied and unfailed.
+
+where:
+
+- *satisfied* means every chore on that kid's roster for that routine has a live completion (~undone_at IS NULL~) on that date, *or the roster is empty*;
+- *unfailed* means no completion for that routine-day carries ~failed_at~.
+
+Standing is *binary*. There is no partial, graded, or two-star state.
+
+A failed-then-redone routine is satisfied but failed, and *denies* standing. A fail in this app is never automatic — it is a parent's deliberate act recording that something was not done properly — so a judgment that reached only the points abstraction and never the thing the child actually cares about would be a judgment with no teeth. The vocabulary stays explainable to a seven-year-old: good standing means what the green bonus badge means, twice over.
+
+** The roster is the one that was live that day
+
+The evening half reads a *past* routine-day, so it is scored against the chores that were live on that date, not the chores that are live now: ~active_from <= date~ and ~archived_on~ nil-or-later. This falls out of reusing the existing routine-day derivation rather than being new work — the bound is already carried there — and it is load-bearing rather than incidental. Without it, archiving a chore this afternoon would retroactively change whether last night was complete, and a kid could lose standing they had already earned because of an unrelated roster edit.
+
+** ~Chores.routine_day_status/3~ — the shared per-routine-day predicate
+
+"Every roster chore has a live completion, and any completion carries ~failed_at~" is currently written twice: in ~routine_day_contribution/3~ (per-kid, two queries) and in ~routine_days_by_kid/1~ (the grouped-SQL aggregate). Standing would make it three. Extract the per-~(kid, routine, date)~ half out of ~routine_day_contribution/3~:
+
+#+begin_src elixir
+Chores.routine_day_status(kid, "evening", ~D[2026-09-04])
+#=> %{empty?: false, complete?: true, failed?: false}
+#+end_src
+
+~routine_day_contribution/3~ becomes a thin points wrapper over it, and ~standing/2~ calls it twice. The implementation count stays at two rather than rising to three.
+
+Deliberately *not* touched: ~routine_days_by_kid/1~. Folding the grouped SQL into the same abstraction is a larger change than this item earns.
+
+** ~complete?~ is vacuously true for an empty roster
+
+~complete?~ means "every chore on this roster has a live completion", which holds trivially when there are none. ~empty?~ is carried *separately* rather than folded into it, so each consumer applies its own reading:
+
+| Consumer                     | Condition                  | Empty roster yields |
+|------------------------------+----------------------------+---------------------|
+| ~standing/2~                 | ~complete?~                | satisfied           |
+| ~routine_day_contribution/3~ | ~complete? and not empty?~ | no ~+R~ bonus       |
+
+This is an inversion of the pre-existing points reading, and it is the pivot the whole empty-roster ruling turns on. For points, a kid with no chores must not collect ~+R~ for free. For standing, nothing was asked, so nothing was missed. Both readings live in their consumers rather than in the shared status, and neither has to re-derive the other's rule.
+
+One rule settles three cases:
+
+| Case                                            | Result                       |
+|-------------------------------------------------+------------------------------|
+| Kid has zero evening chores configured          | evening half satisfied       |
+| Kid added yesterday or today (no history)       | evening half satisfied       |
+| Roster exists, nothing tapped (away, sleepover) | evening half *not* satisfied |
+
+The consequence for the *morning* half, which takes the same reading for consistency: a kid with zero morning chores is vacuously satisfied all day, so their band appears at window open rather than at a completion. Degenerate but coherent, and the kiosk timing below handles it explicitly.
+
+** No recourse
+
+The third case above is unforgiving by design: a sleepover costs the next day's standing, and nothing in the app can repair it. ~Admin.TodayLive~ reads ~LocalTime.now()~ at every entry point, so no surface can write a completion for a past date. The verbal channel covers it — a parent who knows why last night was missed says so and grants screen time anyway, since the indicator is advisory.
+
+** ~Chores.standing/2~ — shape
+
+Returns the halves, not a bare boolean, because admin must show which half failed:
+
+#+begin_src elixir
+Chores.standing(kid, local_date)
+#=> %{
+#     standing?: false,
+#     morning: %{empty?: false, complete?: true,  failed?: false},
+#     evening: %{empty?: false, complete?: false, failed?: true}
+#   }
+#+end_src
+
+The kiosk reads ~.standing?~ and ignores the rest. ~:morning~ is keyed to ~local_date~; ~:evening~ is keyed to ~local_date - 1~. The map does not carry its dates — callers already know which is which, and carrying them invites a caller to re-derive the offset.
+
+The halves carry raw booleans rather than a pre-resolved ~:incomplete | :failed~ atom. A half can be both incomplete and failed at once, so no single atom is faithful; and ~empty?~ and ~complete?~ must stay separable for the points consumer above regardless of what any surface renders.
+
+** Query cost
+
+Two ~routine_day_status/3~ calls per kid, two queries each: eight queries per render at two kids, on every kiosk tap, and only during the morning window since that is the only time the kiosk displays it. Real but small. Take the simple per-kid form now rather than pre-emptively writing grouped SQL for N=2.
+
+* Screens / Interfaces
+
+** Kiosk — lifetime
+
+The band and ring render when the active routine is *morning* — the 05:00–17:00 window — and ~standing?~ is true. They *disappear entirely when the evening window opens at 17:00*.
+
+No new machinery makes them vanish: ~Routines.next_boundary/2~ already schedules a re-render at every window edge, and 17:00 is one. The night screen is outside the morning window by construction and is untouched — it stays a single dark screen with one moon and nothing else.
+
+This has a structural payoff beyond its own merits: the band can never coexist with expanded *evening* chore rows, so FR-6's five-chore no-scroll budget is untouched by construction rather than by measurement.
+
+** Kiosk — appearance timing
+
+Gated on ~standing? and not delaying?~, reusing the collapse-delay flag ~build_column/10~ already computes. The sequence on the last morning tap is: the chore shows done → 400ms → the routine collapses *and* the band and ring appear together. One celebratory moment, not two staggered ones.
+
+Not gated on the existing ~reveal?~ flag, which is the obvious choice and the wrong one: ~reveal?~ derives from ~complete?~ as the kiosk computes it locally (~chores != [] and ...~), which is false for an empty roster, so the vacuously-satisfied kid's band would never appear. ~delaying?~ is false for that kid — they never enter ~pending_collapse~ — so gating on it shows their band from window open, which is correct.
+
+** Kiosk — placement and appearance
+
+Between the ~<header>~ banner and the column body; the column's ~grid-rows-[auto_1fr]~ becomes ~grid-rows-[auto_auto_1fr]~. The band therefore survives the reward shop as well — standing is a property of the child's day, not of which body view is open.
+
+- *Band*: full width, ~bg-success~, about ~h-14~, carrying *three* centered ~hero-star-solid~ glyphs at roughly ~size-9~. *No text* — it must read for a pre-reader.
+- *Ring*: ~ring-4 ring-inset ring-success~ on the column ~<section>~, hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing.
+
+The five-chore budget is affected in exactly one situation — the kid taps the completion icon to manually re-expand their completed *morning* routine. Those rows are all done, so they render at the shrunk ~h-20~ rather than the pending ~h-24~: five come to 400px against the 480px the budget already tolerates, 80px of slack against a ~56px band. It fits, and is confirmed on the tablet regardless.
+
+*** The vocabulary collision, stated rather than hidden
+
+This treatment reuses *both* of the app's existing "you earned something" signals at once: ~bg-success~ green is the ~+R~ bonus badge and the completed-extra ~+N~ chip, and ~hero-star-solid~ is the points badge glyph. Three large stars in a full-width band is distinguishable from one small star beside a numeral in a pill — different count, scale, container, and no number — but the distinction is carried by *scale and pattern only*, not by hue or glyph. The ~docs/design-language.org~ ruling this initiative produces must therefore say so explicitly, so a future session cannot collapse the two by treating them as the same token.
+
+** Admin — ~Admin.TodayLive~
+
+A standing row directly beneath each kid's colored card header, above the routine sections. Phone-first and ~max-w-md~, so it stays compact.
+
+- *In standing*: three small ~hero-star-solid~ in success green with the text *In good standing*. Text is right here — admin's reader is a parent on a phone, not a pre-reader across a kitchen, so the kiosk's no-text rule does not carry over.
+- *Not in standing*: a muted *Not in good standing* verdict, followed by two half-chips.
+
+The half-chips are *Last night* and *This morning*, each showing ✓ or ✗. A chip shows ✗ whenever its half is unsatisfied *or* failed; the two causes are not distinguished on this surface.
+
+*** Why the chips are not redundant
+
+Admin already lists today's morning section with its ~done/total~, so "this morning" is partly visible. *Last night's evening routine is nowhere in the app today, on any surface.* That half is the genuinely new information and the one a parent cannot check any other way.
+
+*** The copy hazard
+
+Today's standing reads *last* night's evening routine; *tonight's* evening routine feeds *tomorrow's* standing. A parent glancing at the card at 20:00 while the evening routine is half-done can easily read the standing row as commenting on the routine in front of them. The chip label must be *Last night*, never *Evening*. This is a design constraint, not implementation taste.
+
+*** When it shows
+
+Whenever ~Admin.TodayLive~ renders, *independent of the routine window* — unlike the kiosk's morning-window-only lifetime. The parent checking at 19:00 whether today was a standing day is the case this exists for, and by then the verdict is settled.
+
+* Testing
+
+LiveView integration tests are acceptance criteria, not optional extras.
+
+*Unit* — new ~test/bear_cub/chores/standing_test.exs~, alongside the existing ~completion_test.exs~:
+
+- both halves clean → standing
+- morning incomplete → denied
+- last night incomplete → denied
+- morning failed-then-redone → denied
+- last night failed-then-redone → denied
+- empty morning roster + clean evening → standing
+- empty evening roster + clean morning → standing
+- both rosters empty → standing
+- an ~undone_at~ row does not count as live
+- *date-leak guards*: a completion on *yesterday's morning* must not satisfy today's morning half, and one from *two nights ago* must not satisfy last night's
+- *roster-history guard*: a chore archived today must still count toward last night's evening half, and a chore created today must not
+
+*LiveView, kiosk* (~kiosk_live_test.exs~): band and ring present when standing inside the morning window; absent when not standing; absent during the *evening* window even when ~standing?~ is true; absent on the night screen; present for the zero-morning-chore kid; *not* present during the collapse delay, only after it.
+
+*LiveView, admin* (~admin/today_live_test.exs~): the in-standing verdict; the not-in-standing verdict with the correct half-chips; the *Last night* label present.
+
+*Refactor safety*: the existing points tests must pass untouched. That is the whole evidence that extracting ~routine_day_status/3~ was behavior-preserving. Add one test the existing suite may not carry explicitly — *an empty roster earns no ~+R~* — since the empty-roster condition moves from inside ~complete?~ out to the points consumer, and nothing else would catch it regressing.
+
+*Test hygiene*: every test passes fixed local dates and pins ~:routine_windows~. No new test derives its date from the wall clock.
+
+*On-device (manual, never CI'd)*: Fully Kiosk rendering of the band and ring, the five-chore no-scroll fit in the manual re-expand case, band legibility from across the room, and the 17:00 disappearance.
+
+* Out of Scope for This Design
+
+- Streaks and multi-day standing history. Standing is evaluated for one date at a time and stores nothing, so a history feature would need its own design.
+- Gating anything on standing. No reward, chore, or shop behavior consults it.
+- A stored per-kid standing override, or a date-navigable admin that could backfill yesterday. Both revisitable on field evidence; neither is precluded.
+- Folding ~routine_days_by_kid/1~ into ~routine_day_status/3~, and a grouped-query ~standing_by_kid/1~.
+- Distinguishing "wasn't finished" from "was marked failed" on the admin chips.
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]] — D91–D97.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
