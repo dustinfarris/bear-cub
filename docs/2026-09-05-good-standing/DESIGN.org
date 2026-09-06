@@ -124,7 +124,7 @@ Not gated on the existing ~reveal?~ flag, which is the obvious choice and the wr
 
 Between the ~<header>~ banner and the column body; the column's ~grid-rows-[auto_1fr]~ becomes ~grid-rows-[auto_auto_1fr]~. The band therefore survives the reward shop as well — standing is a property of the child's day, not of which body view is open.
 
-- *Band*: full width, ~bg-success~, about ~h-16~, carrying *thirteen* ~hero-star-solid~ glyphs in a five/three/five arc (~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-12~, ~size-12~, ~size-12~, ~size-9~, ~size-9~, ~size-9~, ~size-9~, ~size-9~) rather than a flat row of three (D98). *No text* — it must read for a pre-reader.
+- *Band*: full width, ~bg-success~, about ~h-16~, carrying *thirteen* uniform ~size-9~ ~hero-star-solid~ glyphs (D98 grew the count from three to thirteen; D99 tried and dropped a five/three/five size arc, back to uniform). *No text* — it must read for a pre-reader.
 - *Ring*: ~ring-4 shadow-[0_0_8px_6px_rgba(245,245,0,0.92)] ring-success~ on the column ~<section>~ — no ~ring-inset~ — hugging the column edge from banner to bottom and overlaying the child-color banner's edge, deliberately: the claim is that the whole column is in standing. The glow reopens the exact treatment D97 rejected for uneven box-shadow rendering on Fully Kiosk's Android WebView (D98); it is provisional pending the next on-device gate and reverts to a bare ring if the tablet render is uneven.
 
 The five-chore budget is affected in exactly one situation — the kid taps the completion icon to manually re-expand their completed *morning* routine. Those rows are all done, so they render at the shrunk ~h-20~ rather than the pending ~h-24~: five come to 400px against the 480px the budget already tolerates, 80px of slack against a ~56px band. It fits, and is confirmed on the tablet regardless.
@@ -194,7 +194,7 @@ LiveView integration tests are acceptance criteria, not optional extras.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D91–D98.
+Decisions for this initiative: [[file:../decisions.org]] — D91–D99.
 
 * Advisories
 
@@ -216,3 +216,9 @@ This document previously stated one blanket bar for every layer: "every test pas
 /Sections affected: §Screens (Kiosk — placement and appearance)/
 
 This document previously specified a *three*-star band at ~size-9~ and a ~ring-4 ring-inset ring-success~ ring with no shadow. Both values changed (D98): the band is now thirteen stars in a five/three/five ~size-9~/~size-12~/~size-9~ arc, and the ring drops ~ring-inset~ for a ~shadow-[0_0_8px_6px_rgba(245,245,0,0.92)]~ yellow glow. The glow is the same treatment D97 explicitly rejected — "Fully Kiosk's Android WebView renders large box-shadows unevenly and a diffuse glow washes out under kitchen light" — reopened here on hands-on say-so and *not yet verified on the actual tablet*. If the next on-device gate (PRD §7) shows the predicted unevenness, the fix is reverting to a bare ~ring-4 ring-success~, not re-litigating the ring's existence. Rationale: D98.
+
+** [2026-09-06 Sun 11:47] §Kiosk — placement and appearance: band stars are uniform size-9 again, not the size-arc the previous advisory describes
+
+/Sections affected: §Screens (Kiosk — placement and appearance)/
+
+The advisory immediately above describes a thirteen-star band in a five/three/five ~size-9~/~size-12~/~size-9~ arc (D98). That arc lasted minutes on the deployed kiosk before being reviewed and dropped (D99) — all thirteen stars are ~size-9~ again. The star *count* (thirteen) and the ring/glow situation are unaffected by this entry. Rationale: D99.
