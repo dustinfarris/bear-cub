@@ -910,6 +910,132 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "standing band and ring (Story 05, D95, D97)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    test "a kid in good standing sees the band with three stars and the column ring during the morning window",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#standing-band-#{kid.id}")
+      assert has_element?(view, "#kid-column-#{kid.id}.ring-success")
+
+      document = LazyHTML.from_fragment(render(view))
+      stars = LazyHTML.query(document, "#standing-band-#{kid.id} .hero-star-solid")
+      assert Enum.count(stars) == 3
+    end
+
+    test "a kid not in good standing sees neither the band nor the ring",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      _chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#standing-band-#{kid.id}")
+      refute has_element?(view, "#kid-column-#{kid.id}.ring-success")
+    end
+
+    test "the band and ring disappear when the evening window opens, even though the kid is in standing",
+         %{conn: conn, kid: kid} do
+      now = LocalTime.now()
+
+      morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(morning_chore, now, "kiosk")
+
+      evening_chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      {:ok, _} = Chores.complete_chore(evening_chore, DateTime.add(now, -1, :day), "kiosk")
+
+      evening_active()
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#standing-band-#{kid.id}")
+      refute has_element?(view, "#kid-column-#{kid.id}.ring-success")
+    end
+
+    test "the night screen shows no band or ring even when the kid is in standing",
+         %{conn: conn, kid: kid} do
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      put_windows(
+        {Time.add(time, 60, :second), Time.add(time, 90, :second)},
+        {Time.add(time, 90, :second), Time.add(time, 120, :second)}
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#night-screen")
+      refute has_element?(view, "#standing-band-#{kid.id}")
+      refute has_element?(view, "#kid-column-#{kid.id}")
+    end
+
+    test "the band and ring wait for the collapse delay, then appear together with the collapse",
+         %{conn: conn, kid: kid} do
+      morning_active()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#standing-band-#{kid.id}")
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      refute has_element?(view, "#band-#{kid.id}")
+      refute has_element?(view, "#standing-band-#{kid.id}")
+
+      send(view.pid, {:collapse_ready, kid.id})
+
+      assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#standing-band-#{kid.id}")
+      assert has_element?(view, "#kid-column-#{kid.id}.ring-success")
+    end
+
+    test "a kid with no morning chores configured sees the band and ring from the moment the morning window opens",
+         %{conn: conn, kid: kid} do
+      morning_active()
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#standing-band-#{kid.id}")
+      assert has_element?(view, "#kid-column-#{kid.id}.ring-success")
+    end
+
+    test "the band and ring stay visible while the reward shop is open",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      now = LocalTime.now()
+
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#standing-band-#{kid.id}")
+
+      view |> element("#gift-button-#{kid.id}") |> render_click()
+
+      assert has_element?(view, "#rewards-#{kid.id}")
+      assert has_element?(view, "#standing-band-#{kid.id}")
+      assert has_element?(view, "#kid-column-#{kid.id}.ring-success")
+    end
+  end
+
   describe "completion icon (Story 08, D44, D47, D48)" do
     alias BearCub.Chores
 

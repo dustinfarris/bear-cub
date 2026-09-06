@@ -329,6 +329,16 @@ defmodule BearCubWeb.KioskLive do
     kid_expanded? = MapSet.member?(expanded, kid.id)
     shopping? = not night? and MapSet.member?(rewards, kid.id)
 
+    # Good standing (Story 05, D95): the band/ring live only in the morning
+    # window, and computed only then — the only time the kiosk ever shows
+    # them. Gated on `delaying?` rather than `reveal?`: `reveal?` is false
+    # for the vacuously-satisfied empty-roster kid (D92), which would hide
+    # their band forever; `delaying?` is false for that kid since they
+    # never enter `pending_collapse`, so the band shows from window open.
+    standing? =
+      auto == :morning and not night? and
+        Chores.standing(kid, today).standing? and not delaying?
+
     state =
       cond do
         night? -> :night
@@ -360,6 +370,7 @@ defmodule BearCubWeb.KioskLive do
       state: state,
       routine: auto,
       reveal?: reveal?,
+      standing?: standing?,
       failed?: failed?,
       chores: chore_rows,
       extras: extras,
@@ -489,6 +500,7 @@ defmodule BearCubWeb.KioskLive do
               state: state,
               routine: routine,
               reveal?: reveal?,
+              standing?: standing?,
               failed?: failed?,
               chores: chores,
               extras: extras,
@@ -502,7 +514,10 @@ defmodule BearCubWeb.KioskLive do
           }
           :if={!@night?}
           id={"kid-column-#{kid.id}"}
-          class="grid grid-rows-[auto_1fr] overflow-hidden bg-base-100"
+          class={[
+            "grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100",
+            standing? && "ring-4 ring-inset ring-success"
+          ]}
         >
           <%!-- Header band: the color block, not the name, is the primary
                identifier (FR-5a) — a pre-reader finds their column by color.
@@ -580,12 +595,32 @@ defmodule BearCubWeb.KioskLive do
             </div>
           </header>
 
+          <%!-- Standing band (Story 05, D95, D97): renders only while
+               `standing?` (already window- and delay-gated in
+               `build_column/10`) — never text, just three stars, so it
+               reads for a pre-reader across the room. It survives the
+               reward shop below (D97: standing is a property of the
+               child's day, not of which body view is open), which is why
+               it sits above both branches rather than inside either. --%>
+          <div
+            :if={standing?}
+            id={"standing-band-#{kid.id}"}
+            class="row-start-2 flex h-14 w-full items-center justify-center gap-4 bg-success"
+          >
+            <.icon name="hero-star-solid" class="size-9 text-success-content" />
+            <.icon name="hero-star-solid" class="size-9 text-success-content" />
+            <.icon name="hero-star-solid" class="size-9 text-success-content" />
+          </div>
+
           <%!-- Column body: either the normal routine region (events,
                routine card, extras) or the reward shop (Story 05, D65) —
                the shop replaces the whole body, never sits beside it, so
                the 5-chore no-scroll budget (FR-6) is untouched by
                construction. The banner above is shared by both. --%>
-          <div :if={state != :rewards} class="grid grid-rows-[auto_1fr_auto] overflow-hidden">
+          <div
+            :if={state != :rewards}
+            class="row-start-3 grid grid-rows-[auto_1fr_auto] overflow-hidden"
+          >
             <%!-- Events strip: chronological, blended per-kid + family list
                  (FR-19). All-day events pin to the top (FR-22); a family
                  event renders as a neutral chip + house glyph in every
@@ -715,7 +750,7 @@ defmodule BearCubWeb.KioskLive do
           <div
             :if={state == :rewards}
             id={"rewards-#{kid.id}"}
-            class="grid grid-rows-[auto_1fr] overflow-hidden"
+            class="row-start-3 grid grid-rows-[auto_1fr] overflow-hidden"
           >
             <div class="flex items-center justify-between border-b border-base-300 px-5 py-3">
               <span class="text-sm font-semibold text-base-content/60">Shop</span>
