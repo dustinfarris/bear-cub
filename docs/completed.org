@@ -106,3 +106,16 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 Claimed [2026-09-04 Fri]: into initiative docs/2026-09-04-chore-lifecycle/ (Chore lifecycle), whose §Overview names closing this entry as its third change. The objection recorded above — that a date-bounded roster cannot handle deletions, since a deleted chore leaves no row to bound against — was removed rather than solved: [[file:decisions.org::#d78][D78]] replaces deletion with archive, so every chore keeps its row and its one lifetime interval ([[file:decisions.org::#d79][D79]]).
 
 Done [2026-09-05 Sat 12:12]: closed in both directions by [[file:decisions.org::#d81][D81]] — the roster bound landed on three query sites ([[file:decisions.org::#d89][D89]] corrected the classification from two), shipped as chore-lifecycle Story 02, with [[file:decisions.org::#d90][D90]] settling the bound's final form. Moved here at the Batch 1 gate per the initiative DESIGN's §Overview instruction. *Caveat carried forward:* the gate recorded the before/after per-kid balance comparison against a copy of the real database as a documented deferral, so the one-time balance shift this fix causes is still unverified against production data and is owed before the deploy.
+* DONE "Good standing" indicator
+:PROPERTIES:
+:CREATED:  [2026-09-01 Tue 17:07]
+:END:
+Need a highly visible indicator showing that a child has both
+1. Completed the previous evening's routine
+2. Completed this morning's routine
+
+This will be used to allow or restrict certain activities like screen time or other treats.  It should be shown upon completion of the morning routine, if the conditions are met (previous evening's routine was also completed).  It needs to be large and visible from a distance on the kiosk.
+
+Picked up [2026-09-05 Fri] directly as initiative docs/2026-09-05-good-standing/ (Good standing) — no separate claim step recorded in this file.
+
+Done [2026-09-06 Sat]: initiative Batch 1 gate closed ([[file:decisions.org::#d91][D91]]–[[file:decisions.org::#d97][D97]] in ~docs/decisions.org~), all 5 stories shipped — ~Chores.routine_day_status/3~ and ~Chores.standing/2~ derive the two-half rule ([[file:decisions.org::#d91][D91]], [[file:decisions.org::#d92][D92]], [[file:decisions.org::#d94][D94]]); ~Admin.TodayLive~ shows the verdict and which half broke it ([[file:decisions.org::#d96][D96]]); the kiosk shows a ~bg-success~ band of ~hero-star-solid~ glyphs (three at ship, grown to thirteen by [[file:decisions.org::#d98][D98]]/[[file:decisions.org::#d99][D99]] hands-on refinement) plus a column ring, morning window only ([[file:decisions.org::#d95][D95]], [[file:decisions.org::#d97][D97]]). ~mix precommit~ clean, 577 passed. *Caveat carried forward, tracked as its own backlog item rather than repeated here:* the on-device gate (Story 05 AC8 — Fully Kiosk rendering, band/ring legibility, five-chore no-scroll fit, 17:00 disappearance, sleep/wake reconnect) is a documented deferral pending deploy.

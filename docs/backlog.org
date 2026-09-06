@@ -5,12 +5,14 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO Early bird bonus!
+* TODO [#B] Early bird bonus! :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:34]
 :END:
 
 When a kid completes their morning routing before a certain time (e.g. 7:45 AM) they get an Early Bird bonus, perhaps indicated by a bird emoji/icon next to the sun icon with another configurable bonus, e.g. +2.
+
+Triage [2026-09-06 Sun]: oneshot, #B — smaller than it looks: ~completions.completed_at~ already exists, so "last morning chore tapped before 7:45" is a plain query, no new column. Config-only threshold/bonus, mirroring ~:routine_bonus~/~:routine_windows~ (~config/runtime.exs~, env-overridable) rather than an admin form. One ruling to settle before coding, not after: where the bonus composes into ~Chores.earnings/2~. D42's =other_signed_inputs= seam is already occupied by ~Rewards.spend_total~ (see ~lib/bear_cub/points.ex~), so this is a third term, not that seam — and whichever term it becomes must also land in ~earnings_by_kid/1~'s grouped rewrite, not just the per-kid path, or the two derivations disagree the way [[file:decisions.org::#d89][D89]] found them disagree once already. Kids' view visual (bird icon beside the sun icon) — ~docs/design-language.org~ read is binding; on-device gate applies.
 * TODO On-device gate for the good-standing band and ring is still owed :hand:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:08]
@@ -34,27 +36,18 @@ Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute f
 
 What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
 
-* TODO disable pinch-to-zoom on the kiosk
-:PROPERTIES:
-:CREATED:  [2026-09-01 Tue 17:09]
-:END:
-* TODO "Good standing" indicator
-:PROPERTIES:
-:CREATED:  [2026-09-01 Tue 17:07]
-:END:
-Need a highly visible indicator showing that a child has both
-1. Completed the previous evening's routine
-2. Completed this morning's routine
-
-This will be used to allow or restrict certain activities like screen time or other treats.  It should be shown upon completion of the morning routine, if the conditions are met (previous evening's routine was also completed).  It needs to be large and visible from a distance on the kiosk.
-* TODO The extra chores need to show how many points they're worth.
+* TODO [#B] The extra chores need to show how many points they're worth. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 14:18]
 :END:
-* TODO parents can give points to a kid for some reason on the fly
+
+Triage [2026-09-06 Sun]: oneshot, #B — today an extra's ~+N~ chip (~lib/bear_cub_web/live/kiosk_live.ex~'s ~chore_row/1~, D54) renders only once the chore is done, so a kid can't see the payoff before tapping. Extend the same row to show ~chore.points~ on the *pending* card too — the value is already loaded (~@chore.points~), no new query. Kids' view visual — ~docs/design-language.org~ read is binding (a number on every pending row is more chrome than D54 shipped with; get a ruling on placement/weight before implementing, not after); on-device gate applies.
+* TODO [#B] parents can give points to a kid for some reason on the fly :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 13:09]
 :END:
+
+Triage [2026-09-06 Sun]: promote — not a clean oneshot. ~Points.balance/2~ is ~Chores.earnings + Rewards.spend_total~ (D42, D57); an ad hoc award is neither — it's a third signed-input source with no completion row and no redemption behind it, so it needs its own ruling on where it lives (a new context, or a new signed-event table under an existing one), an admin surface (amount + reason, at minimum), and how it composes into ~balance/2~ and the grouped ~balances/1~ without breaking the D72-style pointwise-agreement requirement between the per-kid and grouped derivations. Candidate for its own brainstorm rather than absorption into an existing initiative.
 * Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]
@@ -97,12 +90,14 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 ~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
-* TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day
+* TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 20:44]
 :END:
 
 e.g. "You've completed your morning routine 7 days in a row!"
+
+Triage [2026-09-06 Sun]: promote — a streak is a consecutive-day scan over ~routine_day_status/3~ (D94) rather than a single derived value, with its own edge-case set (does an empty roster's vacuous D92 pass count toward a streak? does a failed-then-redone day? where does it reset — midnight, or the window boundary ~Routines.next_boundary/2~ already tracks?) and a kiosk display surface of its own. Same brainstorm-first shape as the skip-chore and points-stats ideas below; consider claiming together if one initiative ends up covering "things Ollie asked for about the points/routine surface."
 * TODO [#B] admin "quick add" extra chore from Today view :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
@@ -120,21 +115,27 @@ Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state al
 Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
 
 Ruled [2026-07-24 Fri]: ntfy push, per-chore granularity for now — customization (batching, quiet hours, per-kid settings) possible later, not in scope. Collapses to oneshot, #B: a Req POST per completion event, topic/server via ~runtime.exs~ env config. Treat the topic URL like the ICS URLs — never in git, never logged. Self-hosted ntfy vs ntfy.sh is an implementation-time deployment choice (NixOS module side).
-* TODO [#B] ~points_total/2~ N+1 query shape — candidate for an aggregate rewrite once points are load-bearing
+* TODO [#B] ~Chores.earnings/2~'s N+1 query shape — the kiosk's per-kid live badge still has it; the grouped batch path does not
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]
 :END:
 ~points_total/2~ (~lib/bear_cub/chores.ex~, Story 02) issues one query for distinct ~(routine, local_date)~ pairs, then one ~routine_day_contribution/3~ call — two more queries — per pair, an N+1 shape. Correctness is unaffected and all tests pass, but the total is cumulative all-time and recomputed on every ~:chores_changed~ re-fetch (Story 03 wires the kiosk badge to it), so this could become a real cost as history grows. Swept [2026-07-18 Sat 23:35] from docs/2026-07-15-gamification-points/PLAN.org's Deferred section (Story 02 discovery). Triage [2026-07-24 Fri]: hold, deliberately untagged — conditional on points becoming load-bearing. Claim candidate for the rewards/redemption initiative (the Rewards entry above), which is exactly what would make the total load-bearing; size it there, not here.
+
+Retriage [2026-09-06 Sun]: the condition landed — rewards/redemption shipped and points balances are now spent against — and that initiative's Story 02 (D72) did rewrite the whole-render path: ~Chores.earnings_by_kid/1~ (two grouped queries, independent of kid/history count) backs ~Points.balances/1~ and ~totals/1~. The function itself was renamed ~points_total/2~ → ~earnings/2~ along the way but its shape didn't change: ~Points.balance/2~ (~lib/bear_cub/points.ex~) still calls the per-kid ~Chores.earnings/2~, and ~KioskLive.build_column~ (~lib/bear_cub_web/live/kiosk_live.ex:382~) still calls ~Points.total(kid, today)~ once per kid per render — the N+1 shape this entry names is exactly there today, just narrower in scope than originally written (the kiosk badge only, not every reader). Still hold: two kids is still cheap, and the fix is now well-scoped — swap ~build_column~'s per-kid call for a whole-render ~earnings_by_kid/1~ lookup passed in once, the same move Story 02 already made for ~balances/1~.
 * TODO [#B] Ollie idea: admin option to "skip" a routine chore -- marking complete without failing it
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:05]
 :END:
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — not a clean oneshot because it needs a points-semantics ruling first (does a skipped chore earn its points? count toward the routine bonus? interacts with D10 derived day state and the D40/D41 contribution shapes). Settle the ruling in the rewards/redemption brainstorm, then size.
+
+Retriage [2026-09-06 Sun]: that brainstorm concluded without it — rewards/redemption's DESIGN.org names this explicitly: "not claimed, and not designed for. Neither is precluded: ... nothing in the redemption derivation constrains what a 'skipped' chore could contribute, since redemptions sum into the signed-inputs term independently of how earnings are derived." Still deliberately untagged, still needs the same points-semantics ruling — just needs a fresh brainstorm to settle it, not the one that already passed on it.
 * TODO [#B] Ollie idea: tapping on the points should show you daily points progress and stats on your points
 :PROPERTIES:
 :CREATED:  [2026-07-17 Fri 07:02]
 :END:
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — same points-UI theme as the rewards/redemption initiative; a stats view would also make ~points_total/2~'s N+1 shape (entry above) load-bearing, so consider claiming both together.
+
+Retriage [2026-09-06 Sun]: rewards/redemption shipped without claiming this — DESIGN.org: "A points-stats view for the kids ... not claimed, and not designed for. Neither is precluded: the points badge's own tap gesture stays unbound." Points did become load-bearing (balances are spent against, D57), but through ~earnings_by_kid/1~'s grouped rewrite rather than through this surface, so the N+1 entry above is now only about the kiosk's per-kid live badge, not this one. Still open, still untagged — the tap gesture is free and waiting.
 * TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]
@@ -186,6 +187,33 @@ than duplicated, per the same discipline the Exqlite teardown-noise entry
 above already follows.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 05 discovery).
+* TODO [#C] disable pinch-to-zoom on the kiosk :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-09-01 Tue 17:09]
+:END:
+
+Triage [2026-09-06 Sun]: oneshot, #C — ~lib/bear_cub_web/components/layouts/root.html.heex~'s viewport meta is currently plain ~width=device-width, initial-scale=1~ with no scale lock. A ~maximum-scale=1, user-scalable=no~ addition is the standard fix; Fully Kiosk also has its own zoom-lock setting, so confirm on-device which layer should own it before assuming the meta tag alone is enough.
+* TODO [#C] ~mix precommit~'s ~format~ step can't fail the declared verify command :hand:
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 10:00]
+:END:
+~mix precommit~ (~mix.exs~) runs plain ~format~, which rewrites files in place, rather than ~format --check-formatted~, which would exit non-zero on unformatted code. The repo's declared Verify command (CLAUDE.md) is therefore unable to catch a formatting regression — it silently fixes and reports success either way.
+
+Swept [2026-09-06 Sun] from docs/2026-09-04-chore-lifecycle/PLAN.org's Deferred section (Story 01 discovery, recorded there as "pre-existing, adjacent" rather than in scope for that story). Triage [2026-09-06 Sun]: hand — a one-line alias change (~mix.exs~), no session needed.
+* TODO [#C] ~priv/repo/seeds.exs~ sets chore ~position~ by hand instead of through ~Chores.create_chore/3~ :hand:
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 10:00]
+:END:
+The seed script computes and assigns ~position~ itself rather than calling ~create_chore/3~, which derives it (D86). Predates the chore-lifecycle batch; that batch's Story 01 stamped ~active_from~ the same bypassed way rather than reroute the script.
+
+Swept [2026-09-06 Sun] from docs/2026-09-04-chore-lifecycle/PLAN.org's Deferred section (Story 01 discovery). Triage [2026-09-06 Sun]: hand — route the script through ~create_chore/3~, or confirm why it can't and drop this entry.
+* TODO [#C] Recurring-extra "off" exit — retiring naturally after completion history — has no test :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 10:00]
+:END:
+DESIGN §Recurring extras names two exits for a recurring extra: archive, and flipping recurrence off so it retires naturally once its last completion is a prior day. Every existing test moves the recurrence toggle *on*; nothing turns it off on a recurring extra with completion history and then asserts the natural retirement. Each half is covered separately (the reclassification lock inspects only ~:routine~, and one-off retirement is pinned elsewhere), but the composed behavior the design asserts is unpinned — a regression making ~extra_daily~ → ~extra~ sticky would leave the suite green.
+
+Swept [2026-09-06 Sun] from docs/2026-09-04-chore-lifecycle/PLAN.org's Deferred section (Story 05 discovery, surfaced by the update-design pass rather than the story itself — no design text is wrong, this is a coverage gap against correct text). Triage [2026-09-06 Sun]: oneshot, #C — one test, per the Deferred note's own sizing.
 * TODO [#C] animation for hiding/showing routine chores :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:58]
