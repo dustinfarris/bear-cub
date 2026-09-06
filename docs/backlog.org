@@ -5,6 +5,12 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO Early bird bonus!
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 09:34]
+:END:
+
+When a kid completes their morning routing before a certain time (e.g. 7:45 AM) they get an Early Bird bonus, perhaps indicated by a bird emoji/icon next to the sun icon with another configurable bonus, e.g. +2.
 * TODO On-device gate for the good-standing band and ring is still owed :hand:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:08]
