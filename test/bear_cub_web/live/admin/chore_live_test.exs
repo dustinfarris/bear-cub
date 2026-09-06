@@ -311,6 +311,37 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert updated.icon == "🦷"
     end
 
+    test "the form offers a Notify when complete checkbox, off by default",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+
+      assert html =~ "Notify when complete"
+      assert has_element?(view, "input[name='chore[notify_on_complete?]'][type=checkbox]")
+      refute has_element?(view, "input[name='chore[notify_on_complete?]'][checked]")
+
+      view
+      |> form("#chore-form", chore: %{name: "Make Bed", icon: "🛏️"})
+      |> render_submit()
+
+      [created] = Chores.list_chores(kid_a, "morning")
+      assert created.notify_on_complete? == false
+    end
+
+    test "ticking Notify when complete persists and reloads checked", %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Brush Teeth", icon: "🪥"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view
+      |> form("#chore-form", chore: %{notify_on_complete?: true})
+      |> render_submit()
+
+      assert Chores.get_chore!(chore.id).notify_on_complete? == true
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+      assert has_element?(view, "input[name='chore[notify_on_complete?]'][checked]")
+    end
+
     test "archive on the edit form removes the chore from the kid's lists but keeps the row",
          %{conn: conn, kid_a: kid_a} do
       chore = chore_fixture(kid_a)

@@ -35,3 +35,6 @@ config :phoenix,
 # supervised process, and stub its Req calls instead of hitting the network.
 config :bear_cub, :calendar_refresher_enabled, false
 config :bear_cub, :calendars_req_options, plug: {Req.Test, BearCub.Calendars.Refresher}
+
+# ntfy pushes are stubbed the same way; the topic URL itself is set per test.
+config :bear_cub, :notifications_req_options, plug: {Req.Test, BearCub.Notifications}

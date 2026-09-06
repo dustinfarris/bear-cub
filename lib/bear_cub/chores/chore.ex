@@ -27,6 +27,9 @@ defmodule BearCub.Chores.Chore do
     # A raw fragment(...) bypasses this mapping and must spell the
     # column name — `extras_by_kid/1` already contains such a fragment.
     field :recurring?, :boolean, source: :is_recurring, default: false
+    # per-chore opt-in to a parent push on completion; same
+    # `field/3` `:source` bridge as `recurring?`.
+    field :notify_on_complete?, :boolean, source: :notify_on_complete, default: false
 
     belongs_to :kid, BearCub.Chores.Kid
 
@@ -36,7 +39,7 @@ defmodule BearCub.Chores.Chore do
   @doc false
   def changeset(chore, attrs) do
     chore
-    |> cast(attrs, [:routine, :name, :icon, :points, :shows_in])
+    |> cast(attrs, [:routine, :name, :icon, :points, :shows_in, :notify_on_complete?])
     |> validate_required([:name, :icon])
     |> validate_inclusion(:shows_in, @shows_in_values)
     |> apply_shows_in()

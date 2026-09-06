@@ -73,6 +73,13 @@ config :bear_cub,
        :calendar_staleness_threshold_ms,
        :timer.hours(String.to_integer(System.get_env("BEAR_CUB_CALENDAR_STALENESS_HOURS", "2")))
 
+# Parent push notifications over ntfy (backlog 2026-07-24 ruling): the
+# full topic URL, e.g. https://ntfy.sh/<long-random-topic>. Unset means
+# notifications are off. The URL is the secret — it gets the ICS-URL
+# treatment (never in git, never logged); on the server it arrives via
+# the NixOS module's environmentFile, not the Nix store.
+config :bear_cub, :ntfy_url, System.get_env("BEAR_CUB_NTFY_URL")
+
 port = String.to_integer(System.get_env("PORT", "4000"))
 
 # test.exs pins its own port; this line must not override it (Phase 2 review)

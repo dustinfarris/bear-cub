@@ -13,7 +13,9 @@ defmodule BearCub.Application do
         BearCub.Repo,
         {Ecto.Migrator,
          repos: Application.fetch_env!(:bear_cub, :ecto_repos), skip: skip_migrations?()},
-        {Phoenix.PubSub, name: BearCub.PubSub}
+        {Phoenix.PubSub, name: BearCub.PubSub},
+        # fire-and-forget work off the request path (ntfy pushes)
+        {Task.Supervisor, name: BearCub.TaskSupervisor}
       ] ++
         calendar_refresher_children() ++
         [

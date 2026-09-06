@@ -110,6 +110,11 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
               {"After routines (repeats daily)", "extra_daily"}
             ]}
           />
+          <.input
+            field={@form[:notify_on_complete?]}
+            type="checkbox"
+            label="Notify when complete"
+          />
 
           <.button class="btn btn-primary w-full">Save Chore</.button>
         </.form>

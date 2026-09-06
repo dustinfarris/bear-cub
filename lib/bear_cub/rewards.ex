@@ -200,7 +200,17 @@ defmodule BearCub.Rewards do
     })
     |> Repo.insert()
     |> broadcast_change()
+    |> notify_requested(kid, reward)
   end
+
+  # Parent push for the kid's ask; `direct_redeem/4` is the parent's own
+  # action and stays silent.
+  defp notify_requested({:ok, _} = result, kid, reward) do
+    BearCub.Notifications.reward_requested(kid, reward)
+    result
+  end
+
+  defp notify_requested(result, _kid, _reward), do: result
 
   @doc """
   The parent-direct leg (SC-2, D68): redeems `reward` for `kid`

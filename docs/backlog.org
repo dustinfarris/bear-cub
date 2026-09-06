@@ -5,6 +5,11 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO [#C] revisit web push for parent notifications
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 13:05]
+:END:
+Set aside [2026-09-06 Sun] while implementing the ntfy oneshot (now in docs/completed.org): web push would keep notifications first-party with no relay and no extra phone app, and delivery reaches the phone anywhere via Apple's/Google's push relays. What ruled it out for that session was the machinery, not the outcome: a secure context (TLS for the admin — a Tailscale cert for the MagicDNS name plus reverse proxy or Bandit TLS in the NixOS module), a service worker plus a per-phone subscribe flow in the admin UI, a subscriptions table and a VAPID keypair as a new server secret, a web-push encryption dep (~web_push_elixir~ or ~web_push_encryption~), and iOS only delivering to a Home Screen PWA (so a manifest too). Untagged deliberately: this is initiative-scale (promote) if picked up, and would replace rather than sit beside the ntfy path. Trigger to revisit: the public-relay trade ("<kid> finished <chore>" through ntfy.sh) stops being acceptable, or TLS lands for another reason.
 * TODO [#B] Early bird bonus! :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:34]
@@ -108,13 +113,6 @@ Triage [2026-07-24 Fri]: oneshot, #B — the Today view already renders a per-ki
 :CREATED:  [2026-07-24 Fri 15:05]
 :END:
 Triage [2026-07-24 Fri]: oneshot, #B — large but single-view: all the state already lives in ~today_live.ex~ (per-kid cards, the ~expanded~ MapSet), so tabs replace the stacked sections and auto-collapsing completed routines extends the existing ~toggle-section~ derivation. Admin-only — no design-language or on-device-gate concerns. Sequence before the quick-add entry above if both are claimed.
-* TODO [#B] parent notifications when kids complete chores :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-24 Fri 15:04]
-:END:
-Triage [2026-07-24 Fri]: hold, deliberately untagged — needs a delivery-channel ruling before sizing: admin is phone-first over Tailscale, so the candidates (ntfy/Pushover-style push, email, web push) differ in reach off the tailnet, and the choice touches NixOS deployment, not just app code. Granularity also needs a ruling (per chore vs per routine-complete vs daily digest; quiet hours). Brainstorm first; promote if it grows a settings surface, otherwise it may collapse to a oneshot (a Req POST on ~:chores_changed~).
-
-Ruled [2026-07-24 Fri]: ntfy push, per-chore granularity for now — customization (batching, quiet hours, per-kid settings) possible later, not in scope. Collapses to oneshot, #B: a Req POST per completion event, topic/server via ~runtime.exs~ env config. Treat the topic URL like the ICS URLs — never in git, never logged. Self-hosted ntfy vs ntfy.sh is an implementation-time deployment choice (NixOS module side).
 * TODO [#B] ~Chores.earnings/2~'s N+1 query shape — the kiosk's per-kid live badge still has it; the grouped batch path does not
 :PROPERTIES:
 :CREATED:  [2026-07-18 Sat 23:35]

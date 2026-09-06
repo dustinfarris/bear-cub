@@ -272,15 +272,28 @@ defmodule BearCub.Chores do
   callers treat that as already-done.
   """
   def complete_chore(%Chore{} = chore, %DateTime{} = local_now, source) do
+    local_date = DateTime.to_date(local_now)
+
     %Completion{chore_id: chore.id}
     |> Completion.changeset(%{
-      local_date: DateTime.to_date(local_now),
+      local_date: local_date,
       completed_at: to_utc(local_now),
       source: source
     })
     |> Repo.insert()
     |> broadcast_change()
+    |> notify_completed(chore, local_date)
   end
+
+  # Parent push for the completion (kiosk and admin alike); the HTTP
+  # call itself runs off this process, so a slow or absent ntfy can never
+  # stall the tap. Undo and fail deliberately have no counterpart.
+  defp notify_completed({:ok, _} = result, chore, local_date) do
+    BearCub.Notifications.chore_completed(chore, local_date)
+    result
+  end
+
+  defp notify_completed(result, _chore, _local_date), do: result
 
   @doc """
   Undoes the current completion of `chore` for the local day of

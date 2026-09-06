@@ -136,6 +136,26 @@ defmodule BearCub.ChoresTest do
       assert chore.recurring? == false
     end
 
+    test "create_chore/3 defaults notify_on_complete? to false" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning"}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.notify_on_complete? == false
+    end
+
+    test "create_chore/3 and update_chore/2 accept notify_on_complete?" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", notify_on_complete?: true}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.notify_on_complete? == true
+
+      assert {:ok, chore} = Chores.update_chore(chore, %{notify_on_complete?: false})
+      assert chore.notify_on_complete? == false
+      assert Chores.get_chore!(chore.id).notify_on_complete? == false
+    end
+
     test "create_chore/3 requires an icon" do
       kid = kid_fixture()
       attrs = %{name: "Brush Teeth", routine: "morning", position: 0}

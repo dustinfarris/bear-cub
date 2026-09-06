@@ -41,6 +41,18 @@ in
       description = "Open the HTTP port in the firewall.";
     };
 
+    environmentFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/etc/bear-cub/secrets.env";
+      description = ''
+        Hand-placed, root-readable KEY=VALUE file of application secrets
+        that must stay out of git and the Nix store — today that is
+        BEAR_CUB_NTFY_URL, the ntfy topic URL for parent push
+        notifications (unset means notifications are off).
+      '';
+    };
+
   };
 
   config = lib.mkIf cfg.enable {
@@ -78,6 +90,7 @@ in
       serviceConfig = {
         DynamicUser = true;
         StateDirectory = "bear-cub";
+        EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
         Restart = "on-failure";
         RestartSec = 5;
       };
