@@ -55,21 +55,69 @@ As a kid at the fridge, I need to see from across the kitchen — without readin
 
 * Acceptance Criteria
 
-** [ ] During the morning window, a kid in good standing sees a full-width green band carrying three stars and no text, sitting between their name banner and the body of their column, and a green ring around their whole column running from the banner to the bottom. (SC-1, D97)
-** [ ] A kid who is not in good standing sees neither the band nor the ring. (SC-1, D95)
-** [ ] The band and the ring disappear entirely when the evening window opens at 17:00, even for a kid who is still in good standing, and the change arrives without anyone touching the tablet. (SC-3, D95)
-** [ ] The night screen is unchanged — one dark screen with a single moon, no band and no ring. (SC-3, D95)
-** [ ] On the last morning tap, the completed chore stays visible briefly, and then the routine collapses and the band and ring appear together as one moment — the band never appears while that collapse delay is still running. (SC-1, D95)
-** [ ] A kid with no morning chores configured sees their band and ring from the moment the morning window opens, rather than never seeing them. (SC-7, SC-1, D92, D95)
-** [ ] The band and ring stay visible while that kid has their reward shop open — standing belongs to the child's day, not to which view is open in the column body. (SC-1, D97)
-** [ ] On the tablet in Fully Kiosk: the band and ring render as designed, the band reads from across the room, the band plus five manually re-expanded done morning chore rows fit without scrolling, and the band disappears at 17:00. Verified by hand at gate close — never in CI. (SC-1, SC-3)
+** [X] During the morning window, a kid in good standing sees a full-width green band carrying three stars and no text, sitting between their name banner and the body of their column, and a green ring around their whole column running from the banner to the bottom. (SC-1, D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "a kid in good standing sees the band with three stars and the column ring during the morning window" (describe "standing band and ring (Story 05, D95, D97)") — asserts ~#standing-band-{kid.id}~, ~#kid-column-{kid.id}.ring-success~, and via ~LazyHTML~ exactly 3 ~.hero-star-solid~ nodes inside the band. Confirmed passing individually with ~mix test --trace~. Markup: ~lib/bear_cub_web/live/kiosk_live.ex~ band div (row-start-2, ~bg-success h-14~, three ~hero-star-solid~ at ~size-9~, no text) and the conditional ~ring-4 ring-inset ring-success~ class on the ~<section>~.
+:END:
+** [X] A kid who is not in good standing sees neither the band nor the ring. (SC-1, D95)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "a kid not in good standing sees neither the band nor the ring" — an incomplete morning chore leaves ~Chores.standing/2~'s ~complete?~ false, so the gated ~standing?~ in ~build_column/10~ is false and both the band and the ring class are absent. Confirmed passing individually.
+:END:
+** [X] The band and the ring disappear entirely when the evening window opens at 17:00, even for a kid who is still in good standing, and the change arrives without anyone touching the tablet. (SC-3, D95)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "the band and ring disappear when the evening window opens, even though the kid is in standing" — the fixture makes ~Chores.standing/2~ true at the DB level (morning complete today, evening complete yesterday) while the window is pinned to evening, and both are absent. The story-closeout verifier additionally confirmed the *live* transition (no remount) with a throwaway test sending the existing ~:boundary~ message to a view already showing the band, flipping to the evening window first — band and ring both disappeared on the same connection, using ~Routines.next_boundary/2~'s existing re-render with no new scheduling, per D95.
+:END:
+** [X] The night screen is unchanged — one dark screen with a single moon, no band and no ring. (SC-3, D95)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "the night screen shows no band or ring even when the kid is in standing" — asserts ~#night-screen~ present and both ~#standing-band-{kid.id}~ and the whole ~#kid-column-{kid.id}~ absent (columns never render at night, per the pre-existing ~:if={!@night?}~ guard).
+:END:
+** [X] On the last morning tap, the completed chore stays visible briefly, and then the routine collapses and the band and ring appear together as one moment — the band never appears while that collapse delay is still running. (SC-1, D95)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "the band and ring wait for the collapse delay, then appear together with the collapse" — after the last-chore tap, both the routine's own collapse card (~#band-{kid.id}~) and ~#standing-band-{kid.id}~ are absent; after ~send(view.pid, {:collapse_ready, kid.id})~, both appear together with the ring. Gate in code: ~standing?~ includes ~and not delaying?~, reusing the existing collapse-delay flag rather than ~reveal?~.
+:END:
+** [X] A kid with no morning chores configured sees their band and ring from the moment the morning window opens, rather than never seeing them. (SC-7, SC-1, D92, D95)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "a kid with no morning chores configured sees the band and ring from the moment the morning window opens" — with zero chores, ~routine_day_status/3~'s ~Enum.all?~ over an empty roster is vacuously true (D92), so ~standing?~ is true, and ~delaying?~ stays false because the kid never enters ~pending_collapse~ (their local ~complete?~ is always false for an empty roster), matching the Design excerpt's stated reasoning for gating on ~delaying?~ rather than ~reveal?~.
+:END:
+** [X] The band and ring stay visible while that kid has their reward shop open — standing belongs to the child's day, not to which view is open in the column body. (SC-1, D97)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Verified by the test "the band and ring stay visible while the reward shop is open" — ~standing?~ is computed in ~build_column/10~ independent of ~state~/~shopping?~, and the band renders above both the ~state != :rewards~ and ~state == :rewards~ branches in the template, so it is unaffected by the gift-button toggle.
+:END:
+** [-] On the tablet in Fully Kiosk: the band and ring render as designed, the band reads from across the room, the band plus five manually re-expanded done morning chore rows fit without scrolling, and the band disappears at 17:00. Verified by hand at gate close — never in CI. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:16] \\
+  Deferred — this item is a manual on-device Fully Kiosk check, and per its own text and CLAUDE.md's Gate close convention ("the PRD §7 on-device gate ... as a manual human checklist — never CI'd, never skipped"), it is verified by hand at ~/workflow-kit:phase-close~, not at story-closeout. A dev-server browser + Tidewave spot-check was done during implementation (screenshot, computed ~box-shadow~ confirming the inset ring) as a sanity check, but that is Chrome on desktop, not Fully Kiosk's Android WebView on the tablet, and does not satisfy this item's literal bar. No code change is implicated by this deferral.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:20] \\
+  7 of 8 Acceptance Criteria items are ~[X]~ with LOGBOOK evidence naming a specific test; the 8th (on-device Fully Kiosk check) is ~[-]~, deferred to ~/workflow-kit:phase-close~ per CLAUDE.md's Gate close convention ("the PRD §7 on-device gate ... as a manual human checklist — never CI'd, never skipped"). Confirmed by story-verifier audit reading the Acceptance Criteria section directly.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:20] \\
+  All 7 CI-able criteria are backed by tests in ~describe "standing band and ring (Story 05, D95, D97)"~ (~test/bear_cub_web/live/kiosk_live_test.exs:913~-1036). Confirmed passing via ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ (105 passed) and individually via ~--trace~.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:20] \\
+  ~mix format --check-formatted~ clean; ~compile --warnings-as-errors~ clean. Conditional class lists use the required ~[...]~ array form (~kiosk_live.ex:517-520~); every new element carries a unique DOM id; no design invariant violated (no new DB column/flag for standing — it stays derived per-render via ~Chores.standing/2~; no clock mocking introduced). Diff scoped to exactly ~lib/bear_cub_web/live/kiosk_live.ex~ and its test file.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-06 Sun 08:20] \\
+  ~mix precommit~ (the repo's actual declared Verify command, per CLAUDE.md) passes: ~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~ — exit 0, 577 passed, 0 failures.
+:END:
 
 * Technical Notes
 
