@@ -464,7 +464,7 @@ defmodule BearCubWeb.KioskLive do
     <Layouts.app flash={@flash}>
       <div
         id="kiosk"
-        class="relative grid h-dvh grid-cols-2 gap-px overflow-hidden bg-base-300"
+        class="relative grid h-dvh grid-cols-2 gap-4 p-4 overflow-hidden bg-base-300"
       >
         <%!-- Night screen (D56, supersedes D32's per-column Good Night
              message): the 23:00–05:00 gap is a single dark screen with one
@@ -515,8 +515,9 @@ defmodule BearCubWeb.KioskLive do
           :if={!@night?}
           id={"kid-column-#{kid.id}"}
           class={[
-            "grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100",
-            standing? && "ring-4 ring-inset ring-success"
+            "grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100 rounded-lg",
+            standing? &&
+              "ring-4 shadow-[0_0_8px_6px_rgba(245,245,0,0.92)] ring-success"
           ]}
         >
           <%!-- Header band: the color block, not the name, is the primary
@@ -595,21 +596,28 @@ defmodule BearCubWeb.KioskLive do
             </div>
           </header>
 
-          <%!-- Standing band (Story 05, D95, D97): renders only while
+          <%!-- Standing band (Story 05, D95, D97, D98): renders only while
                `standing?` (already window- and delay-gated in
-               `build_column/10`) — never text, just three stars, so it
-               reads for a pre-reader across the room. It survives the
-               reward shop below (D97: standing is a property of the
-               child's day, not of which body view is open), which is why
-               it sits above both branches rather than inside either. --%>
+               `build_column/10`) — never text, just stars, so it reads for
+               a pre-reader across the room. Thirteen stars in a five/three/
+               five arc (D98, amending D97's flat row of three) so the band
+               reads as a single celebratory shape rather than a row of
+               identical glyphs. It survives the reward shop below (D97:
+               standing is a property of the child's day, not of which body
+               view is open), which is why it sits above both branches
+               rather than inside either. --%>
           <div
             :if={standing?}
             id={"standing-band-#{kid.id}"}
-            class="row-start-2 flex h-14 w-full items-center justify-center gap-4 bg-success"
+            class="row-start-2 flex h-16 min-w-full items-center justify-center gap-4 bg-success overflow-visible"
           >
-            <.icon name="hero-star-solid" class="size-9 text-success-content" />
-            <.icon name="hero-star-solid" class="size-9 text-success-content" />
-            <.icon name="hero-star-solid" class="size-9 text-success-content" />
+            <div class="w-max whitespace-nowrap">
+              <.icon
+                :for={size <- [9, 9, 9, 9, 9, 12, 12, 12, 9, 9, 9, 9, 9]}
+                name="hero-star-solid"
+                class={"size-#{size} text-success-content"}
+              />
+            </div>
           </div>
 
           <%!-- Column body: either the normal routine region (events,
@@ -702,17 +710,16 @@ defmodule BearCubWeb.KioskLive do
 
               <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
                    active window, not pure completion. A single bounded card —
-                   routine tint fill (same token as chore cards), message
-                   inside; no header bar edge (retired, D44, D48). `self-start`
-                   keeps it hugging its own content height instead of
-                   stretching to fill the column (docs/design-language.org).
-                   The banner completion icon above is the tap target back to
-                   the rows, not the card itself (D44). --%>
+                   message inside, no tint fill (dropped, D98); no header bar
+                   edge (retired, D44, D48). `self-start` keeps it hugging its
+                   own content height instead of stretching to fill the
+                   column (docs/design-language.org). The banner completion
+                   icon above is the tap target back to the rows, not the
+                   card itself (D44). --%>
               <div
                 :if={state == :band}
                 id={"band-#{kid.id}"}
-                class="flex flex-col self-start overflow-hidden"
-                style={"background-color: var(--routine-#{routine}-tint)"}
+                class="flex flex-col self-start"
               >
                 <span class="px-4 py-3 text-center text-base font-semibold">
                   {band_message(routine)}

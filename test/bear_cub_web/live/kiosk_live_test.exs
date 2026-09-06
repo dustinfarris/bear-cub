@@ -910,7 +910,7 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
-  describe "standing band and ring (Story 05, D95, D97)" do
+  describe "standing band and ring (Story 05, D95, D97, D98)" do
     alias BearCub.Chores
 
     setup do
@@ -922,7 +922,7 @@ defmodule BearCubWeb.KioskLiveTest do
       %{kid: kid}
     end
 
-    test "a kid in good standing sees the band with three stars and the column ring during the morning window",
+    test "a kid in good standing sees the band with thirteen stars and the column ring during the morning window",
          %{conn: conn, kid: kid} do
       morning_active()
       now = LocalTime.now()
@@ -937,7 +937,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
       document = LazyHTML.from_fragment(render(view))
       stars = LazyHTML.query(document, "#standing-band-#{kid.id} .hero-star-solid")
-      assert Enum.count(stars) == 3
+      assert Enum.count(stars) == 13
     end
 
     test "a kid not in good standing sees neither the band nor the ring",
