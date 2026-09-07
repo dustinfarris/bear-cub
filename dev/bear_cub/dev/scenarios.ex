@@ -36,8 +36,9 @@ defmodule BearCub.Dev.Scenarios do
 
   @doc """
   One kid finished the whole morning early (07:10), the other late
-  (08:30): the sun with its bonus badge on both, the sparrow with its own
-  badge on the first only (D100–D103). Returns `%{early: kid, late: kid}`.
+  (08:30): the sun with a `+R` badge on the late kid, the sun with a
+  combined `+R+E` badge and the EARLY pill on the early kid (D100, D104).
+  Returns `%{early: kid, late: kid}`.
   Also makes sure the early bird config keys exist, for a dev server
   started before they were added to `config/runtime.exs`.
   """
