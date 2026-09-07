@@ -15,6 +15,13 @@ defmodule BearCubWeb.KioskLive do
   # concrete duration is implementation freedom, tuned at the on-device gate.
   @collapse_delay_ms 400
 
+  # Settle-delay (D106): the pause between a routine chore completing and
+  # its row sinking to the done stack. The row holds its done treatment in
+  # place first, so the tap is answered where the finger is — the done
+  # stack can be below the fold. Same shape as the collapse delay above;
+  # the duration is tuned at the local gate, not design-pinned.
+  @settle_delay_ms 700
+
   # Reward-shop idle auto-return (Story 05, D65): how long a column stays
   # open with no tap before it snaps back to normal, in case a child wanders
   # off mid-shop. Deliberately not design-pinned — tuned at the on-device
@@ -48,6 +55,7 @@ defmodule BearCubWeb.KioskLive do
      socket
      |> assign(:expanded, MapSet.new())
      |> assign(:pending_collapse, MapSet.new())
+     |> assign(:settling, MapSet.new())
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
      |> load(now)
@@ -67,12 +75,12 @@ defmodule BearCubWeb.KioskLive do
         if Map.has_key?(socket.assigns.completions, chore.id) do
           # {:error, :not_completed} if another surface undid it first — no-op
           Chores.undo_chore(chore, now)
+          {:noreply, load(socket, now)}
         else
           # a racing double-complete hits the partial unique index — already done
           Chores.complete_chore(chore, now, "kiosk")
+          {:noreply, socket |> settle_later(chore.id) |> load(now)}
         end
-
-        {:noreply, load(socket, now)}
     end
   end
 
@@ -226,6 +234,18 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:pending_collapse, pending_collapse) |> load(LocalTime.now())}
   end
 
+  # Settle-delay (D106): the held row may sink now. A stray message — the
+  # chore was undone mid-hold, or never held — is a harmless no-op.
+  def handle_info({:settled, chore_id}, socket) do
+    settling = MapSet.delete(socket.assigns.settling, chore_id)
+    {:noreply, socket |> assign(:settling, settling) |> load(LocalTime.now())}
+  end
+
+  defp settle_later(socket, chore_id) do
+    Process.send_after(self(), {:settled, chore_id}, @settle_delay_ms)
+    assign(socket, :settling, MapSet.put(socket.assigns.settling, chore_id))
+  end
+
   defp load(socket, local_now) do
     {routine_state, auto} = Routines.current(local_now)
     night? = routine_state == :upcoming
@@ -243,6 +263,7 @@ defmodule BearCubWeb.KioskLive do
     failed_ids = Chores.failed_chore_ids(today)
     expanded = socket.assigns.expanded
     pending_collapse = socket.assigns.pending_collapse
+    settling = socket.assigns.settling
     rewards = socket.assigns.rewards
 
     {columns, pending_collapse} =
@@ -257,6 +278,7 @@ defmodule BearCubWeb.KioskLive do
           today,
           expanded,
           pending_collapse,
+          settling,
           rewards
         )
       end)
@@ -299,6 +321,7 @@ defmodule BearCubWeb.KioskLive do
          today,
          expanded,
          pending_collapse,
+         settling,
          rewards
        ) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
@@ -356,7 +379,8 @@ defmodule BearCubWeb.KioskLive do
     # Done rows sink (D105): pending rows keep authored order on top, done
     # rows stack beneath them newest-first, so the kid-color mass grows
     # downward as the routine fills in. Extras below are not sunk.
-    chore_rows = chores |> build_rows(completions, failed_ids) |> sink_done(completions)
+    chore_rows =
+      chores |> build_rows(completions, failed_ids) |> sink_done(completions, settling)
 
     extras =
       if state == :band and auto == :morning do
@@ -435,9 +459,15 @@ defmodule BearCubWeb.KioskLive do
   # Pending rows first in authored order; done rows after, most recent
   # completion first (D105). `completed_at` is second-resolution, so the
   # completion id breaks ties in the same second — a later tap is a later
-  # row.
-  defp sink_done(rows, completions) do
-    {done, pending} = Enum.split_with(rows, & &1.done?)
+  # row. A done row still settling (D106) is not yet sunk: it keeps its
+  # authored place among the pending rows for the hold, marked `sunk?:
+  # false` so the template renders it done but in the slot group.
+  defp sink_done(rows, completions, settling) do
+    rows =
+      for row <- rows,
+          do: Map.put(row, :sunk?, row.done? and not MapSet.member?(settling, row.chore.id))
+
+    {done, pending} = Enum.split_with(rows, & &1.sunk?)
 
     done =
       Enum.sort_by(
@@ -808,21 +838,22 @@ defmodule BearCubWeb.KioskLive do
                   class="row-start-2 max-h-full self-start overflow-y-auto"
                 >
                   <ul
-                    :if={Enum.any?(chores, &(not &1.done?))}
+                    :if={Enum.any?(chores, &(not &1.sunk?))}
                     class="flex flex-col gap-2 p-2.5"
                   >
                     <.chore_row
-                      :for={%{chore: chore, done?: false, failed?: failed?} <- chores}
+                      :for={%{chore: chore, done?: done?, failed?: failed?, sunk?: false} <- chores}
                       chore={chore}
-                      done?={false}
+                      done?={done?}
                       failed?={failed?}
                       kid={kid}
                       routine={routine}
+                      slot?={true}
                     />
                   </ul>
-                  <ul :if={Enum.any?(chores, & &1.done?)} class="flex flex-col">
+                  <ul :if={Enum.any?(chores, & &1.sunk?)} class="flex flex-col">
                     <.chore_row
-                      :for={%{chore: chore, done?: true} <- chores}
+                      :for={%{chore: chore, sunk?: true} <- chores}
                       chore={chore}
                       done?={true}
                       kid={kid}
@@ -963,6 +994,9 @@ defmodule BearCubWeb.KioskLive do
   attr :kid, :map, required: true
   attr :routine, :atom, required: true
   attr :extra?, :boolean, default: false
+  # In the slot group: a done row here is mid-hold (D106) — it keeps the
+  # slot's size and corners, filled and solid-edged, until it sinks.
+  attr :slot?, :boolean, default: false
 
   # Shared row markup for both routine chores and extras (D34 technical
   # notes: extras are chores, so this is the same tappable row) — extras
@@ -981,8 +1015,11 @@ defmodule BearCubWeb.KioskLive do
       phx-throttle="1000"
       class={
         [
-          "flex cursor-pointer select-none items-center gap-4 transition-all",
+          "flex cursor-pointer select-none items-center gap-4 transition-all active:scale-[0.97]",
           cond do
+            # Held in place (D106): the slot, filled — same box as the dashed
+            # slot so nothing around it shifts during the hold.
+            @done? and @slot? -> "h-24 rounded-xl border-[3px] px-3.5"
             # Done (routine or extra): kid-color fill, flush, a hairline
             # between consecutive done rows (D105).
             @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
@@ -994,7 +1031,7 @@ defmodule BearCubWeb.KioskLive do
           end
         ]
       }
-      style={chore_card_style(@done?, @extra?, @routine, @kid.color)}
+      style={chore_card_style(@done?, @extra?, @slot?, @routine, @kid.color)}
     >
       <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
       <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>
@@ -1013,10 +1050,15 @@ defmodule BearCubWeb.KioskLive do
       <span
         :if={@done?}
         id={"chore-check-#{@chore.id}"}
-        class={[
-          "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
-          not @extra? && "ml-auto"
-        ]}
+        class={
+          [
+            "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
+            not @extra? && "ml-auto",
+            # The disc springs in during the hold only — a sunk row is a
+            # re-inserted element, and re-popping below the fold is noise.
+            @slot? && "animate-pop"
+          ]
+        }
         style={"color: #{@kid.color}"}
       >
         <.icon name="hero-check" class="size-6" />
@@ -1043,14 +1085,17 @@ defmodule BearCubWeb.KioskLive do
   # child-color ownership border (docs/design-language.org). Pending routine
   # chore: routine tint fill with a dashed routine-colored edge (D105) — the
   # column already carries ownership, so no child-color border here.
-  defp chore_card_style(true, _extra?, _routine, kid_color),
+  defp chore_card_style(true, _extra?, true, _routine, kid_color),
+    do: "background-color: #{kid_color}; border-color: #{kid_color}"
+
+  defp chore_card_style(true, _extra?, false, _routine, kid_color),
     do: "background-color: #{kid_color}"
 
-  defp chore_card_style(false, true, _routine, kid_color),
+  defp chore_card_style(false, true, _slot?, _routine, kid_color),
     do:
       "background-color: var(--extra-card-background); border-left-color: #{kid_color}; color: var(--extra-card-content)"
 
-  defp chore_card_style(false, false, routine, _kid_color),
+  defp chore_card_style(false, false, _slot?, routine, _kid_color),
     do:
       "background-color: var(--routine-#{routine}-tint); border-color: var(--routine-#{routine}-edge)"
 

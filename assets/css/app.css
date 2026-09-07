@@ -154,6 +154,16 @@
 
 @theme {
   --font-reward: Nunito, ui-rounded, "Segoe UI", system-ui, sans-serif;
+
+  /* Check-disc entrance (D106): the handoff's spring — 0 → 1.28 → 1 on an
+     overshooting curve — run once when the disc appears on a held row. */
+  --animate-pop: pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+
+  @keyframes pop {
+    from { transform: scale(0); }
+    60% { transform: scale(1.28); }
+    to { transform: scale(1); }
+  }
 }
 
 /* Add variants based on LiveView classes */

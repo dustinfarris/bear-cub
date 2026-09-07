@@ -448,6 +448,8 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{chore.id}.h-20")
 
       view |> element("#chore-#{chore.id}") |> render_click()
+      # the shrink lands once the row has settled out of its in-place hold
+      send(view.pid, {:settled, chore.id})
 
       assert has_element?(view, "#chore-#{chore.id}.h-20")
       refute has_element?(view, "#chore-#{chore.id}.h-24")
@@ -1046,6 +1048,13 @@ defmodule BearCubWeb.KioskLiveTest do
       original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
       on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
 
+      # These tests complete chores at the real `now` and assert a plain +R
+      # badge; before 07:45 local that would be +R+E (D104). Pin the cutoff
+      # to midnight so nothing here is ever early, whatever the clock says.
+      original_cutoff = Application.fetch_env!(:bear_cub, :early_bird_cutoff)
+      Application.put_env(:bear_cub, :early_bird_cutoff, ~T[00:00:00])
+      on_exit(fn -> Application.put_env(:bear_cub, :early_bird_cutoff, original_cutoff) end)
+
       %{kid: kid}
     end
 
@@ -1402,14 +1411,58 @@ defmodule BearCubWeb.KioskLiveTest do
       assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
 
       view |> element("#chore-#{a.id}") |> render_click()
+      send(view.pid, {:settled, a.id})
       assert row_ids(view, kid) == ["chore-#{b.id}", "chore-#{c.id}", "chore-#{a.id}"]
 
       view |> element("#chore-#{b.id}") |> render_click()
+      send(view.pid, {:settled, b.id})
       assert row_ids(view, kid) == ["chore-#{c.id}", "chore-#{b.id}", "chore-#{a.id}"]
 
       # undo floats the row back up into authored order among the pending
       view |> element("#chore-#{a.id}") |> render_click()
       assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{c.id}", "chore-#{b.id}"]
+    end
+
+    test "a just-tapped chore holds its done state in place, full height, before it sinks",
+         %{conn: conn, kid: kid, chores: [a, b, c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{a.id}") |> render_click()
+
+      # done treatment, still in authored position, still slot-sized
+      assert has_element?(view, "#chore-#{a.id}[data-done]")
+      assert has_element?(view, "#chore-#{a.id}.h-24")
+      assert has_element?(view, "#chore-#{a.id} #chore-check-#{a.id}.animate-pop")
+      assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
+
+      send(view.pid, {:settled, a.id})
+
+      assert has_element?(view, "#chore-#{a.id}[data-done]")
+      assert has_element?(view, "#chore-#{a.id}.h-20")
+      refute has_element?(view, "#chore-#{a.id} .animate-pop")
+      assert row_ids(view, kid) == ["chore-#{b.id}", "chore-#{c.id}", "chore-#{a.id}"]
+    end
+
+    test "an undo during the hold puts the slot back; the late settle message is a no-op",
+         %{conn: conn, kid: kid, chores: [a, b, c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{a.id}") |> render_click()
+      view |> element("#chore-#{a.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{a.id}[data-done]")
+      assert has_element?(view, "#chore-#{a.id}.border-dashed")
+
+      send(view.pid, {:settled, a.id})
+
+      refute has_element?(view, "#chore-#{a.id}[data-done]")
+      assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
+    end
+
+    test "every chore row presses in under the finger", %{conn: conn, chores: [a, _b, _c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{a.id}.active\\:scale-\\[0\\.97\\]")
     end
 
     test "a pending routine row is a dashed slot with no child-color border; a done row carries the circled check",
