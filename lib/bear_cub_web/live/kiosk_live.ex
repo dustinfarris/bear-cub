@@ -353,7 +353,10 @@ defmodule BearCubWeb.KioskLive do
         true -> :rows
       end
 
-    chore_rows = build_rows(chores, completions, failed_ids)
+    # Done rows sink (D105): pending rows keep authored order on top, done
+    # rows stack beneath them newest-first, so the kid-color mass grows
+    # downward as the routine fills in. Extras below are not sunk.
+    chore_rows = chores |> build_rows(completions, failed_ids) |> sink_done(completions)
 
     extras =
       if state == :band and auto == :morning do
@@ -376,6 +379,7 @@ defmodule BearCubWeb.KioskLive do
       state: state,
       routine: auto,
       reveal?: reveal?,
+      complete?: complete?,
       standing?: standing?,
       early_bird?: early_bird?,
       failed?: failed?,
@@ -426,6 +430,26 @@ defmodule BearCubWeb.KioskLive do
       done? = Map.has_key?(completions, chore.id)
       %{chore: chore, done?: done?, failed?: not done? and MapSet.member?(failed_ids, chore.id)}
     end
+  end
+
+  # Pending rows first in authored order; done rows after, most recent
+  # completion first (D105). `completed_at` is second-resolution, so the
+  # completion id breaks ties in the same second — a later tap is a later
+  # row.
+  defp sink_done(rows, completions) do
+    {done, pending} = Enum.split_with(rows, & &1.done?)
+
+    done =
+      Enum.sort_by(
+        done,
+        fn %{chore: chore} ->
+          completion = Map.fetch!(completions, chore.id)
+          {DateTime.to_unix(completion.completed_at), completion.id}
+        end,
+        :desc
+      )
+
+    pending ++ done
   end
 
   defp schedule_boundary(socket, now) do
@@ -507,6 +531,7 @@ defmodule BearCubWeb.KioskLive do
               state: state,
               routine: routine,
               reveal?: reveal?,
+              complete?: complete?,
               standing?: standing?,
               early_bird?: early_bird?,
               failed?: failed?,
@@ -565,7 +590,8 @@ defmodule BearCubWeb.KioskLive do
                 <span
                   :if={not failed?}
                   id={"completion-badge-#{kid.id}"}
-                  class="absolute -right-4 -top-1 flex items-center rounded-full bg-success px-2 py-0.5 text-sm font-bold text-success-content drop-shadow-sm"
+                  class="absolute -right-4 -top-1 flex items-center rounded-full border-2 bg-success px-2 py-0.5 font-reward text-sm font-black text-success-content drop-shadow-sm"
+                  style={"border-color: #{kid.color}"}
                 >
                   +{Routines.bonus() + if(early_bird?, do: Routines.early_bird_bonus(), else: 0)}
                 </span>
@@ -575,14 +601,14 @@ defmodule BearCubWeb.KioskLive do
                 <span
                   :if={early_bird?}
                   id={"early-bird-#{kid.id}"}
-                  class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-white px-2 py-0.5 text-xs font-extrabold tracking-wide drop-shadow-sm"
+                  class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-white px-2 py-0.5 font-reward text-xs font-black tracking-wide drop-shadow-sm"
                   style={"color: #{kid.color}"}
                 >
                   EARLY
                 </span>
               </span>
             </button>
-            <h1 class="text-4xl font-bold tracking-tight text-white drop-shadow-sm">
+            <h1 class="font-reward text-4xl font-black tracking-tight text-white drop-shadow-sm">
               {kid.name}
             </h1>
             <%!-- Points badge + gift button (Story 05, D65): grouped on the
@@ -595,7 +621,7 @@ defmodule BearCubWeb.KioskLive do
             <div class="absolute right-5 flex items-center gap-2">
               <span
                 id={"points-badge-#{kid.id}"}
-                class="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-lg font-bold text-white drop-shadow-sm"
+                class="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 font-reward text-lg font-black text-white drop-shadow-sm"
               >
                 <.icon name="hero-star-solid" class="size-4" />
                 {points}
@@ -647,7 +673,7 @@ defmodule BearCubWeb.KioskLive do
                construction. The banner above is shared by both. --%>
           <div
             :if={state != :rewards}
-            class="row-start-3 grid grid-rows-[auto_1fr_auto] overflow-hidden"
+            class="row-start-3 grid grid-rows-[auto_auto_1fr_auto] overflow-hidden"
           >
             <%!-- Events strip: chronological, blended per-kid + family list
                  (FR-19). All-day events pin to the top (FR-22); a family
@@ -678,6 +704,64 @@ defmodule BearCubWeb.KioskLive do
               </ul>
             </div>
 
+            <%!-- Stake bar (D105): the routine's all-or-nothing prize and
+                 progress toward it, with no words — a routine-colored icon,
+                 one segment per chore filling in the kid's color, and the
+                 single +R chip (routine chores carry no per-chore number).
+                 Paid (every chore done): segments, chip and ground all go
+                 success-green, the app's one "you earned something" color.
+                 Forfeited (a routine chore failed): the chip disappears,
+                 exactly as the header badge does (D47); the segments stay.
+                 Present in the rows and band states alike — the band is the
+                 paid state, not a different card — and absent in the shop. --%>
+            <div
+              id={"stake-bar-#{kid.id}"}
+              data-paid={complete?}
+              class={[
+                "flex items-center gap-3 border-b px-4 py-3 transition-colors duration-300",
+                complete? && "border-[color:var(--paid-edge)] bg-[color:var(--paid-tint)]"
+              ]}
+              style={
+                if(complete?,
+                  do: nil,
+                  else:
+                    "background-color: var(--routine-#{routine}-tint); border-color: var(--routine-#{routine}-edge)"
+                )
+              }
+            >
+              <span class="flex shrink-0" style={"color: var(--routine-#{routine})"}>
+                <.icon name={completion_icon_name(routine)} class="size-8" />
+              </span>
+              <%!-- Filled segments lead, left to right, as a progress bar
+                   fills — the segments count completions, they are not the
+                   rows (which sink done-last). --%>
+              <div class="grid flex-1 auto-cols-fr grid-flow-col gap-1.5">
+                <span
+                  :for={done? <- Enum.sort_by(chores, &(not &1.done?)) |> Enum.map(& &1.done?)}
+                  data-segment
+                  data-filled={done?}
+                  class={[
+                    "block h-3.5 rounded transition-colors duration-300",
+                    complete? && "bg-success"
+                  ]}
+                  style={stake_segment_style(done?, complete?, routine, kid.color)}
+                />
+              </div>
+              <span
+                :if={not failed?}
+                id={"stake-chip-#{kid.id}"}
+                class={[
+                  "flex shrink-0 items-center rounded-full px-3 py-0.5 font-reward text-lg font-black transition-colors duration-300",
+                  if(complete?,
+                    do: "bg-success text-success-content drop-shadow-sm",
+                    else: "bg-base-content/10 text-base-content/80"
+                  )
+                ]}
+              >
+                +{Routines.bonus()}
+              </span>
+            </div>
+
             <%!-- Routine card: either the chore rows (normal or manually
                  re-expanded) or the completion message (collapsed band). The
                  persistent routine header bar is retired (D44, D48) — the
@@ -691,10 +775,10 @@ defmodule BearCubWeb.KioskLive do
                    this region scrolls (FR-6). A done row shrinks a little
                    (h-24 → h-20) — a quiet completion signal that also buys
                    back vertical room for the no-scroll budget.
-                   Not done = routine tint fill +
-                   child-color border (chore ownership); done = kid-color fill
-                   + check, emoji still visible (FR-7), border merged into the
-                   fill; tap again to undo, no confirmation (FR-8).
+                   Not done = a dashed slot in the routine tint (D105);
+                   done = kid-color fill + circled check, emoji still visible
+                   (FR-7), sunk beneath the pending rows; tap again to undo,
+                   no confirmation (FR-8).
                    phx-throttle swallows the excited rapid double-tap (D15).
                    Also covers the manually re-expanded band (state 4, D34):
                    same rows, all shown done, tap-to-undo. --%>
@@ -707,25 +791,45 @@ defmodule BearCubWeb.KioskLive do
                 <div
                   :if={routine_penalty?}
                   id={"routine-penalty-#{kid.id}"}
-                  class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 text-base font-bold text-warning-content"
+                  class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 font-reward text-base font-black text-warning-content"
                 >
                   <.icon name="hero-exclamation-triangle" class="size-5" />
                   <span>−{Routines.bonus()}</span>
                 </div>
 
-                <ul
+                <%!-- Two stacks (D105): pending rows as dashed slots in a
+                     padded group, done rows flush beneath as one kid-color
+                     mass — `sink_done/2` has already ordered the list, so
+                     this only splits it. Slot padding (10px) + border (3px)
+                     + row padding (14px) = the done row's 27px, so the emoji
+                     column lines up across both stacks. --%>
+                <div
                   id={"chores-#{kid.id}"}
-                  class="row-start-2 grid max-h-full auto-rows-min gap-px self-start overflow-y-auto bg-base-300"
+                  class="row-start-2 max-h-full self-start overflow-y-auto"
                 >
-                  <.chore_row
-                    :for={%{chore: chore, done?: done?, failed?: failed?} <- chores}
-                    chore={chore}
-                    done?={done?}
-                    failed?={failed?}
-                    kid={kid}
-                    routine={routine}
-                  />
-                </ul>
+                  <ul
+                    :if={Enum.any?(chores, &(not &1.done?))}
+                    class="flex flex-col gap-2 p-2.5"
+                  >
+                    <.chore_row
+                      :for={%{chore: chore, done?: false, failed?: failed?} <- chores}
+                      chore={chore}
+                      done?={false}
+                      failed?={failed?}
+                      kid={kid}
+                      routine={routine}
+                    />
+                  </ul>
+                  <ul :if={Enum.any?(chores, & &1.done?)} class="flex flex-col">
+                    <.chore_row
+                      :for={%{chore: chore, done?: true} <- chores}
+                      chore={chore}
+                      done?={true}
+                      kid={kid}
+                      routine={routine}
+                    />
+                  </ul>
+                </div>
               </div>
 
               <%!-- Collapse band (states 2/3, D33/D34): reveal gated by the
@@ -741,7 +845,7 @@ defmodule BearCubWeb.KioskLive do
                 id={"band-#{kid.id}"}
                 class="flex flex-col self-start"
               >
-                <span class="px-4 py-3 text-center text-base font-semibold">
+                <span class="px-4 py-3 text-center font-reward text-lg font-extrabold">
                   {band_message(routine)}
                 </span>
               </div>
@@ -821,8 +925,8 @@ defmodule BearCubWeb.KioskLive do
                 style="background-color: var(--extra-card-background); color: var(--extra-card-content)"
               >
                 <span class="text-[2.5rem] leading-none">{reward.icon}</span>
-                <span class="text-2xl font-semibold">{reward.name}</span>
-                <span class="ml-auto flex items-center gap-1 text-lg font-bold">
+                <span class="font-reward text-2xl font-extrabold">{reward.name}</span>
+                <span class="ml-auto flex items-center gap-1 font-reward text-lg font-black">
                   <.icon name="hero-star-solid" class="size-4" />
                   {reward.points}
                 </span>
@@ -875,28 +979,48 @@ defmodule BearCubWeb.KioskLive do
       phx-click="toggle-chore"
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
-      class={[
-        "flex cursor-pointer select-none items-center gap-5 border-l-[length:var(--child-border-width)] px-6 transition-all",
-        if(@done?, do: "h-20", else: "h-24")
-      ]}
+      class={
+        [
+          "flex cursor-pointer select-none items-center gap-4 transition-all",
+          cond do
+            # Done (routine or extra): kid-color fill, flush, a hairline
+            # between consecutive done rows (D105).
+            @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
+            # Pending extra: the fixed neutral card with the child-color
+            # ownership border (docs/design-language.org).
+            @extra? -> "h-24 border-l-[length:var(--child-border-width)] px-6"
+            # Pending routine chore: a dashed slot in the routine tint (D105).
+            true -> "h-24 rounded-xl border-[3px] border-dashed px-3.5"
+          end
+        ]
+      }
       style={chore_card_style(@done?, @extra?, @routine, @kid.color)}
     >
       <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
-      <span class={["text-2xl font-semibold", @done? && "text-white drop-shadow-sm"]}>
+      <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>
         {@chore.name}
       </span>
       <span
         :if={@done? and @extra?}
         id={"chore-earned-#{@chore.id}"}
-        class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-bold text-success-content drop-shadow-sm"
+        class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-reward font-black text-success-content drop-shadow-sm"
       >
         +{@chore.points}
       </span>
-      <.icon
+      <%!-- Circled check (D105): a white disc carrying the check in the
+           kid's own color — it reads as "earned", not as a target, which is
+           also why a pending row has nothing in this column. --%>
+      <span
         :if={@done?}
-        name="hero-check"
-        class={["size-10 text-white drop-shadow-sm", not @extra? && "ml-auto"]}
-      />
+        id={"chore-check-#{@chore.id}"}
+        class={[
+          "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
+          not @extra? && "ml-auto"
+        ]}
+        style={"color: #{@kid.color}"}
+      >
+        <.icon name="hero-check" class="size-6" />
+      </span>
       <.icon
         :if={@failed? and not @extra?}
         name="hero-exclamation-triangle"
@@ -908,29 +1032,35 @@ defmodule BearCubWeb.KioskLive do
         class="ml-auto flex items-center gap-2 text-warning"
       >
         <.icon name="hero-exclamation-triangle" class="size-8" />
-        <span class="text-2xl font-bold">−{@chore.points}</span>
+        <span class="font-reward text-2xl font-black">−{@chore.points}</span>
       </span>
     </li>
     """
   end
 
-  # Not done: routine tint + child-color border (chore ownership). Done: full
-  # kid-color fill, border merged into the fill rather than layered on top —
-  # the fill is already the child's own color, so a matching border added no
-  # legibility (docs/design-language.org). The border width is always
-  # reserved (see the `li` class above) so completing a chore never shifts
-  # its content; done just makes the border transparent instead of removing
-  # it. Extras never take the routine tint — they're a fixed neutral
-  # surface (docs/design-language.org).
+  # Done: full kid-color fill, no border of any kind — the fill is already
+  # the child's own color. Pending extra: fixed neutral surface plus the
+  # child-color ownership border (docs/design-language.org). Pending routine
+  # chore: routine tint fill with a dashed routine-colored edge (D105) — the
+  # column already carries ownership, so no child-color border here.
   defp chore_card_style(true, _extra?, _routine, kid_color),
-    do: "background-color: #{kid_color}; border-left-color: transparent"
+    do: "background-color: #{kid_color}"
 
   defp chore_card_style(false, true, _routine, kid_color),
     do:
       "background-color: var(--extra-card-background); border-left-color: #{kid_color}; color: var(--extra-card-content)"
 
-  defp chore_card_style(false, false, routine, kid_color),
-    do: "background-color: var(--routine-#{routine}-tint); border-left-color: #{kid_color}"
+  defp chore_card_style(false, false, routine, _kid_color),
+    do:
+      "background-color: var(--routine-#{routine}-tint); border-color: var(--routine-#{routine}-edge)"
+
+  # Stake segment (D105): paid rows take the class-level bg-success; a done
+  # segment before payout is the kid's color; an empty one the routine edge.
+  defp stake_segment_style(_done?, true, _routine, _kid_color), do: nil
+  defp stake_segment_style(true, false, _routine, kid_color), do: "background-color: #{kid_color}"
+
+  defp stake_segment_style(false, false, routine, _kid_color),
+    do: "background-color: var(--routine-#{routine}-edge)"
 
   defp completion_icon_name(:morning), do: "hero-sun-solid"
   defp completion_icon_name(:evening), do: "hero-moon-solid"

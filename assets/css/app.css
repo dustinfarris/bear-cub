@@ -112,9 +112,48 @@
   /* Child ownership border on not-yet-done chore/extra cards. */
   --child-border-width: 6px;
 
+  /* Routine edge (D105): the dashed border of a pending slot and the empty
+     stake segments — the routine color pulled most of the way to the surface,
+     so it reads as an outline of the routine rather than a filled state. */
+  --routine-morning-edge: color-mix(in oklab, var(--routine-morning) 45%, var(--color-base-100));
+  --routine-evening-edge: color-mix(in oklab, var(--routine-evening) 40%, var(--color-base-100));
+
+  /* Paid stake bar (D105): the success family (already the +R badge and +N
+     chip) as a ground and a rule, for the bar once every chore is done. */
+  --paid-tint: color-mix(in oklab, var(--color-success) 16%, var(--color-base-100));
+  --paid-edge: color-mix(in oklab, var(--color-success) 35%, var(--color-base-100));
+
   /* Extras are a fixed neutral surface — never tinted by routine or theme. */
   --extra-card-background: #ffffff;
   --extra-card-content: #1c1917;
+}
+
+/* Reward layer type (D105): Nunito, self-hosted (SIL OFL; latin and
+   latin-ext subsets of the 700–900 variable face from Google Fonts), for the
+   large celebratory strings only — kid names, point totals, badges and chips,
+   praise lines, shop titles. Never below text-sm: it goes mushy at
+   informational sizes, so chore labels and event text stay on the system
+   sans. `font-reward` is the utility. */
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@theme {
+  --font-reward: Nunito, ui-rounded, "Segoe UI", system-ui, sans-serif;
 }
 
 /* Add variants based on LiveView classes */

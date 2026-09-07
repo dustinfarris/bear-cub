@@ -113,8 +113,9 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
       html = render(view)
 
+      # Row tracks are content-sized (docs/design-language.org): never an
+      # equal-fill grid, and every pending row carries its fixed height.
       refute html =~ "auto-rows-fr"
-      assert html =~ "auto-rows-min"
 
       [chore_a, chore_b] = BearCub.Chores.list_chores(kid_a, auto_routine() |> Atom.to_string())
       assert has_element?(view, "#chore-#{chore_a.id}.h-24")
@@ -1304,6 +1305,143 @@ defmodule BearCubWeb.KioskLiveTest do
       # nothing was scheduled for a non-last completion — a stray message is a no-op
       send(view.pid, {:collapse_ready, kid.id})
       refute has_element?(view, "#band-#{kid.id}")
+    end
+  end
+
+  describe "stake bar and sinking done rows (D105)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      morning_active()
+
+      a = chore_fixture(kid, %{name: "Make Bed", icon: "🛏️", routine: "morning", position: 0})
+      b = chore_fixture(kid, %{name: "Eat Breakfast", icon: "🥣", routine: "morning", position: 1})
+      c = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning", position: 2})
+
+      %{kid: kid, chores: [a, b, c]}
+    end
+
+    defp segments(view, kid) do
+      document = LazyHTML.from_fragment(render(view))
+
+      filled =
+        LazyHTML.query(document, "#stake-bar-#{kid.id} [data-segment][data-filled]")
+        |> Enum.count()
+
+      total = LazyHTML.query(document, "#stake-bar-#{kid.id} [data-segment]") |> Enum.count()
+      {filled, total}
+    end
+
+    defp row_ids(view, kid) do
+      document = LazyHTML.from_fragment(render(view))
+
+      LazyHTML.query(document, "#chores-#{kid.id} li[id^='chore-']")
+      |> LazyHTML.attribute("id")
+    end
+
+    test "one segment per routine chore, filled as chores complete, with a single +R chip",
+         %{conn: conn, kid: kid, chores: [a, _b, _c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert {0, 3} = segments(view, kid)
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+#{Routines.bonus()}")
+      refute has_element?(view, "#stake-bar-#{kid.id}[data-paid]")
+
+      view |> element("#chore-#{a.id}") |> render_click()
+
+      assert {1, 3} = segments(view, kid)
+      refute has_element?(view, "#stake-bar-#{kid.id}[data-paid]")
+    end
+
+    test "the stake bar enters the paid state when every chore is done, and stays through the band",
+         %{conn: conn, kid: kid, chores: chores} do
+      now = LocalTime.now()
+      for chore <- chores, do: {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#band-#{kid.id}")
+      assert has_element?(view, "#stake-bar-#{kid.id}[data-paid]")
+      assert {3, 3} = segments(view, kid)
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+#{Routines.bonus()}")
+    end
+
+    test "a forfeited routine keeps its segments but loses the chip, like the header badge (D47)",
+         %{conn: conn, kid: kid, chores: [a, _b, _c]} do
+      now = LocalTime.now()
+      {:ok, _} = Chores.complete_chore(a, now, "kiosk")
+      {:ok, _} = Chores.fail_chore(a, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#stake-bar-#{kid.id}")
+      assert has_element?(view, "#routine-penalty-#{kid.id}")
+      refute has_element?(view, "#stake-chip-#{kid.id}")
+    end
+
+    test "the stake bar is absent from the reward shop and the night screen",
+         %{conn: conn, kid: kid} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#stake-bar-#{kid.id}")
+
+      view |> element("#gift-button-#{kid.id}") |> render_click()
+
+      refute has_element?(view, "#stake-bar-#{kid.id}")
+    end
+
+    test "done rows sink below the pending ones, most recent completion first",
+         %{conn: conn, kid: kid, chores: [a, b, c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
+
+      view |> element("#chore-#{a.id}") |> render_click()
+      assert row_ids(view, kid) == ["chore-#{b.id}", "chore-#{c.id}", "chore-#{a.id}"]
+
+      view |> element("#chore-#{b.id}") |> render_click()
+      assert row_ids(view, kid) == ["chore-#{c.id}", "chore-#{b.id}", "chore-#{a.id}"]
+
+      # undo floats the row back up into authored order among the pending
+      view |> element("#chore-#{a.id}") |> render_click()
+      assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{c.id}", "chore-#{b.id}"]
+    end
+
+    test "a pending routine row is a dashed slot with no child-color border; a done row carries the circled check",
+         %{conn: conn, kid: kid, chores: [a, _b, _c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{a.id}.border-dashed")
+      refute has_element?(view, "#chore-#{a.id}[style*='border-left-color']")
+      refute has_element?(view, "#chore-#{a.id} .hero-check")
+
+      view |> element("#chore-#{a.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{a.id}.border-dashed")
+      assert has_element?(view, "#chore-#{a.id} #chore-check-#{a.id} .hero-check")
+
+      assert has_element?(
+               view,
+               "#chore-#{a.id} #chore-check-#{a.id}[style*='color: #{kid.color}']"
+             )
+    end
+
+    test "the reward layer (name, points pill, bonus badge, stake chip) sets the reward font",
+         %{conn: conn, kid: kid, chores: chores} do
+      now = LocalTime.now()
+      for chore <- chores, do: {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#kid-column-#{kid.id} h1.font-reward", "Kid A")
+      assert has_element?(view, "#points-badge-#{kid.id}.font-reward")
+      assert has_element?(view, "#completion-badge-#{kid.id}.font-reward")
+      assert has_element?(view, "#stake-chip-#{kid.id}.font-reward")
     end
   end
 

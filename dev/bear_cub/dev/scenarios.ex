@@ -17,6 +17,7 @@ defmodule BearCub.Dev.Scenarios do
   `project_eval`:
 
       BearCub.Dev.Scenarios.early_bird()
+      BearCub.Dev.Scenarios.midway()         # stake bar half filled, done rows sunk
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
       BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
       BearCub.Dev.Scenarios.reset()
@@ -57,6 +58,30 @@ defmodule BearCub.Dev.Scenarios do
     end
 
     %{early: early, late: late}
+  end
+
+  @doc """
+  The stake bar mid-fill (D105): one kid has finished the first two chores
+  of `routine`, the other the first one, each tapped a minute apart so the
+  sunk done rows stack newest-first beneath the dashed slots. Pair it with
+  `open(routine)` when reviewing outside the window. Returns the kids in
+  display order.
+  """
+  def midway(routine \\ :morning, %DateTime{} = local_now \\ LocalTime.now())
+      when routine in [:morning, :evening] do
+    kids = reset(local_now)
+
+    for {kid, count} <- Enum.zip(kids, Stream.cycle([2, 1])),
+        {chore, offset} <-
+          kid
+          |> Chores.list_chores(Atom.to_string(routine))
+          |> Enum.take(count)
+          |> Enum.with_index() do
+      at = DateTime.add(local_now, offset - count, :minute)
+      {:ok, _} = Chores.complete_chore(chore, at, "kiosk")
+    end
+
+    kids
   end
 
   @doc """
