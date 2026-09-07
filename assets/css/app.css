@@ -164,6 +164,28 @@
     60% { transform: scale(1.28); }
     to { transform: scale(1); }
   }
+
+  /* Sink (backlog: "Animate the sink of a settled chore row"), two halves
+     on one clock: the row that just sank grows open from nothing at the
+     top of the done stack, pushing the rows beneath it down, while a
+     ghost of it collapses in the slot it left. Animations rather than
+     transitions because the real row is the same DOM node LiveView
+     relocates into the done stack, and a transition has no before-state
+     to run from across that move; an animation starts the moment its
+     class lands. Grow has only `from` — its end state is the row's own
+     `h-20`. Collapse takes the ghost's border and its row spacing down
+     with its height (the slot group spaces rows with `space-y-2`, each
+     row's own margin, for exactly this), so nothing is left behind. */
+  --animate-sink-grow: sink-grow 300ms ease-in-out both;
+  --animate-sink-collapse: sink-collapse 300ms ease-in-out both;
+
+  @keyframes sink-grow {
+    from { height: 0; }
+  }
+
+  @keyframes sink-collapse {
+    to { height: 0; border-width: 0; margin-bottom: 0; }
+  }
 }
 
 /* Add variants based on LiveView classes */

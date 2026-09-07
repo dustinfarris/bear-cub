@@ -448,7 +448,7 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{chore.id}.h-20")
 
       view |> element("#chore-#{chore.id}") |> render_click()
-      # the shrink lands once the row has settled out of its in-place hold
+      # the shrink lands once the row has settled out of its in-place beat
       send(view.pid, {:settled, chore.id})
 
       assert has_element?(view, "#chore-#{chore.id}.h-20")
@@ -1423,39 +1423,48 @@ defmodule BearCubWeb.KioskLiveTest do
       assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{c.id}", "chore-#{b.id}"]
     end
 
-    test "a just-tapped chore holds its done state in place, full height, before it sinks",
+    test "a just-tapped chore shows done in place for a beat, then sinks with its check springing in",
          %{conn: conn, kid: kid, chores: [a, b, c]} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("#chore-#{a.id}") |> render_click()
 
-      # done treatment, still in authored position, still slot-sized
+      # done treatment, still in authored position, still slot-sized, not
+      # yet animating anywhere
       assert has_element?(view, "#chore-#{a.id}[data-done]")
       assert has_element?(view, "#chore-#{a.id}.h-24")
-      assert has_element?(view, "#chore-#{a.id} #chore-check-#{a.id}.animate-pop")
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#chore-#{a.id} .animate-pop")
+      refute has_element?(view, "#ghost-#{a.id}")
       assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
 
       send(view.pid, {:settled, a.id})
 
       assert has_element?(view, "#chore-#{a.id}[data-done]")
-      assert has_element?(view, "#chore-#{a.id}.h-20")
-      refute has_element?(view, "#chore-#{a.id} .animate-pop")
+      assert has_element?(view, "#chore-#{a.id}.h-20.animate-sink-grow")
+      assert has_element?(view, "#chore-#{a.id} #chore-check-#{a.id}.animate-pop")
       assert row_ids(view, kid) == ["chore-#{b.id}", "chore-#{c.id}", "chore-#{a.id}"]
     end
 
-    test "an undo during the hold puts the slot back; the late settle message is a no-op",
+    test "an undo during the beat puts the slot back; the late settle message is a no-op",
          %{conn: conn, kid: kid, chores: [a, b, c]} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("#chore-#{a.id}") |> render_click()
       view |> element("#chore-#{a.id}") |> render_click()
 
+      # a plain slot again, no rise: the row never reached the done stack,
+      # so there is nothing to collapse there and nothing to grow back here
       refute has_element?(view, "#chore-#{a.id}[data-done]")
       assert has_element?(view, "#chore-#{a.id}.border-dashed")
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#ghost-#{a.id}")
 
       send(view.pid, {:settled, a.id})
 
       refute has_element?(view, "#chore-#{a.id}[data-done]")
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#ghost-#{a.id}")
       assert row_ids(view, kid) == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
     end
 
@@ -1463,6 +1472,108 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert has_element?(view, "#chore-#{a.id}.active\\:scale-\\[0\\.97\\]")
+    end
+
+    test "a row that just sank grows open once, not on later renders",
+         %{conn: conn, chores: [a, b, _c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{a.id}") |> render_click()
+      send(view.pid, {:settled, a.id})
+
+      assert has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      assert has_element?(view, "#chore-#{a.id} .animate-pop")
+
+      # any later render — another broadcast, another tap — must not replay
+      send(view.pid, :chores_changed)
+
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#chore-#{a.id} .animate-pop")
+
+      view |> element("#chore-#{b.id}") |> render_click()
+      send(view.pid, {:settled, b.id})
+
+      assert has_element?(view, "#chore-#{b.id}.animate-sink-grow")
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+    end
+
+    test "the vacated slot collapses as an inert ghost, in authored place, for that one render",
+         %{conn: conn, kid: kid, chores: [a, b, c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{b.id}") |> render_click()
+      refute has_element?(view, "#ghost-#{b.id}")
+
+      send(view.pid, {:settled, b.id})
+
+      # ghost holds b's authored place among the pending rows; the real
+      # row is at the top of the done stack beneath them
+      document = LazyHTML.from_fragment(render(view))
+      all_ids = LazyHTML.query(document, "#chores-#{kid.id} li") |> LazyHTML.attribute("id")
+      assert all_ids == ["chore-#{a.id}", "ghost-#{b.id}", "chore-#{c.id}", "chore-#{b.id}"]
+
+      assert has_element?(view, "#ghost-#{b.id}.animate-sink-collapse[data-done]")
+      refute has_element?(view, "#ghost-#{b.id}[phx-click]")
+      refute has_element?(view, "#ghost-#{b.id} .animate-pop")
+      # one segment per real chore — the ghost is not a chore
+      assert {1, 3} = segments(view, kid)
+
+      view |> element("#chore-#{c.id}") |> render_click()
+
+      refute has_element?(view, "#ghost-#{b.id}")
+    end
+
+    test "an undo rises the same way: a ghost collapses in the done stack while the row grows back into its slot",
+         %{conn: conn, kid: kid, chores: [a, b, c]} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      for chore <- [a, b] do
+        view |> element("#chore-#{chore.id}") |> render_click()
+        send(view.pid, {:settled, chore.id})
+      end
+
+      send(view.pid, :chores_changed)
+      # done stack newest-first: b above a
+      assert row_ids(view, kid) == ["chore-#{c.id}", "chore-#{b.id}", "chore-#{a.id}"]
+
+      view |> element("#chore-#{a.id}") |> render_click()
+
+      # the row is back in authored place, growing; its ghost holds the
+      # old spot at the bottom of the done stack, collapsing in the done look
+      document = LazyHTML.from_fragment(render(view))
+      all_ids = LazyHTML.query(document, "#chores-#{kid.id} li") |> LazyHTML.attribute("id")
+
+      assert all_ids == [
+               "chore-#{a.id}",
+               "chore-#{c.id}",
+               "chore-#{b.id}",
+               "ghost-#{a.id}"
+             ]
+
+      assert has_element?(view, "#chore-#{a.id}.border-dashed.animate-sink-grow")
+      refute has_element?(view, "#chore-#{a.id} .animate-pop")
+      assert has_element?(view, "#ghost-#{a.id}.h-20.animate-sink-collapse[data-done]")
+      refute has_element?(view, "#ghost-#{a.id}[phx-click]")
+      assert {1, 3} = segments(view, kid)
+
+      # the write's own :chores_changed echo was already queued ahead of
+      # the render above and carried the marker through; it is spent
+      # there, so the next render of any kind drops both halves
+      send(view.pid, :chores_changed)
+
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#ghost-#{a.id}")
+    end
+
+    test "an already-sunk row at page load does not grow — only a live sink animates",
+         %{conn: conn, chores: [a, _b, _c]} do
+      {:ok, _} = Chores.complete_chore(a, LocalTime.now(), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-#{a.id}[data-done]")
+      refute has_element?(view, "#chore-#{a.id}.animate-sink-grow")
+      refute has_element?(view, "#chore-#{a.id} .animate-pop")
     end
 
     test "a pending routine row is a dashed slot with no child-color border; a done row carries the circled check",

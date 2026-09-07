@@ -12,15 +12,20 @@ defmodule BearCubWeb.KioskLive do
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
   # chore completing and the routine list collapsing, so that chore's own
   # completion stays briefly visible before the whole-routine collapse. The
-  # concrete duration is implementation freedom, tuned at the on-device gate.
-  @collapse_delay_ms 400
+  # concrete duration is implementation freedom, tuned at the on-device
+  # gate. Raised [2026-09-07] from 400ms so it clears the settle beat plus
+  # the 300ms sink animation — the last chore's sink finishes before the
+  # band replaces the rows, instead of being cut off mid-flight.
+  @collapse_delay_ms 500
 
   # Settle-delay (D106): the pause between a routine chore completing and
-  # its row sinking to the done stack. The row holds its done treatment in
-  # place first, so the tap is answered where the finger is — the done
-  # stack can be below the fold. Same shape as the collapse delay above;
-  # the duration is tuned at the local gate, not design-pinned.
-  @settle_delay_ms 700
+  # its row sinking to the done stack — the row shows its done treatment
+  # in place first, so the tap registers where the finger is. Shortened
+  # [2026-09-07] from 700ms on the human's ruling once the sink itself
+  # animated (the collapsing ghost now answers the tap where it landed):
+  # the slightest beat, not a hold. Same shape as the collapse delay
+  # above; tuned at the local gate, not design-pinned.
+  @settle_delay_ms 150
 
   # Reward-shop idle auto-return (Story 05, D65): how long a column stays
   # open with no tap before it snaps back to normal, in case a child wanders
@@ -56,6 +61,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:expanded, MapSet.new())
      |> assign(:pending_collapse, MapSet.new())
      |> assign(:settling, MapSet.new())
+     |> assign(:just_risen, nil)
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
      |> load(now)
@@ -73,9 +79,21 @@ defmodule BearCubWeb.KioskLive do
 
       chore ->
         if Map.has_key?(socket.assigns.completions, chore.id) do
-          # {:error, :not_completed} if another surface undid it first — no-op
-          Chores.undo_chore(chore, now)
-          {:noreply, load(socket, now)}
+          case Chores.undo_chore(chore, now) do
+            # The undone completion is the rise's marker: its chore id names
+            # the row that grows back into its slot, and its timestamp is
+            # where the ghost sits in the done stack (that completion is
+            # gone from `completions` by the time `load/2` runs). Held in
+            # an assign because the write's own `:chores_changed` echo
+            # re-renders right behind this tap and must still carry it —
+            # unlike the sink, no timer separates the tap from the echo.
+            {:ok, completion} ->
+              {:noreply, socket |> assign(:just_risen, completion) |> load(now)}
+
+            # another surface undid it first — no-op
+            {:error, :not_completed} ->
+              {:noreply, load(socket, now)}
+          end
         else
           # a racing double-complete hits the partial unique index — already done
           Chores.complete_chore(chore, now, "kiosk")
@@ -178,9 +196,12 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, now)}
   end
 
+  # The kiosk's own undo comes back as this broadcast a moment after the
+  # tap rendered it; this render still carries the rise marker (dropping
+  # it here would strip the animation mid-play) and is where it is spent.
   @impl true
   def handle_info(:chores_changed, socket) do
-    {:noreply, load(socket, LocalTime.now())}
+    {:noreply, socket |> load(LocalTime.now()) |> assign(:just_risen, nil)}
   end
 
   def handle_info(:calendars_changed, socket) do
@@ -234,11 +255,20 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:pending_collapse, pending_collapse) |> load(LocalTime.now())}
   end
 
-  # Settle-delay (D106): the held row may sink now. A stray message — the
-  # chore was undone mid-hold, or never held — is a harmless no-op.
+  # Settle-delay (D106): the row may sink now. A stray message — the chore
+  # was undone during the beat, or never tapped here — is a harmless
+  # no-op. `just_sunk` names this one chore for this render only, so the
+  # sink animation plays once for the kiosk's own tap and never replays
+  # for a row that was already done — D106's "re-popping below the fold
+  # is noise" rule. Only the tap animates: a completion arriving from
+  # admin has no finger to answer.
   def handle_info({:settled, chore_id}, socket) do
     settling = MapSet.delete(socket.assigns.settling, chore_id)
-    {:noreply, socket |> assign(:settling, settling) |> load(LocalTime.now())}
+
+    {:noreply,
+     socket
+     |> assign(:settling, settling)
+     |> load(LocalTime.now(), just_sunk: chore_id)}
   end
 
   defp settle_later(socket, chore_id) do
@@ -246,7 +276,9 @@ defmodule BearCubWeb.KioskLive do
     assign(socket, :settling, MapSet.put(socket.assigns.settling, chore_id))
   end
 
-  defp load(socket, local_now) do
+  defp load(socket, local_now, opts \\ []) do
+    just_sunk = Keyword.get(opts, :just_sunk)
+
     {routine_state, auto} = Routines.current(local_now)
     night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
@@ -265,6 +297,7 @@ defmodule BearCubWeb.KioskLive do
     pending_collapse = socket.assigns.pending_collapse
     settling = socket.assigns.settling
     rewards = socket.assigns.rewards
+    just_risen = socket.assigns.just_risen
 
     {columns, pending_collapse} =
       Enum.map_reduce(Chores.list_kids(), pending_collapse, fn kid, pending_collapse ->
@@ -279,7 +312,9 @@ defmodule BearCubWeb.KioskLive do
           expanded,
           pending_collapse,
           settling,
-          rewards
+          rewards,
+          just_sunk,
+          just_risen
         )
       end)
 
@@ -322,7 +357,9 @@ defmodule BearCubWeb.KioskLive do
          expanded,
          pending_collapse,
          settling,
-         rewards
+         rewards,
+         just_sunk,
+         just_risen
        ) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
@@ -379,8 +416,14 @@ defmodule BearCubWeb.KioskLive do
     # Done rows sink (D105): pending rows keep authored order on top, done
     # rows stack beneath them newest-first, so the kid-color mass grows
     # downward as the routine fills in. Extras below are not sunk.
-    chore_rows =
-      chores |> build_rows(completions, failed_ids) |> sink_done(completions, settling)
+    {slot, done} =
+      chores
+      |> build_rows(completions, failed_ids)
+      |> sink_done(completions, settling, just_sunk, just_risen)
+
+    # One entry per real chore — the stake bar draws a segment per entry,
+    # so the sink and rise ghosts (see `sink_done/5`) stay out of it.
+    chore_rows = Enum.reject(slot ++ done, & &1.ghost?)
 
     extras =
       if state == :band and auto == :morning do
@@ -408,6 +451,8 @@ defmodule BearCubWeb.KioskLive do
       early_bird?: early_bird?,
       failed?: failed?,
       chores: chore_rows,
+      slot: slot,
+      done: done,
       extras: extras,
       # The routine-penalty strip is a single capped indicator, modeled on
       # the boolean "any routine chore failed-and-not-redone" rather than a
@@ -456,30 +501,64 @@ defmodule BearCubWeb.KioskLive do
     end
   end
 
-  # Pending rows first in authored order; done rows after, most recent
-  # completion first (D105). `completed_at` is second-resolution, so the
+  # The two stacks (D105): `{slot, done}` — the slot group's rows in
+  # authored order, and the done stack's rows beneath, most recent
+  # completion first. `completed_at` is second-resolution, so the
   # completion id breaks ties in the same second — a later tap is a later
   # row. A done row still settling (D106) is not yet sunk: it keeps its
-  # authored place among the pending rows for the hold, marked `sunk?:
-  # false` so the template renders it done but in the slot group.
-  defp sink_done(rows, completions, settling) do
+  # authored place in the slot group for the beat, rendered done.
+  #
+  # Sink and rise animation (backlog: "Animate the sink of a settled chore
+  # row"; D107): a row that moves between the stacks does so as two halves
+  # on one clock — the real row `grow?`s open from nothing in its new
+  # place while an inert `ghost?` copy holds its old place, collapsing to
+  # nothing. `just_sunk` is the `:settled` message's chore id: that row
+  # grows in `done` and ghosts in `slot`. `just_risen` is the completion an
+  # undo just closed: its row grows back in `slot` and ghosts in `done`,
+  # at the spot that completion's timestamp still sorts it to — unless
+  # the row was still settling, in which case it never reached the done
+  # stack and simply becomes a plain slot again. Each is nil otherwise,
+  # so both halves are gone from the markup on the next render — once
+  # only, never for a row that was already where it is: D106's
+  # "re-popping below the fold is noise" rule, applied to the move.
+  defp sink_done(rows, completions, settling, just_sunk, just_risen) do
     rows =
-      for row <- rows,
-          do: Map.put(row, :sunk?, row.done? and not MapSet.member?(settling, row.chore.id))
+      for row <- rows do
+        settling? = MapSet.member?(settling, row.chore.id)
+        sunk? = row.done? and not settling?
 
-    {done, pending} = Enum.split_with(rows, & &1.sunk?)
+        risen? =
+          not row.done? and not settling? and just_risen != nil and
+            row.chore.id == just_risen.chore_id
+
+        Map.merge(row, %{
+          sunk?: sunk?,
+          just_sunk?: sunk? and row.chore.id == just_sunk,
+          risen?: risen?
+        })
+      end
+
+    slot =
+      for row <- rows, not row.sunk? or row.just_sunk? do
+        Map.merge(row, %{ghost?: row.just_sunk?, grow?: row.risen?})
+      end
+
+    rise_ghosts = for row <- rows, row.risen?, do: Map.merge(row, %{ghost?: true, grow?: false})
 
     done =
-      Enum.sort_by(
-        done,
-        fn %{chore: chore} ->
-          completion = Map.fetch!(completions, chore.id)
+      rows
+      |> Enum.filter(& &1.sunk?)
+      |> Enum.map(&Map.merge(&1, %{ghost?: false, grow?: &1.just_sunk?}))
+      |> Kernel.++(rise_ghosts)
+      |> Enum.sort_by(
+        fn row ->
+          completion = if row.ghost?, do: just_risen, else: Map.fetch!(completions, row.chore.id)
           {DateTime.to_unix(completion.completed_at), completion.id}
         end,
         :desc
       )
 
-    pending ++ done
+    {slot, done}
   end
 
   defp schedule_boundary(socket, now) do
@@ -566,6 +645,8 @@ defmodule BearCubWeb.KioskLive do
               early_bird?: early_bird?,
               failed?: failed?,
               chores: chores,
+              slot: slot,
+              done: done,
               extras: extras,
               routine_penalty?: routine_penalty?,
               events: events,
@@ -829,35 +910,42 @@ defmodule BearCubWeb.KioskLive do
 
                 <%!-- Two stacks (D105): pending rows as dashed slots in a
                      padded group, done rows flush beneath as one kid-color
-                     mass — `sink_done/2` has already ordered the list, so
-                     this only splits it. Slot padding (10px) + border (3px)
-                     + row padding (14px) = the done row's 27px, so the emoji
-                     column lines up across both stacks. --%>
+                     mass — `sink_done/4` has already built and ordered both
+                     lists. Slot padding (10px) + border (3px) + row padding
+                     (14px) = the done row's 27px, so the emoji column lines
+                     up across both stacks. --%>
                 <div
                   id={"chores-#{kid.id}"}
                   class="row-start-2 max-h-full self-start overflow-y-auto"
                 >
-                  <ul
-                    :if={Enum.any?(chores, &(not &1.sunk?))}
-                    class="flex flex-col gap-2 p-2.5"
-                  >
+                  <%!-- `space-y-2`, not `gap-2`: the spacing is each row's own
+                       margin, so the sink ghost can animate it away along
+                       with its height (a last-in-list ghost has none). --%>
+                  <ul :if={slot != []} class="flex flex-col space-y-2 p-2.5">
                     <.chore_row
-                      :for={%{chore: chore, done?: done?, failed?: failed?, sunk?: false} <- chores}
+                      :for={
+                        %{chore: chore, done?: done?, failed?: failed?, ghost?: ghost?, grow?: grow?} <-
+                          slot
+                      }
                       chore={chore}
                       done?={done?}
                       failed?={failed?}
                       kid={kid}
                       routine={routine}
                       slot?={true}
+                      ghost?={ghost?}
+                      grow?={grow?}
                     />
                   </ul>
-                  <ul :if={Enum.any?(chores, & &1.sunk?)} class="flex flex-col">
+                  <ul :if={done != []} class="flex flex-col">
                     <.chore_row
-                      :for={%{chore: chore, sunk?: true} <- chores}
+                      :for={%{chore: chore, ghost?: ghost?, grow?: grow?} <- done}
                       chore={chore}
                       done?={true}
                       kid={kid}
                       routine={routine}
+                      ghost?={ghost?}
+                      grow?={grow?}
                     />
                   </ul>
                 </div>
@@ -994,9 +1082,17 @@ defmodule BearCubWeb.KioskLive do
   attr :kid, :map, required: true
   attr :routine, :atom, required: true
   attr :extra?, :boolean, default: false
-  # In the slot group: a done row here is mid-hold (D106) — it keeps the
-  # slot's size and corners, filled and solid-edged, until it sinks.
+  # In the slot group: a done row here is mid-beat (D106) — it keeps the
+  # slot's size and corners, filled and solid-edged, until it sinks; the
+  # sink ghost then collapses in that same look.
   attr :slot?, :boolean, default: false
+  # The move animation's two halves (D107), each set for the one render
+  # where the row sank or rose (see `sink_done/5`): `grow?` on the real
+  # row in its new stack, which grows open from nothing; `ghost?` on its
+  # inert copy left in the old one, which collapses to nothing at the same
+  # time.
+  attr :grow?, :boolean, default: false
+  attr :ghost?, :boolean, default: false
 
   # Shared row markup for both routine chores and extras (D34 technical
   # notes: extras are chores, so this is the same tappable row) — extras
@@ -1005,23 +1101,44 @@ defmodule BearCubWeb.KioskLive do
   # extra also carries its own −N, but a failed routine chore never does —
   # its impact is the single capped routine-penalty strip shown once above.
   defp chore_row(assigns) do
+    # The ghost is a second element for the same chore, so every id it
+    # carries takes its own prefix — `#chore-N` stays the real row's, the
+    # one LiveView relocates into the done stack.
+    assigns = assign(assigns, :dom, if(assigns.ghost?, do: "ghost", else: "chore"))
+
     ~H"""
     <li
-      id={"chore-#{@chore.id}"}
+      id={"#{@dom}-#{@chore.id}"}
       data-done={@done?}
       data-failed={@failed?}
-      phx-click="toggle-chore"
+      phx-click={not @ghost? && "toggle-chore"}
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
       class={
         [
-          "flex cursor-pointer select-none items-center gap-4 transition-all active:scale-[0.97]",
+          "flex cursor-pointer select-none items-center gap-4 overflow-hidden transition-all active:scale-[0.97]",
+          # Move animation (D107), sink and rise alike: the real row grows
+          # open from height 0 in its new stack, pushing the rows beneath
+          # it down, while its ghost collapses in the place it left. The
+          # real row is the *same* DOM node LiveView relocates between the
+          # two lists (matched by id — confirmed against the patch, not
+          # assumed), so a CSS transition has no before-state to run from
+          # across the move and `phx-remove`/`phx-mounted` never fire; a
+          # CSS animation starts the moment its class lands, exactly like
+          # the check disc's `animate-pop`. One render only: the next patch
+          # drops the class and the ghost, which is also what snaps a tap
+          # mid-animation to its end state. `overflow-hidden` above keeps
+          # the content clipped while the box is short. Under reduced
+          # motion the ghost is simply not shown.
+          @grow? && "animate-sink-grow motion-reduce:animate-none",
+          @ghost? && "animate-sink-collapse motion-reduce:hidden",
           cond do
-            # Held in place (D106): the slot, filled — same box as the dashed
-            # slot so nothing around it shifts during the hold.
+            # Mid-beat (D106), and then the sink ghost: the slot, filled —
+            # the same box as the dashed slot so nothing around it shifts.
             @done? and @slot? -> "h-24 rounded-xl border-[3px] px-3.5"
             # Done (routine or extra): kid-color fill, flush, a hairline
-            # between consecutive done rows (D105).
+            # between consecutive done rows (D105). The rise ghost collapses
+            # in this look.
             @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
             # Pending extra: the fixed neutral card with the child-color
             # ownership border (docs/design-language.org).
@@ -1039,7 +1156,7 @@ defmodule BearCubWeb.KioskLive do
       </span>
       <span
         :if={@done? and @extra?}
-        id={"chore-earned-#{@chore.id}"}
+        id={"#{@dom}-earned-#{@chore.id}"}
         class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-reward font-black text-success-content drop-shadow-sm"
       >
         +{@chore.points}
@@ -1049,14 +1166,18 @@ defmodule BearCubWeb.KioskLive do
            also why a pending row has nothing in this column. --%>
       <span
         :if={@done?}
-        id={"chore-check-#{@chore.id}"}
+        id={"#{@dom}-check-#{@chore.id}"}
         class={
           [
             "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
             not @extra? && "ml-auto",
-            # The disc springs in during the hold only — a sunk row is a
-            # re-inserted element, and re-popping below the fold is noise.
-            @slot? && "animate-pop"
+            # The disc springs in as the just-sunk row grows open — moved
+            # there from D106's hold once the beat got shorter than the
+            # pop — and only then: a done row at page load or after a
+            # reconnect is a re-inserted element, and re-popping below the
+            # fold is noise. The ghost is a new element too, mid-collapse:
+            # no re-pop.
+            @grow? && "animate-pop"
           ]
         }
         style={"color: #{@kid.color}"}
@@ -1070,7 +1191,7 @@ defmodule BearCubWeb.KioskLive do
       />
       <span
         :if={@failed? and @extra?}
-        id={"chore-penalty-#{@chore.id}"}
+        id={"#{@dom}-penalty-#{@chore.id}"}
         class="ml-auto flex items-center gap-2 text-warning"
       >
         <.icon name="hero-exclamation-triangle" class="size-8" />
