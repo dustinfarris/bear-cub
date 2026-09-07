@@ -18,6 +18,7 @@ defmodule BearCub.Dev.Scenarios do
 
       BearCub.Dev.Scenarios.early_bird()
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
+      BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
       BearCub.Dev.Scenarios.reset()
 
   Placeholder kids and demo chores are seeded first if the database is
@@ -91,6 +92,18 @@ defmodule BearCub.Dev.Scenarios do
   # direct broadcast rather than a new public `Chores` function: the
   # domain gains nothing it needs for a dev-only consumer.
   defp broadcast, do: Phoenix.PubSub.broadcast(BearCub.PubSub, "chores", :chores_changed)
+
+  @doc """
+  Moves the early bird cutoff in the running VM, so a chore tapped *now*
+  can count as early (`cutoff(~T[23:00:00])`) or late (`cutoff(~T[00:01:00])`)
+  in a live tap-through. Config only, no boot-time window check — pair
+  it with `open(:morning)`. Restart the server to get the real cutoff back.
+  """
+  def cutoff(%Time{} = time) do
+    Application.put_env(:bear_cub, :early_bird_cutoff, time)
+    broadcast()
+    :ok
+  end
 
   defp seed_if_empty do
     if Chores.list_kids() == [] do

@@ -17,7 +17,13 @@ defmodule BearCub.Dev.ScenariosTest do
 
   setup do
     original = Application.fetch_env!(:bear_cub, :routine_windows)
-    on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original) end)
+    cutoff = Application.fetch_env!(:bear_cub, :early_bird_cutoff)
+
+    on_exit(fn ->
+      Application.put_env(:bear_cub, :routine_windows, original)
+      Application.put_env(:bear_cub, :early_bird_cutoff, cutoff)
+    end)
+
     :ok
   end
 
@@ -48,5 +54,10 @@ defmodule BearCub.Dev.ScenariosTest do
 
     Scenarios.open(:evening)
     assert {:active, :evening} = BearCub.Routines.current(la(~D[2026-07-10], ~T[06:00:00]))
+  end
+
+  test "cutoff/1 moves the early bird cutoff in the running VM so a live tap can count as early" do
+    Scenarios.cutoff(~T[23:00:00])
+    assert BearCub.Routines.early_bird_cutoff() == ~T[23:00:00]
   end
 end
