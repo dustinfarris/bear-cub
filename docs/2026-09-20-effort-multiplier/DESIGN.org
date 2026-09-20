@@ -1,0 +1,223 @@
+#+title: DESIGN — effort-multiplier
+#+date: 2026-09-20
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Some extras involve a variable amount of effort — chess puzzles solved, laps swum, bags of yard waste — but every extra pays a flat value, so a ten-puzzle morning and a one-puzzle morning pay the same. This design lets a parent mark a specific extra as /counted/: it carries a per-unit point rate and a maximum count alongside its existing point value, which becomes a base. At the kiosk, tapping that extra opens an inline panel where the kid sets a count with a slider and a pair of ±buttons, sees the payout update live, and confirms. The completion stores the count; the payout is ~base + count × rate~.
+
+The feature is deliberately small at the data layer and deliberately careful at the kiosk layer, because the kiosk has never had an input that is not a binary tap. One new stored fact — the count the kid entered — plus the same multiplication in the two places the extras contribution is computed. Every other extra is untouched and keeps its flat one-tap behavior; routine chores cannot be counted at all.
+
+Three properties organize the design, each from a PRD Success Criterion: the kid is paid immediately with no parent approval step (SC-2), with fail-on-inspection (D40) remaining the parent's correction path; an undo clears the count and a redo must ask again (SC-3), which falls out of the existing row model rather than needing mechanism; and base, rate and max are frozen at creation (SC-4), which is what makes the payout re-derivable forever from ~chores~ and ~completions~ with nothing snapshotted.
+
+* Data Model
+
+** ~chores~ gains two nullable columns, and reuses ~points~ as the base
+
+| column      | type          | meaning                                              |
+|-------------+---------------+------------------------------------------------------|
+| ~unit_rate~ | integer, null | points per unit; NULL means an ordinary flat chore   |
+| ~unit_max~  | integer, null | ceiling on the count; NULL iff ~unit_rate~ is NULL   |
+
+There is no third column for the base: the PRD's "base point value" /is/ the existing ~points~ column. A flat chore is then the identity case of the effort formula (~points + 0 × 0~), which is what keeps the contribution function free of a branch on "is this a counted chore". Rationale: [[file:../decisions.org::#d108][D108]].
+
+Counting is permitted only on extras — ~unit_rate~ may be set only when ~routine~ is nil. A per-chore variable number on a routine chore would misstate the single ~+R~ a routine pays, which is the same honesty argument D54 and D45 turn on; the changeset refuses it rather than leaving it to the form.
+
+The pair is driven by a virtual ~counts_units?~ boolean, collapsing into the two columns in the changeset exactly as ~shows_in~ collapses into ~routine~/~recurring?~ ([[file:../decisions.org::#d83][D83]]). Unchecked puts a NULL pair; checked requires both. The virtual field is what the admin form binds to, so "is this a counted chore" is one control rather than an inference a parent draws from a blank rate field.
+
+Naming: ~unit_rate~ and ~unit_max~ pair with each other and read correctly inside the raw query fragment. ~points_per_unit~ does not pair with a ~max~ sibling and invites ~points_max~, which would be a different and wrong concept — a cap on points rather than on count.
+
+** ~completions~ gains ~effort_count~
+
+Integer, nullable. NULL on every flat-chore row — including every row that exists today — and ~1..chore.unit_max~ on a counted row.
+
+The count is the only new stored fact. Not the payout, not the rate, not the max. Because SC-4 freezes base, rate and max at creation, the payout re-derives correctly from ~chores~ and ~completions~ for the life of the app, so there is nothing a snapshot would protect against. This is D10's posture applied to a new input rather than an exception carved out of it. Rationale: [[file:../decisions.org::#d109][D109]].
+
+Stated so a later reader does not mistake it for a solved problem: this deliberately /sidesteps/ the open backlog question about snapshotting routine windows and the early-bird cutoff. The class of problem — a derived figure that would change if configuration changed under it — is avoided here by forbidding the configuration change, not by solving re-derivation. Whatever settles that backlog entry is free to take a different route.
+
+The bounds live with the chore, so the changeset takes the chore: ~Completion.changeset/3~ gains the chore as a third argument and validates against it — ~effort_count~ required and within ~1..chore.unit_max~ when ~chore.unit_rate~ is set, required to be nil when it is not. ~complete_chore/4~ is the only writer, so a count can never arrive by another path.
+
+The field is ~effort_count~ rather than ~count~: ~count~ collides with the SQL aggregate in a schema that already carries raw fragments, and it does not say what was counted.
+
+** Immutability once persisted
+
+On a chore that already exists, ~Chore.changeset/2~ refuses:
+
+- any change to ~unit_rate~ or ~unit_max~;
+- any change to ~counts_units?~ — a flat chore never becomes counted, and a counted chore never becomes flat;
+- any change to ~points~ when ~unit_rate~ is set. A flat chore's points stay freely editable, exactly as today.
+
+The error message directs the parent to archive and create a new chore, matching ~check_reclassification_lock/2~'s existing copy. Unlike that lock, this one does not depend on whether completions exist: SC-4's contract is "fixed once the chore is created", and a chore with no history is about to have some. Rationale: [[file:../decisions.org::#d110][D110]].
+
+This is defence in depth, not the primary mechanism — the admin form does not submit these fields on edit at all. The changeset refuses anyway, in the same spirit as ~force_non_recurring_when_routine_present/1~ guarding a path the form already handles.
+
+** Migration
+
+One migration, ~add_chore_effort_units~: ~chores.unit_rate~ (integer, null), ~chores.unit_max~ (integer, null), ~completions.effort_count~ (integer, null). No backfill, no index, no constraint beyond nullability — NULL is already the correct value for every row in the database, and no balance moves on deploy.
+
+* Screens / Interfaces
+
+** Kiosk — the count panel
+
+Counted extras appear exactly where extras appear now: the morning band state (~state == :band and routine == :morning~), gated by the reveal (D33). Nothing here changes when or whether extras are offered.
+
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel carries a range slider for the coarse move, a pair of large ±buttons to nudge, the current count shown large, and a confirm button showing the live payout; a ✕ cancels. Rationale: [[file:../decisions.org::#d111][D111]].
+
+The legal range is ~1..unit_max~ and the panel opens at 1. A kid who did none of a thing does not tap it, so zero has no meaning to express, and keeping it out of range also keeps the confirm button from ever offering a payout for nothing. Opening at 1 makes the common case — "I did one" — a tap to open plus a tap to confirm. The ~−~ button is inert at 1 and ~+~ is inert at ~unit_max~.
+
+One panel per kid at a time: opening a second counted extra closes the first without writing anything. Per-kid rather than per-kiosk, matching ~expanded~ and ~rewards~, so two kids at the fridge never block each other.
+
+Cancel writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's ([[file:../decisions.org::#d65][D65]]), because an open panel holds no point balance in suspense and costs nothing to leave open.
+
+** Kiosk — the completed row
+
+A completed counted extra shows ~×8~ beside its name, in the system sans and muted; the green ~+N~ chip is unchanged and carries the full earned value, ~base + count × rate~. The failed mirror keeps the warning and ~−N~ and also carries the count beside the name.
+
+This keeps D54's chip meaning exactly as ruled — earned value, nothing else — and puts the count where it belongs, as a fact about the chore rather than a second celebratory element. Per the reward-layer type ruling ([[file:../decisions.org::#d105][D105]]), ~×N~ is informational and stays off ~font-reward~. Rationale: [[file:../decisions.org::#d112][D112]].
+
+The pending row is unchanged: no rate hint, no "up to 12". A pre-reader gains nothing from two more numbers on a card they have not tapped yet.
+
+Two new kids'-view visuals are recorded in ~docs/design-language.org~ by the story that lands them, not at design time (the D48/D54 pattern): the inline count panel's treatment on the extras' fixed neutral card (~--extra-card-background~), which it inherits by being an extra row; and ~×N~ beside the name on a completed counted extra, with the explicit note that the ~+N~ chip's meaning is unchanged.
+
+** Admin — Today screen
+
+A pending counted extra's complete control is inert, with a short hint reading that it is counted at the kiosk. Undo and fail are unchanged, and a done counted extra shows ~×8~ so there is something to inspect.
+
+An on-behalf tap would have to invent a count nobody entered — the kiosk would then show ~×1~ as though the kid had said so. Removing the row entirely was rejected for a sharper reason: it would remove the fail-on-inspection control, which is the one thing a parent most needs against a self-reported number. Rationale: [[file:../decisions.org::#d113][D113]].
+
+~build_row/3~ carries ~effort?~ and the count, so the row renders both the hint and the ~×N~ from data it already assembles.
+
+** Admin — chore form
+
+On ~:new~, a "Counts units" checkbox appears only when the resolved "Shows in" is =extra= or =extra_daily=. Checking it reveals two fields, per-unit rate and max. The form already runs ~phx-change="validate"~, so the reveal follows the select with no new plumbing.
+
+On ~:edit~ there is no checkbox. A counted chore renders Points, Per unit and Max as read-only text under one line saying they are fixed and to archive and recreate to change them. A flat chore renders Points as the ordinary input it is today and shows nothing about counting — it can never become counted, so a disabled control would only invite a tap.
+
+When the checkbox is on, the ~points~ field is labelled "Base points". For a flat chore ~points~ is the whole payout; for a counted one it is the floor, and one reactive label removes the only genuine ambiguity the column reuse introduces.
+
+* Key Behaviors
+
+** The effort value and the contribution
+
+~extra_contribution/2~ keeps its marker-first shape; only what it multiplies changes:
+
+#+begin_src elixir
+def extra_contribution(%Completion{} = completion, %Chore{} = chore) do
+  value = chore.points + (completion.effort_count || 0) * (chore.unit_rate || 0)
+
+  cond do
+    completion.failed_at -> -value
+    completion.undone_at -> 0
+    true -> value
+  end
+end
+#+end_src
+
+A flat chore has both operands nil, so ~value~ is ~chore.points~ and the function is pointwise identical to today's for every row that exists.
+
+** The grouped query takes the same expression
+
+~extras_by_kid/1~'s ~CASE~ carries the per-row value in two of its three arms; both take the sum:
+
+#+begin_src elixir
+fragment(
+  "SUM(CASE WHEN ? IS NOT NULL THEN (0 - (? + COALESCE(?, 0) * COALESCE(?, 0))) WHEN ? IS NOT NULL THEN 0 ELSE (? + COALESCE(?, 0) * COALESCE(?, 0)) END)",
+  c.failed_at,
+  ch.points,
+  c.effort_count,
+  ch.unit_rate,
+  c.undone_at,
+  ch.points,
+  c.effort_count,
+  ch.unit_rate
+)
+#+end_src
+
+Hazard, recorded because this file contains exactly the trap: a raw ~fragment(...)~ bypasses Ecto's ~field/3~ ~:source~ mapping and must spell the database column name ([[file:../decisions.org::#d82][D82]]). The new columns take no ~:source~ mapping, so schema name and column name are identical and the trap cannot fire for them.
+
+Nothing else in the derivation moves. ~BearCub.Points~ is untouched; the routine-day legs (~routine_day_contribution/3~, ~routine_days_by_kid/1~, ~live_chore_counts/1~) are untouched, since counted chores are extras-only; ~BearCub.Rewards~ is untouched.
+
+** Undo and redo need no mechanism (SC-3)
+
+A redo does not reuse a row. ~complete_chore/4~ inserts a /new/ ~completions~ row, and the unique index is partial — ~(chore_id, local_date) WHERE undone_at IS NULL~. So the undone row keeps its count as history, and the redo necessarily asks for a fresh one. "Undo clears the entered count" is a property of the existing row model, and this design adds no clearing step. A story that implements one has misread this.
+
+** A failed counted extra mirrors exactly
+
+~fail_chore/2~ stamps ~undone_at~ /and/ ~failed_at~ on the row that carries the count, so the penalty is ~−(base + count × rate)~ — the honest negative of what was actually paid, which is the symmetry D46 requires of the ~−N~ indicator.
+
+** Kiosk state and events
+
+A new ephemeral assign, ~counting~: ~%{kid_id => %{chore_id: id, count: n}}~, alongside ~expanded~, ~rewards~ and ~settling~. Never persisted, never broadcast. Cleared by the ~:boundary~ handler (where ~:rewards~ is already cleared), by the night screen, and by ~load/2~ whenever the chore stops being an open pending counted extra for that kid — archived from admin, completed from another surface, window closed.
+
+~toggle-chore~ forks once, at the top. A tap on a /pending/ counted extra opens the panel instead of writing. A tap on a /done/ one undoes, exactly as today: count entry is on the way in only, and undo stays a single tap.
+
+The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a slider drag or a ±tap inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
+
+Four events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-set~, ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~. Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does.
+
+The slider needs a form: ~phx-change~ is not available on a bare element, so the slider sits inside a ~<form phx-change="count-set">~ wrapping only the slider; the stepper and the confirm are buttons outside it.
+
+Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~, drops the ~counting~ entry, and the row lands in the ordinary done-extra treatment. Extras do not sink, so this meets none of the sink/rise machinery ([[file:../decisions.org::#d105][D105]], [[file:../decisions.org::#d106][D106]], [[file:../decisions.org::#d107][D107]]); the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
+
+** Left to the local kiosk gate
+
+Two tuning questions are observable at 1280 × 800 with a staged scenario and cost nothing to add once seen; building machinery for them in advance risks code nobody needed:
+
+- whether the slider's ~phx-change~ wants a ~phx-debounce~ — one LAN round-trip per drag frame, against keeping the live payout honest as the thumb moves;
+- whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list, and whether it pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
+
+If the panel proves too tall at the gate, the first move is to shrink the panel, not to move it out of the row — the in-row placement is a ruling; its height is not.
+
+** Testing
+
+Both layers, per the repo convention that LiveView integration tests are part of a story's Acceptance Criteria wherever a flow is touched.
+
+Contribution (~test/bear_cub/chores_test.exs~): a live counted row pays ~base + count × rate~; an undone one pays 0; a failed one pays the exact negative; a flat row with a NULL count is unchanged from today.
+
+The agreement test, extended — ~earnings/2~ and ~earnings_by_kid/1~ agreeing pointwise over a fixture holding flat, counted, undone and failed rows together. This is the most important test in the set: it is the only thing that catches a wrong ~CASE~ arm or a missing ~COALESCE~ in the fragment above, and keeping those two routes honest against each other is what [[file:../decisions.org::#d72][D72]] exists for.
+
+Changeset (~Chore~): counting is refused on a chore with a routine; rate and max must both be present or both absent; both must be at least 1; and all three immutability locks refuse on a persisted chore, including the assertion that a /flat/ chore's points remain editable.
+
+Changeset (~Completion~): a count is required for a counted chore and refused for a flat one; ~0~ and ~unit_max + 1~ are both refused.
+
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; the slider sets a value; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; cancel writes nothing; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+
+LiveView, admin: the chore form locks the three fields on edit and refuses a forged submit carrying them; Today's complete control is inert on a counted extra while fail still works and ~×N~ renders.
+
+Test hygiene: fixed local dates, ~:routine_windows~ pinned (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+
+Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a counted extra mid-panel and another completed at ~×8~, so the gate screenshot at 1280 × 800 has both states in one frame.
+
+Verification beyond ~mix precommit~: the local kiosk review at 1280 × 800 is the gate, and it is where the two tuning questions above get answered.
+
+* Out of Scope for This Design
+
+From the PRD, restated so a story author does not rediscover them as ideas:
+
+- Parent or admin entry and correction of the count. Undo-and-redo is the correction path, the same as for any other chore.
+- Non-linear or tiered point formulas. ~base + count × rate~ is the whole model; a tier table would be a new column set and a new derivation, and nothing in family use asks for one.
+- In-place editing of base, rate or max. Archive and recreate.
+
+Allowed by the PRD but deliberately deferred by this design:
+
+- A counted /routine/ chore. Not merely unimplemented — refused, because a per-chore variable number would misstate the single ~+R~ a routine pays.
+- Named units in the kiosk UI ("8 puzzles" rather than ~×8~).
+- Any history view of counts over time.
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
