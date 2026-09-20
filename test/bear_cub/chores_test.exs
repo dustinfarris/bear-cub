@@ -364,6 +364,237 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "counted chores (Story 01)" do
+    import BearCub.ChoresFixtures
+
+    test "an extra chore can carry a per-unit rate and max alongside its base points (SC-1)" do
+      kid = kid_fixture()
+
+      attrs = %{
+        name: "Rake Leaves",
+        icon: "🍂",
+        routine: nil,
+        points: 5,
+        unit_rate: 2,
+        unit_max: 10
+      }
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.points == 5
+      assert chore.unit_rate == 2
+      assert chore.unit_max == 10
+    end
+
+    test "a chore created without a rate and max stores a nil pair (SC-1)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: nil}
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.unit_rate == nil
+      assert chore.unit_max == nil
+    end
+
+    test "a chore that shows in a routine cannot be given a rate or a max (SC-1)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: "morning", unit_rate: 2, unit_max: 10}
+
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_rate: [_]} = errors_on(changeset)
+    end
+
+    test "a rate without a max is refused (SC-1)" do
+      kid = kid_fixture()
+      attrs = %{name: "Rake Leaves", icon: "🍂", routine: nil, unit_rate: 2}
+
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_max: [_]} = errors_on(changeset)
+    end
+
+    test "a max without a rate is refused (SC-1)" do
+      kid = kid_fixture()
+      attrs = %{name: "Rake Leaves", icon: "🍂", routine: nil, unit_max: 10}
+
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_rate: [_]} = errors_on(changeset)
+    end
+
+    test "a rate or max below 1 is refused (SC-1)" do
+      kid = kid_fixture()
+      attrs = %{name: "Rake Leaves", icon: "🍂", routine: nil, unit_rate: 0, unit_max: 10}
+
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_rate: [_]} = errors_on(changeset)
+
+      attrs2 = %{name: "Rake Leaves", icon: "🍂", routine: nil, unit_rate: 2, unit_max: 0}
+
+      assert {:error, changeset2} =
+               Chores.create_chore(kid, attrs2, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_max: [_]} = errors_on(changeset2)
+    end
+
+    test "the counts_units? virtual field collapses to a nil pair when unchecked" do
+      kid = kid_fixture()
+
+      attrs = %{
+        name: "Rake Leaves",
+        icon: "🍂",
+        routine: nil,
+        counts_units?: false,
+        unit_rate: 2,
+        unit_max: 10
+      }
+
+      assert {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+      assert chore.unit_rate == nil
+      assert chore.unit_max == nil
+    end
+
+    test "the counts_units? virtual field requires both rate and max when checked" do
+      kid = kid_fixture()
+      attrs = %{name: "Rake Leaves", icon: "🍂", routine: nil, counts_units?: true}
+
+      assert {:error, changeset} =
+               Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert %{unit_rate: [_], unit_max: [_]} = errors_on(changeset)
+    end
+
+    test "once a counted chore exists, its rate, max and points are all locked (SC-4)" do
+      kid = kid_fixture()
+
+      attrs = %{
+        name: "Rake Leaves",
+        icon: "🍂",
+        routine: nil,
+        points: 5,
+        unit_rate: 2,
+        unit_max: 10
+      }
+
+      {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:error, rate_changeset} = Chores.update_chore(chore, %{unit_rate: 3})
+      assert %{unit_rate: [_]} = errors_on(rate_changeset)
+
+      assert {:error, max_changeset} = Chores.update_chore(chore, %{unit_max: 20})
+      assert %{unit_max: [_]} = errors_on(max_changeset)
+
+      assert {:error, points_changeset} = Chores.update_chore(chore, %{points: 9})
+      assert %{points: [_]} = errors_on(points_changeset)
+
+      assert {:error, counts_changeset} = Chores.update_chore(chore, %{counts_units?: false})
+      assert %{counts_units?: [_]} = errors_on(counts_changeset)
+
+      reloaded = Chores.get_chore!(chore.id)
+      assert reloaded.unit_rate == 2
+      assert reloaded.unit_max == 10
+      assert reloaded.points == 5
+    end
+
+    test "a flat chore's points remain freely editable after creation (SC-4)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: nil, points: 5}
+      {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:ok, updated} = Chores.update_chore(chore, %{points: 9})
+      assert updated.points == 9
+    end
+
+    test "a flat chore can never become counted after creation (SC-4)" do
+      kid = kid_fixture()
+      attrs = %{name: "Brush Teeth", icon: "🪥", routine: nil}
+      {:ok, chore} = Chores.create_chore(kid, attrs, la(~D[2026-07-10], ~T[08:00:00]))
+
+      assert {:error, changeset} = Chores.update_chore(chore, %{unit_rate: 2, unit_max: 10})
+      assert %{unit_rate: [_]} = errors_on(changeset)
+    end
+  end
+
+  describe "effort counts on completion (Story 01)" do
+    import BearCub.ChoresFixtures
+
+    defp counted_chore_fixture(kid, attrs \\ %{}) do
+      chore_fixture(
+        kid,
+        Enum.into(attrs, %{
+          name: "Rake Leaves",
+          icon: "🍂",
+          routine: nil,
+          points: 5,
+          unit_rate: 2,
+          unit_max: 10
+        })
+      )
+    end
+
+    test "completing a counted chore records a count within range (SC-2)" do
+      kid = kid_fixture()
+      chore = counted_chore_fixture(kid)
+
+      assert {:ok, completion} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 4)
+
+      assert completion.effort_count == 4
+    end
+
+    test "a count of 0 is refused for a counted chore (SC-2)" do
+      kid = kid_fixture()
+      chore = counted_chore_fixture(kid)
+
+      assert {:error, changeset} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 0)
+
+      assert %{effort_count: [_]} = errors_on(changeset)
+    end
+
+    test "a count above the max is refused for a counted chore (SC-2)" do
+      kid = kid_fixture()
+      chore = counted_chore_fixture(kid, %{unit_max: 10})
+
+      assert {:error, changeset} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 11)
+
+      assert %{effort_count: [_]} = errors_on(changeset)
+    end
+
+    test "a missing count is refused for a counted chore (SC-2)" do
+      kid = kid_fixture()
+      chore = counted_chore_fixture(kid)
+
+      assert {:error, changeset} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert %{effort_count: [_]} = errors_on(changeset)
+    end
+
+    test "completing a flat chore records no count (SC-2)" do
+      chore = chore_fixture()
+
+      assert {:ok, completion} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+
+      assert completion.effort_count == nil
+    end
+
+    test "a count supplied for a flat chore is refused (SC-2)" do
+      chore = chore_fixture()
+
+      assert {:error, changeset} =
+               Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 3)
+
+      assert %{effort_count: [_]} = errors_on(changeset)
+    end
+  end
+
   describe "chore ordering" do
     import BearCub.ChoresFixtures
 

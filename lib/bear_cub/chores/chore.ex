@@ -30,6 +30,15 @@ defmodule BearCub.Chores.Chore do
     # per-chore opt-in to a parent push on completion; same
     # `field/3` `:source` bridge as `recurring?`.
     field :notify_on_complete?, :boolean, source: :notify_on_complete, default: false
+    # points per unit; NULL means an ordinary flat chore. Legal only on
+    # extras (routine nil) and immutable once the chore is persisted.
+    field :unit_rate, :integer
+    # ceiling on the count; NULL iff unit_rate is NULL.
+    field :unit_max, :integer
+    # virtual: drives the admin "counted chore" checkbox and collapses
+    # into the unit_rate/unit_max pair in the changeset, exactly as
+    # `shows_in` collapses into `routine`/`recurring?`.
+    field :counts_units?, :boolean, virtual: true
 
     belongs_to :kid, BearCub.Chores.Kid
 
@@ -39,7 +48,17 @@ defmodule BearCub.Chores.Chore do
   @doc false
   def changeset(chore, attrs) do
     chore
-    |> cast(attrs, [:routine, :name, :icon, :points, :shows_in, :notify_on_complete?])
+    |> cast(attrs, [
+      :routine,
+      :name,
+      :icon,
+      :points,
+      :shows_in,
+      :notify_on_complete?,
+      :counts_units?,
+      :unit_rate,
+      :unit_max
+    ])
     |> validate_required([:name, :icon])
     |> validate_inclusion(:shows_in, @shows_in_values)
     |> apply_shows_in()
@@ -47,6 +66,9 @@ defmodule BearCub.Chores.Chore do
     # defence in depth for the create path, which sets `routine` directly
     # rather than through `shows_in` (D83)
     |> force_non_recurring_when_routine_present()
+    |> apply_counts_units()
+    |> validate_counted_extra()
+    |> check_immutability_locks(chore)
     |> check_reclassification_lock(chore)
     |> assoc_constraint(:kid)
   end
@@ -94,6 +116,93 @@ defmodule BearCub.Chores.Chore do
       _ -> put_change(changeset, :recurring?, false)
     end
   end
+
+  # Collapses the virtual `counts_units?` checkbox into the stored pair,
+  # same shape as `apply_shows_in/1`: unchecked forces a NULL pair;
+  # checked leaves the cast rate/max in place for `validate_counted_extra/1`
+  # to require and bound.
+  defp apply_counts_units(changeset) do
+    case fetch_change(changeset, :counts_units?) do
+      {:ok, false} ->
+        changeset |> put_change(:unit_rate, nil) |> put_change(:unit_max, nil)
+
+      _ ->
+        changeset
+    end
+  end
+
+  # Must run after `apply_shows_in/1` has resolved `routine` (Technical
+  # Notes): counting is legal only on an extra, and `routine` may have
+  # just been derived from `shows_in` rather than cast directly.
+  defp validate_counted_extra(changeset) do
+    changeset
+    |> require_pair_when_checked()
+    |> validate_no_routine_when_counted()
+    |> validate_pair_together()
+    |> validate_number(:unit_rate, greater_than_or_equal_to: 1)
+    |> validate_number(:unit_max, greater_than_or_equal_to: 1)
+  end
+
+  defp require_pair_when_checked(changeset) do
+    case fetch_change(changeset, :counts_units?) do
+      {:ok, true} -> validate_required(changeset, [:unit_rate, :unit_max])
+      _ -> changeset
+    end
+  end
+
+  defp validate_no_routine_when_counted(changeset) do
+    if get_field(changeset, :unit_rate) && get_field(changeset, :routine) do
+      add_error(changeset, :unit_rate, "can only be set on an extra chore, not one in a routine")
+    else
+      changeset
+    end
+  end
+
+  defp validate_pair_together(changeset) do
+    case {get_field(changeset, :unit_rate), get_field(changeset, :unit_max)} do
+      {nil, nil} ->
+        changeset
+
+      {nil, _max} ->
+        add_error(changeset, :unit_rate, "must be set together with a max, or not at all")
+
+      {_rate, nil} ->
+        add_error(changeset, :unit_max, "must be set together with a rate, or not at all")
+
+      {_rate, _max} ->
+        changeset
+    end
+  end
+
+  # Defence in depth, not the primary mechanism (Technical Notes): the
+  # admin form never submits these fields on edit. Keyed on whether the
+  # chore is persisted, not on completion history — SC-4 fixes these the
+  # moment the chore exists, unlike `check_reclassification_lock/2`.
+  defp check_immutability_locks(changeset, %__MODULE__{id: nil}), do: changeset
+
+  defp check_immutability_locks(changeset, %__MODULE__{} = chore) do
+    changeset
+    |> forbid_change(:unit_rate)
+    |> forbid_change(:unit_max)
+    |> forbid_change(:counts_units?)
+    |> forbid_points_change_when_counted(chore)
+  end
+
+  @immutable_message "can't be changed once this chore has history — archive it and create a new one instead"
+
+  defp forbid_change(changeset, field) do
+    case fetch_change(changeset, field) do
+      {:ok, _value} -> add_error(changeset, field, @immutable_message)
+      :error -> changeset
+    end
+  end
+
+  defp forbid_points_change_when_counted(changeset, %__MODULE__{unit_rate: rate})
+       when not is_nil(rate) do
+    forbid_change(changeset, :points)
+  end
+
+  defp forbid_points_change_when_counted(changeset, %__MODULE__{}), do: changeset
 
   # A bucket (routine) change is refused once the chore has any completion
   # row — undone and failed ones included, since rows are never deleted

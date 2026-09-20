@@ -269,17 +269,23 @@ defmodule BearCub.Chores do
   Marks `chore` done for the local day of `local_now` (design §2: inserts
   a dated fact — there is no completed flag anywhere). A racing duplicate
   hits the partial unique index and returns `{:error, changeset}` —
-  callers treat that as already-done.
+  callers treat that as already-done. `effort_count` defaults to `nil` so
+  every existing 3-arg call site (a flat chore) keeps working untouched;
+  a counted chore's caller passes its count as the fourth argument.
   """
-  def complete_chore(%Chore{} = chore, %DateTime{} = local_now, source) do
+  def complete_chore(%Chore{} = chore, %DateTime{} = local_now, source, effort_count \\ nil) do
     local_date = DateTime.to_date(local_now)
 
     %Completion{chore_id: chore.id}
-    |> Completion.changeset(%{
-      local_date: local_date,
-      completed_at: to_utc(local_now),
-      source: source
-    })
+    |> Completion.changeset(
+      %{
+        local_date: local_date,
+        completed_at: to_utc(local_now),
+        source: source,
+        effort_count: effort_count
+      },
+      chore
+    )
     |> Repo.insert()
     |> broadcast_change()
     |> notify_completed(chore, local_date)

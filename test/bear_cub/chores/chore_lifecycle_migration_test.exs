@@ -274,7 +274,7 @@ defmodule BearCub.Chores.ChoreLifecycleMigrationTest do
       names = Enum.map(rows, fn [_, name | _] -> name end) |> Enum.sort()
 
       assert names ==
-               ~w(chore_id completed_at failed_at id inserted_at local_date source undone_at updated_at)
+               ~w(chore_id completed_at effort_count failed_at id inserted_at local_date source undone_at updated_at)
 
       # and a completion still round-trips through the untouched schema
       chore = chore_fixture()
