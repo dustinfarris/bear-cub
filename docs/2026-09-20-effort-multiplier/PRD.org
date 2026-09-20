@@ -1,0 +1,27 @@
+#+title: PRD — effort-multiplier
+#+date: 2026-09-20
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+Some extra chores involve a variable amount of effort — chess puzzles solved, laps swum, bags of yard waste — but every extra pays a flat point value regardless of how much the kid actually did. Ollie's chess-puzzle extra pays 2 points whether he solves 1 puzzle or 10, so the payout doesn't track the effort he actually put in.
+
+* Success Criteria
+
+1. A parent can configure a specific extra chore (one-off or recurring) with a base point value, a per-unit point rate, and a configurable maximum count — every other extra chore is unaffected and keeps its flat-tap behavior.
+2. When a kid completes an effort-count chore at the kiosk, they enter a count themselves and immediately receive base + (count × rate) points, with no parent approval step.
+3. Undoing an effort-count completion clears the entered count; redoing the chore requires entering a count again rather than reusing the old one.
+4. An effort chore's base, rate, and max are fixed once the chore is created — a parent who wants different values archives the chore and creates a new one, so points already awarded are never affected by a later reconfiguration.
+
+* Out of Scope
+
+- Parent/admin entry or correction of the count — undo-and-redo is the correction path, the same as any other chore.
+- Non-linear or tiered point formulas beyond base + count × rate.
+- In-place editing of an effort chore's base, rate, or max after creation.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)

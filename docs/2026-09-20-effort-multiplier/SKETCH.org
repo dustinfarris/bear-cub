@@ -1,0 +1,14 @@
+#+title: SKETCH — effort-multiplier
+#+date: 2026-09-20
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Capture: a kiosk number-input at tap time, a pattern the completion flow doesn't have today — every other extra is a flat tap.
+- Input mechanism envisioned as a range slider, bounded by the chore's configured max count.
+- Persistence: where the entered count lives — a new field on completions, or something else.
+- Undo semantics: undo clears the entered count entirely; redo requires the kid to re-enter a count rather than reusing the old one.
+- Composition with the existing +N chip render (D54, chore_row/1) — how a variable count/points value displays on the pending and done card.
+- Composition with the contribution derivation shapes (D40/D41).
+- Config fields per chore: base points, per-unit rate, max count — all parent-set, per chore.
+- No-retroactive-reconfig resolved as immutable-at-creation rather than snapshotting: base/rate/max are read-only in admin once the chore exists; changing them means archiving and creating a new chore. Deliberately defers the still-open backlog item about snapshotting routine windows/early-bird cutoff rather than solving that class of problem here — this feature avoids needing re-derivation at all, so it sidesteps rather than resolves that tension.
+- Admin UI: base/rate/max presumably editable at chore creation only, then locked/read-only on the edit form afterward — exact treatment (grayed fields vs. hidden vs. an explicit "these can't change" note) is a design-stage call.
