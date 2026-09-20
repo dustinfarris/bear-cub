@@ -5,6 +5,14 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO [#B] make extra chores award points via a base award that works as it does to day, and optionally a bonus multiplier where the kid can enter a number indicating a level of effort :promote:
+:PROPERTIES:
+:CREATED:  [2026-09-20 Sun 11:32]
+:END:
+
+For example, Ollie has an extra, repeatable daily, chore where he solves chess puzzles in the "Woodpecker Method" book.  Right now I believe that completing that chore gives him 2 points -- regardless of whether he solved 1 puzzle or 10.  I want him to get the 2 points base for solving puzzles, but also 1 additional point for each puzzle he solved.  So if he solves 1 puzzle, he gets 3 points.  If he solves 10 puzzles, he gets 12 points.
+
+Triage [2026-09-20 Sun]: promote — not a clean oneshot. The effort count has nowhere to live today: it needs a ruling on capture (a kiosk number-input at tap time, a pattern the completion flow doesn't have — every other extra is a flat tap) versus admin-side entry, on persistence (a new field on ~completions~, or something else), on undo semantics (does undoing a completion drop the count, does redoing require re-entry), and on how the multiplier composes with the existing ~+N~ chip render (D54, ~chore_row/1~) and the contribution derivation shapes (D40/D41). Same brainstorm-first shape as the ad hoc points entry below.
 * TODO [#C] revisit web push for parent notifications
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 13:05]
