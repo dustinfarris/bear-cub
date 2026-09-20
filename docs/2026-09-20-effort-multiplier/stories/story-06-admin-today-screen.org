@@ -1,0 +1,56 @@
+#+title: Story 06 — The counted extra on the admin Today screen
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Admin — Today screen, and the admin half of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Admin — Today screen
+
+A pending counted extra's complete control is inert, with a short hint reading that it is counted at the kiosk. Undo and fail are unchanged, and a done counted extra shows ~×8~ so there is something to inspect.
+
+An on-behalf tap would have to invent a count nobody entered — the kiosk would then show ~×1~ as though the kid had said so. Removing the row entirely was rejected for a sharper reason: it would remove the fail-on-inspection control, which is the one thing a parent most needs against a self-reported number.
+
+~build_row/3~ carries ~effort?~ and the count, so the row renders both the hint and the ~×N~ from data it already assembles.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, admin: [...] Today's complete control is inert on a counted extra while fail still works and ~×N~ renders.
+#+end_quote
+
+* User Story
+
+As a parent checking what my kid claimed today, I need to see the count on a counted extra and still be able to fail it, but not to tick it off on their behalf, so that the number in the app is always one the kid actually entered.
+
+* Acceptance Criteria
+
+** [ ] A pending counted extra on the Today screen cannot be completed on the kid's behalf, and says instead that it is counted at the kiosk (SC-2)
+** [ ] A completed counted extra on the Today screen shows the count the kid entered (SC-2)
+** [ ] A parent can still undo a completed counted extra, and can still fail one (SC-2)
+** [ ] Flat extras and routine chores on the Today screen are unchanged, complete control included (SC-1)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the count column and for the way a counted chore is recognised. It does not depend on the kiosk stories — a counted completion can be staged directly for the tests — but it reads more naturally after them, and is ordered last for that reason rather than for any technical one.
+
+The PRD puts parent entry and correction of the count out of scope; this story is where that shows up as a visible refusal rather than an absence. Undo and fail are deliberately untouched — they are the correction path the PRD names, and removing the fail control is the specific mistake the design rejects.
+
+~build_row/3~ already assembles what the row needs; the addition is two fields, not a new query.
+
+Admin is phone-first: the inert control and its hint share a narrow row with the fail control, so check the layout at a phone width rather than only in a wide browser.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.

@@ -1,0 +1,95 @@
+#+title: Story 04 — The kiosk count panel
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the count panel, §Key Behaviors / Kiosk state and events, §Key Behaviors / Left to the local kiosk gate, and the kiosk half of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — the count panel
+
+Counted extras appear exactly where extras appear now: the morning band state (~state == :band and routine == :morning~), gated by the reveal (D33). Nothing here changes when or whether extras are offered.
+
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel carries a range slider for the coarse move, a pair of large ±buttons to nudge, the current count shown large, and a confirm button showing the live payout; a ✕ cancels.
+
+The legal range is ~1..unit_max~ and the panel opens at 1. A kid who did none of a thing does not tap it, so zero has no meaning to express, and keeping it out of range also keeps the confirm button from ever offering a payout for nothing. Opening at 1 makes the common case — "I did one" — a tap to open plus a tap to confirm. The ~−~ button is inert at 1 and ~+~ is inert at ~unit_max~.
+
+One panel per kid at a time: opening a second counted extra closes the first without writing anything. Per-kid rather than per-kiosk, matching ~expanded~ and ~rewards~, so two kids at the fridge never block each other.
+
+Cancel writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's, because an open panel holds no point balance in suspense and costs nothing to leave open.
+
+  ** Kiosk state and events
+
+A new ephemeral assign, ~counting~: ~%{kid_id => %{chore_id: id, count: n}}~, alongside ~expanded~, ~rewards~ and ~settling~. Never persisted, never broadcast. Cleared by the ~:boundary~ handler (where ~:rewards~ is already cleared), by the night screen, and by ~load/2~ whenever the chore stops being an open pending counted extra for that kid — archived from admin, completed from another surface, window closed.
+
+~toggle-chore~ forks once, at the top. A tap on a /pending/ counted extra opens the panel instead of writing. A tap on a /done/ one undoes, exactly as today: count entry is on the way in only, and undo stays a single tap.
+
+The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a slider drag or a ±tap inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
+
+Four events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-set~, ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~. Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does.
+
+The slider needs a form: ~phx-change~ is not available on a bare element, so the slider sits inside a ~<form phx-change="count-set">~ wrapping only the slider; the stepper and the confirm are buttons outside it.
+
+Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~, drops the ~counting~ entry, and the row lands in the ordinary done-extra treatment. Extras do not sink, so this meets none of the sink/rise machinery; the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
+
+  ** Left to the local kiosk gate
+
+Two tuning questions are observable at 1280 × 800 with a staged scenario and cost nothing to add once seen; building machinery for them in advance risks code nobody needed:
+
+- whether the slider's ~phx-change~ wants a ~phx-debounce~ — one LAN round-trip per drag frame, against keeping the live payout honest as the thumb moves;
+- whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list, and whether it pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
+
+If the panel proves too tall at the gate, the first move is to shrink the panel, not to move it out of the row — the in-row placement is a ruling; its height is not.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; the slider sets a value; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; cancel writes nothing; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+
+Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a counted extra mid-panel and another completed at ~×8~, so the gate screenshot at 1280 × 800 has both states in one frame.
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk who solved eight chess puzzles, I need to tap the chore and say how many I did before it counts as done, so that I am paid for eight puzzles rather than for one.
+
+* Acceptance Criteria
+
+** [ ] Tapping a pending counted extra opens a count panel in that row rather than completing the chore (SC-2)
+** [ ] The kid can set the count with a slider and with plus and minus buttons, anywhere from 1 to the chore's maximum, and the panel opens at 1 (SC-2)
+** [ ] The minus button does nothing at 1 and the plus button does nothing at the maximum (SC-2)
+** [ ] The panel shows what confirming will pay, and that figure changes as the count changes (SC-2)
+** [ ] Confirming completes the chore and awards its base plus the count times its rate straight away, with no parent approval step in between (SC-2)
+** [ ] Cancelling closes the panel and leaves the chore pending, having recorded nothing (SC-2)
+** [ ] Opening a second counted extra closes the first without completing it (SC-2)
+** [ ] Undoing a completed counted extra takes a single tap, and completing it again asks for a count afresh rather than reusing the one entered before (SC-3)
+** [ ] Flat extras still complete and undo on a single tap, with no panel (SC-1)
+** [ ] A named dev scenario stages a counted extra with its panel open and another already completed, for review at 1280 × 800
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the count column and ~complete_chore/4~, on Story 02 for the payout the panel displays, and on Story 03 for a way to create the counted chore it renders.
+
+This is the largest story in the batch and the only one touching an interaction pattern the kiosk has never had. The single structural trap is named in the excerpt: the expanded row must carry no ~phx-click~ of its own, or a slider drag completes the chore.
+
+Two things the excerpt deliberately does not ask for, and which should not be built speculatively: a ~phx-debounce~ on the slider, and scroll-into-view for the expanded panel. Both are answered by looking at the staged scenario at 1280 × 800, not by reasoning in advance. If either turns out to be needed, it is in scope for this story once observed.
+
+Stage kiosk states through ~BearCub.Dev.Scenarios~ rather than poking the dev database by hand, per CLAUDE.md. Note that a dev server started before this story adds ~effort/1~ has no such function loaded; ~Code.require_file/1~ in ~project_eval~ loads it without a restart.
+
+The Tidewave MCP server failed to connect in the session that wrote this story — if it is still down during implementation, the live-introspection habit CLAUDE.md recommends will not be available, and the dev scenario plus the browser are the fallback.
+
+Any visual treatment recorded in ~docs/design-language.org~ belongs to Story 05, which lands both recordings together.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.

@@ -1,0 +1,99 @@
+#+title: Story 01 — Schema, migration and changeset rules for counted chores
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model, and the Changeset paragraphs of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** ~chores~ gains two nullable columns, and reuses ~points~ as the base
+
+| column      | type          | meaning                                              |
+|-------------+---------------+------------------------------------------------------|
+| ~unit_rate~ | integer, null | points per unit; NULL means an ordinary flat chore   |
+| ~unit_max~  | integer, null | ceiling on the count; NULL iff ~unit_rate~ is NULL   |
+
+There is no third column for the base: the PRD's "base point value" /is/ the existing ~points~ column. A flat chore is then the identity case of the effort formula (~points + 0 × 0~), which is what keeps the contribution function free of a branch on "is this a counted chore".
+
+Counting is permitted only on extras — ~unit_rate~ may be set only when ~routine~ is nil. A per-chore variable number on a routine chore would misstate the single ~+R~ a routine pays, which is the same honesty argument D54 and D45 turn on; the changeset refuses it rather than leaving it to the form.
+
+The pair is driven by a virtual ~counts_units?~ boolean, collapsing into the two columns in the changeset exactly as ~shows_in~ collapses into ~routine~/~recurring?~. Unchecked puts a NULL pair; checked requires both. The virtual field is what the admin form binds to, so "is this a counted chore" is one control rather than an inference a parent draws from a blank rate field.
+
+Naming: ~unit_rate~ and ~unit_max~ pair with each other and read correctly inside the raw query fragment. ~points_per_unit~ does not pair with a ~max~ sibling and invites ~points_max~, which would be a different and wrong concept — a cap on points rather than on count.
+
+  ** ~completions~ gains ~effort_count~
+
+Integer, nullable. NULL on every flat-chore row — including every row that exists today — and ~1..chore.unit_max~ on a counted row.
+
+The count is the only new stored fact. Not the payout, not the rate, not the max. Because SC-4 freezes base, rate and max at creation, the payout re-derives correctly from ~chores~ and ~completions~ for the life of the app, so there is nothing a snapshot would protect against. This is D10's posture applied to a new input rather than an exception carved out of it.
+
+The bounds live with the chore, so the changeset takes the chore: ~Completion.changeset/3~ gains the chore as a third argument and validates against it — ~effort_count~ required and within ~1..chore.unit_max~ when ~chore.unit_rate~ is set, required to be nil when it is not. ~complete_chore/4~ is the only writer, so a count can never arrive by another path.
+
+The field is ~effort_count~ rather than ~count~: ~count~ collides with the SQL aggregate in a schema that already carries raw fragments, and it does not say what was counted.
+
+  ** Immutability once persisted
+
+On a chore that already exists, ~Chore.changeset/2~ refuses:
+
+- any change to ~unit_rate~ or ~unit_max~;
+- any change to ~counts_units?~ — a flat chore never becomes counted, and a counted chore never becomes flat;
+- any change to ~points~ when ~unit_rate~ is set. A flat chore's points stay freely editable, exactly as today.
+
+The error message directs the parent to archive and create a new chore, matching ~check_reclassification_lock/2~'s existing copy. Unlike that lock, this one does not depend on whether completions exist: SC-4's contract is "fixed once the chore is created", and a chore with no history is about to have some.
+
+This is defence in depth, not the primary mechanism — the admin form does not submit these fields on edit at all. The changeset refuses anyway, in the same spirit as ~force_non_recurring_when_routine_present/1~ guarding a path the form already handles.
+
+  ** Migration
+
+One migration, ~add_chore_effort_units~: ~chores.unit_rate~ (integer, null), ~chores.unit_max~ (integer, null), ~completions.effort_count~ (integer, null). No backfill, no index, no constraint beyond nullability — NULL is already the correct value for every row in the database, and no balance moves on deploy.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+Changeset (~Chore~): counting is refused on a chore with a routine; rate and max must both be present or both absent; both must be at least 1; and all three immutability locks refuse on a persisted chore, including the assertion that a /flat/ chore's points remain editable.
+
+Changeset (~Completion~): a count is required for a counted chore and refused for a flat one; ~0~ and ~unit_max + 1~ are both refused.
+#+end_quote
+
+* User Story
+
+As a parent setting up chores, I need an extra chore to be able to carry a per-unit point rate and a maximum count that can never change once the chore exists, so that a variable-effort chore can pay for the effort actually put in without any past payout ever being revalued.
+
+* Acceptance Criteria
+
+** [ ] An extra chore can be given a per-unit point rate and a maximum count alongside its existing point value, which becomes the base (SC-1)
+** [ ] An extra chore created without a rate and max is stored and behaves exactly as it does today (SC-1)
+** [ ] A chore that shows in a routine cannot be given a rate or a max (SC-1)
+** [ ] A rate and a max are set together or not at all, and each is at least 1 (SC-1)
+** [ ] Completing a counted chore records a count between 1 and that chore's maximum; a count of 0, a count above the maximum, and a missing count are all refused (SC-2)
+** [ ] Completing a flat chore records no count, and a count supplied for a flat chore is refused (SC-2)
+** [ ] Once a chore exists, its point value, its rate, its maximum, and whether it is counted at all can no longer be changed, and the refusal tells the parent to archive it and create a new one instead (SC-4)
+** [ ] A flat chore's point value remains editable after creation (SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story has no dependencies — it is the foundation the rest of the batch builds on.
+
+Scope is the data layer only: the migration, the two schemas, the two changesets, and ~complete_chore/4~. No LiveView, no rendering, no derivation change — the payout arithmetic is Story 02's, and nothing in this story is visible to a parent or a kid yet.
+
+~complete_chore/4~ belongs here because ~Completion.changeset/3~ needs its only caller to exist alongside it. Give the count a default of nil so every existing ~complete_chore/3~ call site keeps working untouched; the arity change should produce no diff outside the context module.
+
+Scaffold with the generators per CLAUDE.md rather than hand-rolling the migration.
+
+The immutability guard mirrors ~check_reclassification_lock/2~ in shape but not in trigger: that lock checks whether completions exist, and this one does not — a persisted chore is locked whether or not it has history.
+
+The virtual ~counts_units?~ collapse follows the existing ~apply_shows_in/1~ pattern in the same changeset. Note that ~shows_in~ and ~counts_units?~ interact: counting is legal only when the resolved ~routine~ is nil, so the counting validation must run after ~apply_shows_in/1~ has put ~routine~.
+
+Test hygiene per the design: fixed local dates, ~:routine_windows~ pinned; no test derives a date from the wall clock.

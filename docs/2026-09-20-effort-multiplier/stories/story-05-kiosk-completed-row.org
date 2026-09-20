@@ -1,0 +1,54 @@
+#+title: Story 05 — The count on a completed row, and the design-language recording
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the completed row.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — the completed row
+
+A completed counted extra shows ~×8~ beside its name, in the system sans and muted; the green ~+N~ chip is unchanged and carries the full earned value, ~base + count × rate~. The failed mirror keeps the warning and ~−N~ and also carries the count beside the name.
+
+This keeps D54's chip meaning exactly as ruled — earned value, nothing else — and puts the count where it belongs, as a fact about the chore rather than a second celebratory element. Per the reward-layer type ruling, ~×N~ is informational and stays off ~font-reward~.
+
+The pending row is unchanged: no rate hint, no "up to 12". A pre-reader gains nothing from two more numbers on a card they have not tapped yet.
+
+Two new kids'-view visuals are recorded in ~docs/design-language.org~ by the story that lands them, not at design time (the D48/D54 pattern): the inline count panel's treatment on the extras' fixed neutral card (~--extra-card-background~), which it inherits by being an extra row; and ~×N~ beside the name on a completed counted extra, with the explicit note that the ~+N~ chip's meaning is unchanged.
+#+end_quote
+
+* User Story
+
+As a kid looking at the fridge after finishing my chores, I need a completed counted chore to show how many I said I did alongside what it paid, so that the card is a record of my claim and not just a number.
+
+* Acceptance Criteria
+
+** [ ] A completed counted extra shows its count beside the chore's name, and its full earned value in the existing green chip (SC-2)
+** [ ] A failed counted extra shows its count beside the name, alongside the existing warning and the matching negative value (SC-2)
+** [ ] The count is rendered in the informational type, not the celebratory reward type (SC-2)
+** [ ] A pending counted extra looks exactly as a pending extra looks today, carrying no rate or maximum (SC-1)
+** [ ] A completed flat extra is unchanged, showing its green chip and no count (SC-1)
+** [ ] The count panel's treatment and the count beside the name are both recorded as rulings in ~docs/design-language.org~
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 04, which is what produces a completed counted extra to render, and on Story 02 for the value the chip carries.
+
+Read ~docs/design-language.org~ before touching any of this: its invariants and rulings are binding on anything that changes kids'-view styling, and this story both obeys them and adds to them.
+
+The chip itself must not change. The whole reason the count sits beside the name is to leave the ~+N~ chip meaning exactly what D54 ruled it means; a story that widens the chip has gone the wrong way.
+
+This story carries the pending design-language recording that the design deliberately deferred — two rulings, written when the visuals actually exist rather than at design time. The recording for the panel describes what Story 04 built, so read that code rather than the design's description of it if the two have diverged; if they have, that divergence is itself worth a note.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.

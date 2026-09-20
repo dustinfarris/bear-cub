@@ -1,0 +1,100 @@
+#+title: Story 02 — The effort payout in both derivation routes
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Key Behaviors (the contribution, the grouped query, undo and redo, the failed mirror), and the Contribution and agreement paragraphs of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** The effort value and the contribution
+
+~extra_contribution/2~ keeps its marker-first shape; only what it multiplies changes:
+
+#+begin_src elixir
+def extra_contribution(%Completion{} = completion, %Chore{} = chore) do
+  value = chore.points + (completion.effort_count || 0) * (chore.unit_rate || 0)
+
+  cond do
+    completion.failed_at -> -value
+    completion.undone_at -> 0
+    true -> value
+  end
+end
+#+end_src
+
+A flat chore has both operands nil, so ~value~ is ~chore.points~ and the function is pointwise identical to today's for every row that exists.
+
+  ** The grouped query takes the same expression
+
+~extras_by_kid/1~'s ~CASE~ carries the per-row value in two of its three arms; both take the sum:
+
+#+begin_src elixir
+fragment(
+  "SUM(CASE WHEN ? IS NOT NULL THEN (0 - (? + COALESCE(?, 0) * COALESCE(?, 0))) WHEN ? IS NOT NULL THEN 0 ELSE (? + COALESCE(?, 0) * COALESCE(?, 0)) END)",
+  c.failed_at,
+  ch.points,
+  c.effort_count,
+  ch.unit_rate,
+  c.undone_at,
+  ch.points,
+  c.effort_count,
+  ch.unit_rate
+)
+#+end_src
+
+Hazard, recorded because this file contains exactly the trap: a raw ~fragment(...)~ bypasses Ecto's ~field/3~ ~:source~ mapping and must spell the database column name. The new columns take no ~:source~ mapping, so schema name and column name are identical and the trap cannot fire for them.
+
+Nothing else in the derivation moves. ~BearCub.Points~ is untouched; the routine-day legs (~routine_day_contribution/3~, ~routine_days_by_kid/1~, ~live_chore_counts/1~) are untouched, since counted chores are extras-only; ~BearCub.Rewards~ is untouched.
+
+  ** Undo and redo need no mechanism (SC-3)
+
+A redo does not reuse a row. ~complete_chore/4~ inserts a /new/ ~completions~ row, and the unique index is partial — ~(chore_id, local_date) WHERE undone_at IS NULL~. So the undone row keeps its count as history, and the redo necessarily asks for a fresh one. "Undo clears the entered count" is a property of the existing row model, and this design adds no clearing step. A story that implements one has misread this.
+
+  ** A failed counted extra mirrors exactly
+
+~fail_chore/2~ stamps ~undone_at~ /and/ ~failed_at~ on the row that carries the count, so the penalty is ~−(base + count × rate)~ — the honest negative of what was actually paid, which is the symmetry D46 requires of the ~−N~ indicator.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+Contribution (~test/bear_cub/chores_test.exs~): a live counted row pays ~base + count × rate~; an undone one pays 0; a failed one pays the exact negative; a flat row with a NULL count is unchanged from today.
+
+The agreement test, extended — ~earnings/2~ and ~earnings_by_kid/1~ agreeing pointwise over a fixture holding flat, counted, undone and failed rows together. This is the most important test in the set: it is the only thing that catches a wrong ~CASE~ arm or a missing ~COALESCE~ in the fragment above, and keeping those two routes honest against each other is what D72 exists for.
+#+end_quote
+
+* User Story
+
+As a kid who did ten chess puzzles instead of one, I need my points total to reflect the count that was recorded against the chore, so that the effort I actually put in is what I get paid for.
+
+* Acceptance Criteria
+
+** [ ] A live completion of a counted chore is worth its base plus its count times its rate (SC-2)
+** [ ] An undone completion of a counted chore is worth nothing (SC-3)
+** [ ] A failed completion of a counted chore costs exactly what it paid (SC-2)
+** [ ] Completions of flat chores are worth exactly what they are worth today, whether live, undone or failed (SC-1)
+** [ ] A kid's points total is the same figure whether it is computed one kid at a time or for the whole roster at once, over a day holding flat, counted, undone and failed completions together (SC-2)
+** [ ] Routine-chore points and reward spends are unaffected (SC-1)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01, because the columns it multiplies and the count it reads do not exist until that story lands.
+
+Two call sites, one expression. Getting them to agree is the whole story — the pointwise-agreement test between ~earnings/2~ and ~earnings_by_kid/1~ is the acceptance criterion with teeth, and it is the only thing that catches a wrong ~CASE~ arm or a dropped ~COALESCE~. Write it before the fragment, not after.
+
+Nothing in ~BearCub.Points~ changes. If a change there seems necessary, the derivation has been put at the wrong level — the floor and the composition stay where they are.
+
+The design's stated hazard about raw fragments and ~:source~ mappings does not bite for these two columns, but the fragment being edited is the one that contains the trap for other columns. Leave the existing ~is_recurring~ spelling alone.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.

@@ -1,0 +1,74 @@
+#+title: Story 03 — Creating a counted chore in admin, and locking it afterwards
+#+date: 2026-09-20
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Admin — chore form, with §Data Model / Immutability once persisted as the constraint it renders, and the admin half of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Admin — chore form
+
+On ~:new~, a "Counts units" checkbox appears only when the resolved "Shows in" is =extra= or =extra_daily=. Checking it reveals two fields, per-unit rate and max. The form already runs ~phx-change="validate"~, so the reveal follows the select with no new plumbing.
+
+On ~:edit~ there is no checkbox. A counted chore renders Points, Per unit and Max as read-only text under one line saying they are fixed and to archive and recreate to change them. A flat chore renders Points as the ordinary input it is today and shows nothing about counting — it can never become counted, so a disabled control would only invite a tap.
+
+When the checkbox is on, the ~points~ field is labelled "Base points". For a flat chore ~points~ is the whole payout; for a counted one it is the floor, and one reactive label removes the only genuine ambiguity the column reuse introduces.
+#+end_quote
+
+The constraint this form renders, from §Data Model (verbatim):
+
+#+begin_quote
+On a chore that already exists, ~Chore.changeset/2~ refuses:
+
+- any change to ~unit_rate~ or ~unit_max~;
+- any change to ~counts_units?~ — a flat chore never becomes counted, and a counted chore never becomes flat;
+- any change to ~points~ when ~unit_rate~ is set. A flat chore's points stay freely editable, exactly as today.
+
+The error message directs the parent to archive and create a new chore, matching ~check_reclassification_lock/2~'s existing copy.
+
+This is defence in depth, not the primary mechanism — the admin form does not submit these fields on edit at all. The changeset refuses anyway, in the same spirit as ~force_non_recurring_when_routine_present/1~ guarding a path the form already handles.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, admin: the chore form locks the three fields on edit and refuses a forged submit carrying them
+#+end_quote
+
+* User Story
+
+As a parent, I need to mark an extra chore as counted when I create it and give it a per-unit rate and a maximum, and I need those numbers to be visibly fixed afterwards, so that I can set up a variable-effort chore once and trust that points already awarded can never be revalued by a later edit.
+
+* Acceptance Criteria
+
+** [ ] When creating an extra chore, a parent can turn counting on and enter a per-unit rate and a maximum count (SC-1)
+** [ ] The counting control is offered only when the chore is being filed as an extra, one-off or repeating, and not when it is being filed into a routine (SC-1)
+** [ ] With counting on, the points field reads as the base rather than as the whole payout (SC-1)
+** [ ] Editing a counted chore shows its points, rate and maximum as read-only, under a line saying they are fixed and that changing them means archiving this chore and creating a new one (SC-4)
+** [ ] Editing a flat chore is unchanged from today, and offers no way to turn counting on (SC-1, SC-4)
+** [ ] A submission that tries to change a counted chore's points, rate or maximum is refused even when it does not come from the form (SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 01 for the columns, the virtual ~counts_units?~ field and the immutability guard. It does not depend on Story 02 — a counted chore can be created and locked before its payout arithmetic exists.
+
+This is the story that makes the rest of the batch demoable: until a parent can create a counted chore, the kiosk work has nothing to render.
+
+The reveal rides on the form's existing ~phx-change="validate"~; no new event, no hook. The "Shows in" select is already in the same form, so the checkbox's visibility is a function of the changeset's current ~shows_in~ value on each validate pass.
+
+The ~:new~ path has a wrinkle worth checking against the existing code before writing: ~save_chore/3~ for ~:new~ deletes a forged ~shows_in~ when the routine was forced by a URL param. A chore reached through the Morning or Evening "+ Add" link therefore has a routine and must not offer counting at all.
+
+Admin is phone-first — the read-only edit block is text, not disabled inputs, per the design's reasoning that a greyed input still invites a tap.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.
