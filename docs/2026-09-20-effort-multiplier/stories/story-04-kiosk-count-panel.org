@@ -88,8 +88,6 @@ Two things the excerpt deliberately does not ask for, and which should not be bu
 
 Stage kiosk states through ~BearCub.Dev.Scenarios~ rather than poking the dev database by hand, per CLAUDE.md. Note that a dev server started before this story adds ~effort/1~ has no such function loaded; ~Code.require_file/1~ in ~project_eval~ loads it without a restart.
 
-The Tidewave MCP server failed to connect in the session that wrote this story — if it is still down during implementation, the live-introspection habit CLAUDE.md recommends will not be available, and the dev scenario plus the browser are the fallback.
-
 Any visual treatment recorded in ~docs/design-language.org~ belongs to Story 05, which lands both recordings together.
 
 Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.
