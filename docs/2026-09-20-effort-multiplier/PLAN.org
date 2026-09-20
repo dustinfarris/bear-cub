@@ -14,7 +14,14 @@ Design: [[file:DESIGN.org]]
 # two display surfaces. Story 06 has no technical dependency on the kiosk stories and could move
 # earlier if a session wants a smaller start.
 
-** TODO [[file:stories/story-01-counted-chore-schema.org][Story 01 — Schema, migration and changeset rules for counted chores]]
+** DONE [[file:stories/story-01-counted-chore-schema.org][Story 01 — Schema, migration and changeset rules for counted chores]]
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:46] \\
+  Closed out: all 8 ACs and all 4 DoD items ~[X]~. ~priv/repo/migrations/20260920233414_add_chore_effort_units.exs~ adds exactly the three nullable integer columns the design specifies — ~chores.unit_rate~, ~chores.unit_max~, ~completions.effort_count~ — with no backfill, index, or constraint beyond nullability. ~BearCub.Chores.Chore~ carries the two columns plus the virtual ~counts_units?~, whose collapse follows ~apply_shows_in/1~'s existing shape and runs after it so the counting validation sees a resolved ~routine~. ~BearCub.Chores.Completion~ gains ~effort_count~ and ~changeset/3~, bounding the count against the chore it is passed. ~complete_chore/4~ takes ~effort_count~ with a ~nil~ default, so the arity change produced no diff outside the context module — the kiosk and ~toggle_completion/3~ call sites are byte-unchanged, confirmed by grepping every ~complete_chore(~ site in ~lib/~. ~mix precommit~ clean, 656 passed, verified by a DoD-verification subagent running it independently rather than from a cached result. \\
+  *No DESIGN.org pivot.* The implementation matched the design excerpt clause for clause, including the immutability lock's deliberate divergence from ~check_reclassification_lock/2~ — keyed on the chore being persisted, not on whether completions exist — and the reuse of that lock's existing error copy verbatim. Nothing in this story needed a body edit, a D-entry, or an Advisory. \\
+  *One pre-existing test required an update, worth knowing before the next migration in this repo:* ~test/bear_cub/chores/chore_lifecycle_migration_test.exs~ asserts the ~completions~ table's exact column list as a literal. It is scoped to the ~add_chore_lifecycle~ migration's own claim that it left ~completions~ untouched, but it reads the live schema, so /any/ later migration adding a ~completions~ column fails it. Adding ~effort_count~ to that literal is the whole fix; the assertion's original claim still holds. \\
+  *One latent assumption recorded rather than guarded:* ~Completion~'s ~validate_effort_count/2~ reaches ~validate_number(..., less_than_or_equal_to: max)~ through a clause matching every chore whose ~unit_rate~ is non-nil, so a chore with a rate but a NULL max would raise rather than produce a changeset error. The Chore-layer pair invariant (both-or-neither) makes that unreachable through any shipped write path, and no guard was added for a state the changeset cannot produce. A future path that writes ~chores~ outside ~Chore.changeset/2~ — a raw ~Repo.update_all~, say — is the only thing that could reach it.
+:END:
 ** TODO [[file:stories/story-02-effort-points-derivation.org][Story 02 — The effort payout in both derivation routes]]
 ** TODO [[file:stories/story-03-admin-chore-form.org][Story 03 — Creating a counted chore in admin, and locking it afterwards]]
 ** TODO [[file:stories/story-04-kiosk-count-panel.org][Story 04 — The kiosk count panel]]
@@ -24,3 +31,7 @@ Design: [[file:DESIGN.org]]
 * Deferred
 
 # Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.
+
+** Story 01 [2026-09-20] — ~BearCub.Notifications~ log noise on every ~mix test~ run
+
+Every test that completes a chore without a ~Req.Test~ stub in place emits an ~[error] Task ... cannot find mock/stub BearCub.Notifications~ crash report, from the fire-and-forget ~Task~ in ~notify_completed/3~ racing test-process teardown. No test fails and the suite reports clean, but a ~mix precommit~ log now carries enough of this noise to bury a real failure — both verification subagents on this story had to reason past it to read the result. Pre-existing and unrelated to counted chores: this story only made it more visible by adding tests that complete chores. Plausible fixes, neither attempted here: stub ~BearCub.Notifications~ globally in ~test/test_helper.exs~, or default fixtures to ~notify_on_complete?: false~.

@@ -64,21 +64,69 @@ As a parent setting up chores, I need an extra chore to be able to carry a per-u
 
 * Acceptance Criteria
 
-** [ ] An extra chore can be given a per-unit point rate and a maximum count alongside its existing point value, which becomes the base (SC-1)
-** [ ] An extra chore created without a rate and max is stored and behaves exactly as it does today (SC-1)
-** [ ] A chore that shows in a routine cannot be given a rate or a max (SC-1)
-** [ ] A rate and a max are set together or not at all, and each is at least 1 (SC-1)
-** [ ] Completing a counted chore records a count between 1 and that chore's maximum; a count of 0, a count above the maximum, and a missing count are all refused (SC-2)
-** [ ] Completing a flat chore records no count, and a count supplied for a flat chore is refused (SC-2)
-** [ ] Once a chore exists, its point value, its rate, its maximum, and whether it is counted at all can no longer be changed, and the refusal tells the parent to archive it and create a new one instead (SC-4)
-** [ ] A flat chore's point value remains editable after creation (SC-4)
+** [X] An extra chore can be given a per-unit point rate and a maximum count alongside its existing point value, which becomes the base (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:41] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "an extra chore can carry a per-unit rate and max alongside its base points (SC-1)": creates a chore with ~points: 5, unit_rate: 2, unit_max: 10~ and asserts all three persist independently. Implementation: ~BearCub.Chores.Chore~ schema fields ~unit_rate~/~unit_max~ and the ~changeset/2~ cast list.
+:END:
+** [X] An extra chore created without a rate and max is stored and behaves exactly as it does today (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:41] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a chore created without a rate and max stores a nil pair (SC-1)": asserts ~unit_rate == nil~ and ~unit_max == nil~. Every pre-existing flat-chore test in the "chores" describe block was left untouched and still passes.
+:END:
+** [X] A chore that shows in a routine cannot be given a rate or a max (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:41] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a chore that shows in a routine cannot be given a rate or a max (SC-1)": routine ~"morning"~ plus both ~unit_rate~/~unit_max~ asserts a ~unit_rate~ error. Implementation: ~Chore~'s ~validate_no_routine_when_counted/1~, run after ~apply_shows_in/1~ has resolved ~routine~ per the Technical Notes ordering requirement.
+:END:
+** [X] A rate and a max are set together or not at all, and each is at least 1 (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:42] \\
+  Verified by ~test/bear_cub/chores_test.exs~: "a rate without a max is refused", "a max without a rate is refused", "a rate or max below 1 is refused" (covers both the 0-rate and 0-max cases). Implementation: ~Chore~'s ~validate_pair_together/1~ and ~validate_number(:unit_rate/:unit_max, greater_than_or_equal_to: 1)~.
+:END:
+** [X] Completing a counted chore records a count between 1 and that chore's maximum; a count of 0, a count above the maximum, and a missing count are all refused (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:42] \\
+  Verified by ~test/bear_cub/chores_test.exs~ (in-range, zero, above-max, missing cases via ~Chores.complete_chore/4~) and duplicated at the changeset layer in ~test/bear_cub/chores/completion_test.exs~. Implementation: ~Completion.changeset/3~'s ~validate_effort_count/2~ (~%Chore{unit_max: max}~ clause) — ~validate_required~ plus ~validate_number(greater_than_or_equal_to: 1, less_than_or_equal_to: max)~.
+:END:
+** [X] Completing a flat chore records no count, and a count supplied for a flat chore is refused (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:42] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "completing a flat chore records no count" / "a count supplied for a flat chore is refused", duplicated at the changeset layer in ~test/bear_cub/chores/completion_test.exs~. Implementation: ~Completion.changeset/3~'s ~validate_effort_count/2~ (~%Chore{unit_rate: nil}~ clause) accepts ~nil~ and refuses any non-nil count.
+:END:
+** [X] Once a chore exists, its point value, its rate, its maximum, and whether it is counted at all can no longer be changed, and the refusal tells the parent to archive it and create a new one instead (SC-4)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:42] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "once a counted chore exists, its rate, max and points are all locked (SC-4)": separate ~update_chore~ attempts on ~unit_rate~, ~unit_max~, ~points~, and ~counts_units?~ are each refused on their own field, and a reload confirms the stored values are unchanged. Error copy verified verbatim against ~check_reclassification_lock/2~'s existing message. Implementation keys the lock on persistence (~id~ present), not completion history, per the Technical Notes' explicit distinction from ~check_reclassification_lock/2~.
+:END:
+** [X] A flat chore's point value remains editable after creation (SC-4)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:42] \\
+  Verified by ~test/bear_cub/chores_test.exs~ "a flat chore's points remain freely editable after creation (SC-4)": creates a flat chore, updates ~points~ 5→9, asserts success. Implementation: ~forbid_points_change_when_counted/2~ only forbids the change when the persisted ~unit_rate~ is non-nil.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:45] \\
+  All 8 Acceptance Criteria checkboxes above are ~[X]~, each with its own LOGBOOK entry citing a specific test and implementation function.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:45] \\
+  ~mix test test/bear_cub/chores_test.exs test/bear_cub/chores/completion_test.exs test/bear_cub/chores/chore_lifecycle_migration_test.exs~ → 180 passed, 0 failures. Every new test uses a fixed local date via the ~la/2~ helper — no wall-clock derivation, per the Technical Notes' test-hygiene requirement.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:45] \\
+  Spot-checked against CLAUDE.md and ~.claude/rules/phoenix.md~: the migration is a plain generator-scaffolded ~alter table~/~change/0~ (no hand-rolled up/down); ~Ecto.Changeset.get_field/2~ used throughout, never map-access on structs; ~validate_number/2~ never passed the unsupported ~:allow_nil~ option; ~counts_units?~ mirrors the existing ~apply_shows_in/1~ collapse pattern rather than inventing a new one; ~complete_chore/4~'s ~effort_count \\ nil~ default keeps every existing 3-arg call site untouched, confirmed by grepping all ~complete_chore(~ sites in ~lib/~. ~mix format~ made zero changes to the diff.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:45] \\
+  ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format, test) → exit 0, ~Result: 656 passed~, 0 failures, 0 compiler warnings, no unused deps, no formatting changes.
+:END:
 
 * Technical Notes
 
