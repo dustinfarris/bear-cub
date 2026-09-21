@@ -2666,4 +2666,76 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#count-confirm-#{extra.id}")
     end
   end
+
+  describe "kiosk completed row (Story 05)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    test "a completed counted extra shows ×N beside its name, and its full earned value in the green chip (AC-1)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk", 4)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-effort-#{extra.id}", "×4")
+      assert has_element?(view, "#chore-earned-#{extra.id}", "+14")
+    end
+
+    test "a failed counted extra shows its count beside the name, alongside the warning and the matching negative value (AC-2)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+      now = LocalTime.now()
+      {:ok, _} = Chores.complete_chore(extra, now, "kiosk", 4)
+      {:ok, _} = Chores.fail_chore(extra, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-effort-#{extra.id}", "×4")
+      assert has_element?(view, "#chore-penalty-#{extra.id}", "−14")
+    end
+
+    test "the count is rendered off the reward type (AC-3)", %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk", 4)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-effort-#{extra.id}")
+      refute has_element?(view, "#chore-effort-#{extra.id}.font-reward")
+    end
+
+    test "a pending counted extra carries no count, rate, or maximum (AC-4)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      refute has_element?(view, "#chore-effort-#{extra.id}")
+    end
+
+    test "a completed flat extra is unchanged: its green chip shows and no count appears (AC-5)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil, points: 12})
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#chore-earned-#{extra.id}", "+12")
+      refute has_element?(view, "#chore-effort-#{extra.id}")
+    end
+  end
 end

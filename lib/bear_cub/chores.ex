@@ -386,6 +386,25 @@ defmodule BearCub.Chores do
     |> MapSet.new()
   end
 
+  @doc """
+  The most recent failed-and-not-yet-redone completion for each chore on
+  `local_date`, keyed by chore id (kiosk failed-chore marking, D45, D46) —
+  mirrors `current_completions/1`, but for the row `fail_chore/2` stamps
+  with both `undone_at` and `failed_at`, which is therefore invisible to
+  `current_completions/1`'s `is_nil(undone_at)` filter. A chore failed more
+  than once today keeps only its latest failed row, matching the single
+  fail state `failed_chore_ids/1`'s callers already read as current.
+  """
+  def failed_completions(%Date{} = local_date) do
+    Repo.all(
+      from c in Completion,
+        where: c.local_date == ^local_date and not is_nil(c.failed_at),
+        order_by: [desc: c.completed_at, desc: c.id]
+    )
+    |> Enum.uniq_by(& &1.chore_id)
+    |> Map.new(&{&1.chore_id, &1})
+  end
+
   defp current_completion(%Chore{} = chore, %Date{} = local_date) do
     Repo.one(
       from c in Completion,

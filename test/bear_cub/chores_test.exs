@@ -1994,6 +1994,69 @@ defmodule BearCub.ChoresTest do
     end
   end
 
+  describe "failed_completions/1 (Story 05)" do
+    import BearCub.ChoresFixtures
+
+    test "returns the failed completion for a chore, keyed by chore id" do
+      chore = chore_fixture()
+      chore_id = chore.id
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, failed} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert %{^chore_id => found} = Chores.failed_completions(~D[2026-07-10])
+      assert found.id == failed.id
+      assert found.failed_at == failed.failed_at
+    end
+
+    test "carries the failed row's effort_count for a counted chore" do
+      kid = kid_fixture()
+
+      chore =
+        chore_fixture(kid, %{
+          name: "Rake Leaves",
+          icon: "🍂",
+          routine: nil,
+          points: 2,
+          unit_rate: 3,
+          unit_max: 10
+        })
+
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk", 4)
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert %{effort_count: 4} = Chores.failed_completions(~D[2026-07-10])[chore.id]
+    end
+
+    test "excludes chores with only an ordinary (non-failed) completion" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Chores.failed_completions(~D[2026-07-10]) == %{}
+    end
+
+    test "after a redo, carries the most recent failed row rather than the stale one" do
+      chore = chore_fixture()
+      chore_id = chore.id
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, first_fail} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:10:00]), "kiosk")
+      {:ok, second_fail} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:15:00]))
+
+      assert %{^chore_id => found} = Chores.failed_completions(~D[2026-07-10])
+      assert found.id == second_fail.id
+      refute found.id == first_fail.id
+    end
+
+    test "is scoped to the given local date" do
+      chore = chore_fixture()
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, la(~D[2026-07-10], ~T[07:05:00]))
+
+      assert Chores.failed_completions(~D[2026-07-11]) == %{}
+    end
+  end
+
   describe "PubSub" do
     import BearCub.ChoresFixtures
 

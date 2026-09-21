@@ -389,6 +389,11 @@ defmodule BearCubWeb.KioskLive do
     # done-today: combined with `completions` below to tell "failed and not
     # yet redone" from "failed, then redone"
     failed_ids = Chores.failed_chore_ids(today)
+    # The failed-and-not-yet-redone row's own completion (Story 05):
+    # `fail_chore/2` stamps `undone_at` alongside `failed_at`, so that row
+    # is invisible to `current_completions/1` above — this is the only way
+    # to read its `effort_count` for the kiosk's ×N and −N display.
+    failed_completions = Chores.failed_completions(today)
     expanded = socket.assigns.expanded
     pending_collapse = socket.assigns.pending_collapse
     settling = socket.assigns.settling
@@ -405,6 +410,7 @@ defmodule BearCubWeb.KioskLive do
           completions,
           old_completions,
           failed_ids,
+          failed_completions,
           today,
           expanded,
           pending_collapse,
@@ -438,7 +444,7 @@ defmodule BearCubWeb.KioskLive do
     # its chore is still an open pending counted extra for them — dropped
     # the moment it's archived from admin, completed from another surface,
     # or the window closes (extras render empty at night and outside the
-    # band), all of which fall out of `tag_counting/3` already having said
+    # band), all of which fall out of `tag_counting/5` already having said
     # so on that kid's own extras this pass.
     still_counting =
       counting
@@ -466,6 +472,7 @@ defmodule BearCubWeb.KioskLive do
          completions,
          old_completions,
          failed_ids,
+         failed_completions,
          today,
          expanded,
          pending_collapse,
@@ -543,7 +550,7 @@ defmodule BearCubWeb.KioskLive do
       if state == :band and auto == :morning do
         Chores.list_extras(kid, today)
         |> build_rows(completions, failed_ids)
-        |> Enum.map(&tag_counting(&1, kid.id, counting))
+        |> Enum.map(&tag_counting(&1, kid.id, counting, completions, failed_completions))
       else
         []
       end
@@ -617,23 +624,43 @@ defmodule BearCubWeb.KioskLive do
     end
   end
 
-  # Tags an extra row with this kid's open count panel, if any (Story 04).
-  # A done row is never tagged even when its chore id still matches a
-  # stale `counting` entry — the panel belongs to the pending tap only,
-  # never to a chore completed from elsewhere in the meantime — which is
-  # also what `load/2`'s `still_counting` filter reads back to drop that
-  # entry for good.
-  defp tag_counting(%{done?: true} = row, _kid_id, _counting),
-    do: Map.merge(row, %{counting?: false, count: nil})
+  # Tags an extra row with this kid's open count panel, if any (Story 04),
+  # and with its persisted count and earned/lost value once it has one
+  # (Story 05). A done row is never tagged with a panel even when its
+  # chore id still matches a stale `counting` entry — the panel belongs to
+  # the pending tap only, never to a chore completed from elsewhere in the
+  # meantime — which is also what `load/2`'s `still_counting` filter reads
+  # back to drop that entry for good.
+  defp tag_counting(%{done?: true} = row, _kid_id, _counting, completions, _failed_completions) do
+    attach_effort(row, Map.fetch!(completions, row.chore.id))
+  end
 
-  defp tag_counting(row, kid_id, counting) do
+  defp tag_counting(%{failed?: true} = row, _kid_id, _counting, _completions, failed_completions) do
+    attach_effort(row, Map.fetch!(failed_completions, row.chore.id))
+  end
+
+  defp tag_counting(row, kid_id, counting, _completions, _failed_completions) do
     case Map.get(counting, kid_id) do
       %{chore_id: chore_id, count: count} when chore_id == row.chore.id ->
-        Map.merge(row, %{counting?: true, count: count})
+        Map.merge(row, %{counting?: true, count: count, effort_count: nil, value: nil})
 
       _ ->
-        Map.merge(row, %{counting?: false, count: nil})
+        Map.merge(row, %{counting?: false, count: nil, effort_count: nil, value: nil})
     end
+  end
+
+  # The completed/failed row's own ×N and chip value (Story 05, D112):
+  # `effort_count` is `nil` on a flat chore's completion, so ×N stays
+  # unrendered and `value` reduces to plain `chore.points` — the same
+  # figure the chip always showed, via the one formula every extras
+  # contribution already goes through (design's "re-derivable forever").
+  defp attach_effort(row, completion) do
+    Map.merge(row, %{
+      counting?: false,
+      count: nil,
+      effort_count: completion.effort_count,
+      value: abs(Chores.extra_contribution(completion, row.chore))
+    })
   end
 
   # The two stacks (D105): `{slot, done}` — the slot group's rows in
@@ -1116,8 +1143,15 @@ defmodule BearCubWeb.KioskLive do
             >
               <.chore_row
                 :for={
-                  %{chore: chore, done?: done?, failed?: failed?, counting?: counting?, count: count} <-
-                    extras
+                  %{
+                    chore: chore,
+                    done?: done?,
+                    failed?: failed?,
+                    counting?: counting?,
+                    count: count,
+                    effort_count: effort_count,
+                    value: value
+                  } <- extras
                 }
                 chore={chore}
                 done?={done?}
@@ -1127,6 +1161,8 @@ defmodule BearCubWeb.KioskLive do
                 extra?={true}
                 counting?={counting?}
                 count={count}
+                effort_count={effort_count}
+                value={value}
               />
             </ul>
           </div>
@@ -1240,6 +1276,12 @@ defmodule BearCubWeb.KioskLive do
   # completion.
   attr :counting?, :boolean, default: false
   attr :count, :integer, default: nil
+  # The persisted count and its earned/lost value (Story 05, D112): set
+  # only for a done or failed-and-not-redone counted extra. `effort_count`
+  # is what ×N shows; `value` is the chip's own figure — for a flat chore
+  # it is plain `chore.points`, unchanged from before this story.
+  attr :effort_count, :integer, default: nil
+  attr :value, :integer, default: nil
 
   # Shared row markup for both routine chores and extras (D34 technical
   # notes: extras are chores, so this is the same tappable row) — extras
@@ -1381,12 +1423,26 @@ defmodule BearCubWeb.KioskLive do
         <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>
           {@chore.name}
         </span>
+        <%!-- The count on a completed/failed counted extra (Story 05,
+             D112): informational, off font-reward — the system sans, muted
+             against whichever surface the row is on. A flat extra's
+             `effort_count` is nil, so nothing renders here for it. --%>
+        <span
+          :if={@effort_count}
+          id={"#{@dom}-effort-#{@chore.id}"}
+          class={[
+            "text-lg font-medium",
+            if(@done?, do: "text-white/70", else: "text-base-content/50")
+          ]}
+        >
+          ×{@effort_count}
+        </span>
         <span
           :if={@done? and @extra?}
           id={"#{@dom}-earned-#{@chore.id}"}
           class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-reward font-black text-success-content drop-shadow-sm"
         >
-          +{@chore.points}
+          +{@value}
         </span>
         <%!-- Circled check (D105): a white disc carrying the check in the
              kid's own color — it reads as "earned", not as a target, which is
@@ -1422,7 +1478,7 @@ defmodule BearCubWeb.KioskLive do
           class="ml-auto flex items-center gap-2 text-warning"
         >
           <.icon name="hero-exclamation-triangle" class="size-8" />
-          <span class="font-reward text-2xl font-black">−{@chore.points}</span>
+          <span class="font-reward text-2xl font-black">−{@value}</span>
         </span>
       <% end %>
     </li>
