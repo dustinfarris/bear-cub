@@ -5,6 +5,24 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run
+:PROPERTIES:
+:CREATED:  [2026-09-21 Mon 06:57]
+:END:
+
+Every test that completes a chore without a ~Req.Test~ stub in place emits an ~[error] Task ... cannot find mock/stub BearCub.Notifications~ crash report, from the fire-and-forget ~Task~ in ~notify_completed/3~ racing test-process teardown. No test fails and the suite reports clean, but a ~mix precommit~ log now carries enough of this noise to bury a real failure — both verification subagents on effort-multiplier Story 01 had to reason past it to read the result, and so did the batch gate. Pre-existing and unrelated to counted chores; that story only made it more visible by adding tests that complete chores. Plausible fixes, neither attempted: stub ~BearCub.Notifications~ globally in ~test/test_helper.exs~, or default fixtures to ~notify_on_complete?: false~.
+
+Swept [2026-09-21 Mon 06:57] from docs/2026-09-20-effort-multiplier/PLAN.org's Deferred section (Story 01 discovery), at the Batch 1 gate.
+
+* TODO ~BearCub.Dev.Scenarios.effort/1~ is not idempotent — each run leaves two more counted chores behind
+:PROPERTIES:
+:CREATED:  [2026-09-21 Mon 06:57]
+:END:
+
+~effort/1~ calls ~reset/1~ (which wipes the local day's /completions/) and then ~create_chore/3~ twice, so the chores themselves accumulate: after three runs the dev database carried three "Chess Puzzle" extras per kid, and Kid A's column at the Batch 1 gate showed six extras where a real day has one or two. The long column is what exposed the count panel's below-the-fold clipping, so the cruft was useful once, but it makes the staged frame unrepresentative and the next reviewer will hit the same surprise. Sibling scenarios do not have this shape — they stage completions against chores that already exist. Plausible fixes: archive or reuse a chore named "Chess Puzzle" on entry, or give the counted chore a stable marker ~effort/1~ looks up before creating.
+
+Found [2026-09-21 Mon 06:57] at the effort-multiplier Batch 1 gate.
+
 * TODO [#B] make extra chores award points via a base award that works as it does to day, and optionally a bonus multiplier where the kid can enter a number indicating a level of effort :promote:
 :PROPERTIES:
 :CREATED:  [2026-09-20 Sun 11:32]
