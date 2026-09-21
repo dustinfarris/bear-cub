@@ -71,19 +71,59 @@ As a kid who did ten chess puzzles instead of one, I need my points total to ref
 
 * Acceptance Criteria
 
-** [ ] A live completion of a counted chore is worth its base plus its count times its rate (SC-2)
-** [ ] An undone completion of a counted chore is worth nothing (SC-3)
-** [ ] A failed completion of a counted chore costs exactly what it paid (SC-2)
-** [ ] Completions of flat chores are worth exactly what they are worth today, whether live, undone or failed (SC-1)
-** [ ] A kid's points total is the same figure whether it is computed one kid at a time or for the whole roster at once, over a day holding flat, counted, undone and failed completions together (SC-2)
-** [ ] Routine-chore points and reward spends are unaffected (SC-1)
+** [X] A live completion of a counted chore is worth its base plus its count times its rate (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  ~test/bear_cub/chores_test.exs:1119~ "a live counted completion earns its base plus count times rate (SC-2)": a chore with ~points: 2, unit_rate: 3~ completed with ~effort_count 4~ asserts ~Chores.extra_contribution(completion, chore) == 2 + 4 * 3~. Re-derived against ~extra_contribution/2~ (~lib/bear_cub/chores.ex:412~): ~value = 2 + 4*3 = 14~, live branch returns ~value~. Matches.
+:END:
+** [X] An undone completion of a counted chore is worth nothing (SC-3)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  ~test/bear_cub/chores_test.exs:1129~ "an undone counted completion contributes zero (SC-3)": same counted chore, completed then undone, asserts ~Chores.extra_contribution(undone, chore) == 0~. The ~undone_at~ branch in ~extra_contribution/2~ short-circuits to ~0~ regardless of ~value~.
+:END:
+** [X] A failed completion of a counted chore costs exactly what it paid (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  ~test/bear_cub/chores_test.exs:1139~ "a failed counted completion costs exactly what it paid (SC-2)": same counted chore, completed with ~effort_count 4~ then failed via the ~fail_completion/2~ helper (stamps both ~undone_at~ and ~failed_at~), asserts ~Chores.extra_contribution(failed, chore) == -(2 + 4 * 3)~. The ~failed_at~ branch (checked first) returns ~-value = -14~, the honest negative of what was paid.
+:END:
+** [X] Completions of flat chores are worth exactly what they are worth today, whether live, undone or failed (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  Covered by the pre-existing, unmodified tests in the same describe block — ~test/bear_cub/chores_test.exs:1096~ (live, ~== 7~), ~:1103~ (undone, ~== 0~), ~:1111~ (failed, ~== -7~) — all against a flat chore with ~unit_rate~/~effort_count~ nil. With both operands nil, ~value = chore.points + 0 * 0 = chore.points~, pointwise identical to the pre-Story-02 function. All three still pass.
+:END:
+** [X] A kid's points total is the same figure whether it is computed one kid at a time or for the whole roster at once, over a day holding flat, counted, undone and failed completions together (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  ~test/bear_cub/chores_test.exs~, describe "the effort payout across derivation routes (Story 02, D72)", test "earnings/2 and earnings_by_kid/1 agree over a day holding flat, counted, undone, and failed extras together": one kid with a flat chore (=5=), a live counted chore (~2 + 4*3 = 14~), an undone counted chore (~0~), and a failed counted chore (~-(3 + 2*5) = -13~), summing to ~6~. Asserts both ~Chores.earnings(kid, date) == 6~ and ~Chores.earnings_by_kid(date) == %{kid.id => 6}~ — the two derivation routes named in the Technical Notes as the acceptance criterion with teeth.
+:END:
+** [X] Routine-chore points and reward spends are unaffected (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:53] \\
+  ~git diff~ touches only ~extra_contribution/2~ and ~extras_by_kid/1~ in ~lib/bear_cub/chores.ex~; ~routine_day_contribution/3~, ~routine_days_by_kid/1~, and ~live_chore_counts/1~ are unmodified, as is ~BearCub.Points~ and ~BearCub.Rewards~ (neither file appears in the diff). ~mix test test/bear_cub/points_test.exs test/bear_cub/rewards_test.exs~ ran directly: 120 passed, 0 failures.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:55] \\
+  All six items in ==Acceptance Criteria== above are marked ~[X]~ with LOGBOOK evidence; a second verification pass spot-checked every cited test name/line against ~test/bear_cub/chores_test.exs~ and re-derived the arithmetic against ~extra_contribution/2~ (~lib/bear_cub/chores.ex:412~) — entries are legitimate, not fabricated.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:55] \\
+  Three new tests in the ~extra_contribution/2 (Story 02, D40)~ describe block plus one cross-route agreement test in a new ~the effort payout across derivation routes (Story 02, D72)~ describe block, all in ~test/bear_cub/chores_test.exs~. Included in the 660-pass ~mix precommit~ run; the agreement test also re-run in isolation (~mix test test/bear_cub/chores_test.exs:1804~ → ~1 passed~).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:55] \\
+  The ~@doc~ addition on ~extra_contribution/2~ matches the surrounding doc-comment style (explains why, not what); no WHAT-only inline comments added; the change is a substitution within the existing ~cond do~ shape with no new abstraction, matching the Design excerpt's "only what it multiplies changes." Tests reuse existing fixtures/helpers (~chore_fixture~, ~fail_completion~, ~la/2~) with no new indirection. ~mix format --check-formatted~ (inside ~mix precommit~) produced no diff.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 16:55] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) run directly: exit code 0, =Result: 660 passed=, no failures, no compiler warnings, no formatting diff.
+:END:
 
 * Technical Notes
 
