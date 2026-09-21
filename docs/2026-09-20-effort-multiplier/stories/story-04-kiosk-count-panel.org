@@ -58,23 +58,79 @@ As a kid at the kiosk who solved eight chess puzzles, I need to tap the chore an
 
 * Acceptance Criteria
 
-** [ ] Tapping a pending counted extra opens a count panel in that row rather than completing the chore (SC-2)
-** [ ] The kid can set the count with a slider and with plus and minus buttons, anywhere from 1 to the chore's maximum, and the panel opens at 1 (SC-2)
-** [ ] The minus button does nothing at 1 and the plus button does nothing at the maximum (SC-2)
-** [ ] The panel shows what confirming will pay, and that figure changes as the count changes (SC-2)
-** [ ] Confirming completes the chore and awards its base plus the count times its rate straight away, with no parent approval step in between (SC-2)
-** [ ] Cancelling closes the panel and leaves the chore pending, having recorded nothing (SC-2)
-** [ ] Opening a second counted extra closes the first without completing it (SC-2)
-** [ ] Undoing a completed counted extra takes a single tap, and completing it again asks for a count afresh rather than reusing the one entered before (SC-3)
-** [ ] Flat extras still complete and undo on a single tap, with no panel (SC-1)
-** [ ] A named dev scenario stages a counted extra with its panel open and another already completed, for review at 1280 × 800
+** [X] Tapping a pending counted extra opens a count panel in that row rather than completing the chore (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~toggle-chore~'s counted branch (~lib/bear_cub_web/live/kiosk_live.ex~) seeds the ~counting~ assign instead of calling ~complete_chore~. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "tapping a pending counted extra opens a count panel instead of completing it (AC-1)" — no ~[data-done]~, ~#count-confirm-<id>~ present, ~#count-value-<id>~ shows "1". ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ green (135 tests).
+:END:
+** [X] The kid can set the count with a slider and with plus and minus buttons, anywhere from 1 to the chore's maximum, and the panel opens at 1 (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  Slider: a ~<form phx-change="count-set">~ wrapping a range input, ~min="1" max={@chore.unit_max}~. Stepper: ~count-step~ with ~phx-value-dir~. Opens at 1 (~toggle-chore~'s counted branch always seeds ~count: 1~). Verified by "the stepper moves the count within 1..unit_max and clamps at both ends (AC-2, AC-3)" and "the slider sets the count directly, clamped server-side (AC-2)" in ~kiosk_live_test.exs~, both passing.
+:END:
+** [X] The minus button does nothing at 1 and the plus button does nothing at the maximum (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  Server-side clamp in ~update_count/3~ (~max(1) |> min(chore.unit_max)~), shared by the stepper and slider paths, per the design's "clamped server-side" wording — delivered functionally (a tap at the bound is a no-op) rather than via an HTML ~disabled~ attribute, so the boundary stays exercisable by a test. Verified by "the stepper moves the count within 1..unit_max and clamps at both ends (AC-2, AC-3)" in ~kiosk_live_test.exs~, passing.
+:END:
+** [X] The panel shows what confirming will pay, and that figure changes as the count changes (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  Confirm button renders ~+{@chore.points + @count * @chore.unit_rate}~ (~kiosk_live.ex~), matching ~Chores.extra_contribution/2~'s own formula. Verified by "the confirm button shows the live payout and it changes with the count (AC-4)" in ~kiosk_live_test.exs~ — "+5" at count 1 (points 2, rate 3), "+8" after one increment. Passing.
+:END:
+** [X] Confirming completes the chore and awards its base plus the count times its rate straight away, with no parent approval step in between (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~count-confirm~ calls ~Chores.complete_chore(chore, now, "kiosk", count)~ directly — no reward/approval queue in the path. Verified by "confirming completes the chore with the chosen count and awards base plus count times rate, with no approval step (AC-5)" in ~kiosk_live_test.exs~: after confirm, ~data-done~ present, ~#count-confirm~ gone, ~completion.effort_count == 3~, ~completion.source == "kiosk"~. Passing. The ~×N~/~+N~ display on the completed row (also mentioned in the story's Testing excerpt) is story-05-kiosk-completed-row.org's scope per this story's own Technical Notes, and correctly absent here.
+:END:
+** [X] Cancelling closes the panel and leaves the chore pending, having recorded nothing (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~count-cancel~ only deletes the ~counting~ entry, no write. Verified by "cancelling closes the panel and leaves the chore pending, recording nothing (AC-6)" in ~kiosk_live_test.exs~: no ~#count-confirm~, no ~[data-done]~, and ~Chores.current_completions/1~ has no key for the chore. Passing.
+:END:
+** [X] Opening a second counted extra closes the first without completing it (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~toggle-chore~'s counted branch keys ~counting~ by ~chore.kid_id~, so a second tap structurally replaces the kid's one entry. Verified by "opening a second counted extra closes the first without completing it (AC-7)" in ~kiosk_live_test.exs~: opening ~second~ removes ~first~'s panel, ~first~ stays not-done. Passing.
+:END:
+** [X] Undoing a completed counted extra takes a single tap, and completing it again asks for a count afresh rather than reusing the one entered before (SC-3)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~toggle-chore~'s existing done-completion branch (unchanged by this story) undoes in one tap regardless of counted-ness; the counted branch always seeds ~count: 1~, never a stale value. Verified by "undoing a completed counted extra takes a single tap, and completing it again asks for a fresh count (AC-8)" in ~kiosk_live_test.exs~: confirm at count 3, single-tap undo, re-tap shows count "1" again. Passing.
+:END:
+** [X] Flat extras still complete and undo on a single tap, with no panel (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~counted?/1~ is ~not is_nil(unit_rate)~; a flat chore falls through ~toggle-chore~'s ~cond~ straight to ~complete_chore~, bypassing the counted branch. Verified by "flat extras still complete and undo on a single tap, with no panel (AC-9)" in ~kiosk_live_test.exs~ (regression): tap completes directly, ~#count-confirm~ never appears, second tap undoes. Passing.
+:END:
+** [X] A named dev scenario stages a counted extra with its panel open and another already completed, for review at 1280 × 800
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:37] \\
+  ~BearCub.Dev.Scenarios.effort/1~ stages both kids' mornings done (band + extras revealed), one kid holding an untouched pending counted extra, the other holding the same chore completed at ~×8~. The panel's own open/closed state lives in the ~counting~ LiveView assign, which the Design excerpt above states is "never persisted, never broadcast" — no server-side scenario function can pre-populate a specific future kiosk connection's ephemeral socket state before it connects, so "panel open" is read as satisfied by staging the data so the reviewer opens it with their own tap during the 1280 × 800 gate review, not by the scenario simulating that tap itself. Human ruling on this reading: 2026-09-20 (this session, via AskUserQuestion — "mark AC-10 met as written").
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:39] \\
+  All 10 ACs above are ~[X]~ with LOGBOOK evidence, verified by the ~story-verifier~ subagent against the actual code and test run. AC-10 carries a documented scoped reading (ephemeral ~counting~ state cannot be pre-staged server-side) with an explicit human ruling.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:39] \\
+  New ~describe "kiosk count panel (Story 04)"~ block in ~test/bear_cub_web/live/kiosk_live_test.exs~, one test per AC-1 through AC-9 plus a boundary-clearing test and a malformed-input regression test. ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ → 135 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:39] \\
+  Only existing files touched, no proactive doc creation. ~mix format --check-formatted~ clean. HEEx/Phoenix conventions in ~.claude/rules/phoenix.md~ followed (unique DOM ids, ~<%= if %>~ for the block construct, bracketed class lists, ~type="button"~ on new buttons). Design's structural trap honored: ~phx-click={(not @ghost? and not @counting?) && "toggle-chore"}~. Staged via ~BearCub.Dev.Scenarios~, not hand-poked DB. Verified by the ~story-verifier~ subagent.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 18:39] \\
+  Repo declares ~Verify command: mix precommit~ (CLAUDE.md). Ran clean: exit 0, ~compile --warnings-as-errors~ no warnings, ~format~ no diff, ~test~ → 679 passed, 0 failures. (Interleaved ~cannot find mock/stub BearCub.Notifications~ lines are pre-existing async noise from unrelated tests, not failures.)
+:END:
 
 * Technical Notes
 

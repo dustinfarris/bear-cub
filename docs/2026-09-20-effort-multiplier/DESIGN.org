@@ -189,7 +189,7 @@ LiveView, admin: the chore form locks the three fields on edit and refuses a for
 
 Test hygiene: fixed local dates, ~:routine_windows~ pinned (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
 
-Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a counted extra mid-panel and another completed at ~×8~, so the gate screenshot at 1280 × 800 has both states in one frame.
+Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a pending counted extra ready to tap open and another completed at ~×8~, both mornings otherwise done so the band and its extras are showing — the reviewer's own tap opens the panel, and the gate screenshot at 1280 × 800 then has both states in one frame. The scenario cannot stage the panel itself: ~counting~ is per-socket ephemeral state (§Kiosk state and events), so nothing running in the server VM can reach a kiosk connection that has not happened yet, and a dev-only auto-open path in the kiosk's mount is refused rather than written. Rationale: [[file:../decisions.org::#d114][D114]].
 
 Verification beyond ~mix precommit~: the local kiosk review at 1280 × 800 is the gate, and it is where the two tuning questions above get answered.
 
@@ -211,7 +211,7 @@ Allowed by the PRD but deliberately deferred by this design:
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion.
+Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion; [[file:../decisions.org::#d114][D114]] was minted post-canon, during Story 04, and pairs with the Advisory below.
 
 * Advisories
 
@@ -221,3 +221,9 @@ Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 w
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-09-20 Sun 18:46] §Testing's dev scenario no longer claims to stage the count panel open (D114)
+
+/Sections affected: §Key Behaviors / Testing/
+
+This document previously specified that ~BearCub.Dev.Scenarios.effort/1~ stages "one kid with a counted extra mid-panel" — the panel already open, waiting to be screenshotted. It still reads as the natural thing to ask a scenario for, and a session chasing it has an obvious move available: add a dev-only auto-open path to ~BearCubWeb.KioskLive~'s mount (a param, a seeded assign, a flag ~Scenarios~ sets) so the sentence becomes literally true. Do not. It was never achievable as written — this same document's §Kiosk state and events makes ~counting~ per-socket and "never persisted, never broadcast", so no function running in the server VM can populate a kiosk connection that has not happened yet — and the workaround would put a dev-only branch in the mount path of the one surface whose reliability story is that the tablet always reconnects into exactly one code path. The scenario stages the rows; the reviewer's tap opens the panel. Rationale: [[file:../decisions.org::#d114][D114]].
