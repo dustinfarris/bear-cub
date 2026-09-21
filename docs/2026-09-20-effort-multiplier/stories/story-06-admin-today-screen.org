@@ -29,17 +29,49 @@ As a parent checking what my kid claimed today, I need to see the count on a cou
 
 * Acceptance Criteria
 
-** [ ] A pending counted extra on the Today screen cannot be completed on the kid's behalf, and says instead that it is counted at the kiosk (SC-2)
-** [ ] A completed counted extra on the Today screen shows the count the kid entered (SC-2)
-** [ ] A parent can still undo a completed counted extra, and can still fail one (SC-2)
-** [ ] Flat extras and routine chores on the Today screen are unchanged, complete control included (SC-1)
+** [X] A pending counted extra on the Today screen cannot be completed on the kid's behalf, and says instead that it is counted at the kiosk (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:01] \\
+  ~chore_row/1~'s ~<li>~ (~lib/bear_cub_web/live/admin/today_live.ex~) carries ~phx-click={(@row.done? or not @row.effort?) && "toggle-chore"}~, so the attribute is omitted entirely on a pending counted extra; a muted ~#today-counted-hint-{id}~ span reading "Counted at the kiosk" renders in its place. A forged ~toggle-chore~ event also completes nothing — Story 01's ~Completion~ changeset (~lib/bear_cub/chores/completion.ex~) already requires ~effort_count~ on a counted chore, which the admin's on-behalf ~complete_chore/3~ call never supplies. Verified by ~test/bear_cub_web/live/admin/today_live_test.exs~ "a pending counted extra's complete control is inert and shows a hint that it's counted at the kiosk (AC-1)" and "a forged toggle event on a pending counted extra completes nothing (AC-1)", both passing. Independently confirmed by a ~story-verifier~ subagent reading the code and test run.
+:END:
+** [X] A completed counted extra on the Today screen shows the count the kid entered (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:01] \\
+  ~build_row/3~ attaches ~effort_count~ from the live completion (~completion && completion.effort_count~); the template's ~#today-effort-{id}~ span renders ~×{@row.effort_count}~ when ~@row.effort? and @row.done?~, muted against the kid-color background. Verified by "a completed counted extra shows the count the kid entered (AC-2)" — asserts ~×8~ present and the hint absent — passing. Also confirmed visually via Playwright at a 390×844 phone width against the running dev server, staged with ~BearCub.Dev.Scenarios.effort/1~: the done row shows ~×8~, the fail flag, and the check icon, legible on the kid's color.
+:END:
+** [X] A parent can still undo a completed counted extra, and can still fail one (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:01] \\
+  ~phx-click~ is unconditionally ~"toggle-chore"~ whenever ~@row.done?~ regardless of ~effort?~, so undo is unaffected; the fail button (~#fail-chore-{id}~) and solid flag (~#failed-flag-{id}~) are untouched by this story's diff. Verified by "a parent can still undo a completed counted extra (AC-3)" (asserts ~data-done~ clears and ~completion.undone_at~ is set) and "a parent can still fail a completed counted extra, and the persisted penalty reflects the entered count (AC-3)" (asserts the solid flag, ~completion.failed_at~ set, and ~completion.effort_count == 4~ preserved on the failed row) — both passing.
+:END:
+** [X] Flat extras and routine chores on the Today screen are unchanged, complete control included (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:01] \\
+  ~counted?/1~ gates purely on ~unit_rate~ non-nil, so a flat chore's row keeps its unconditional ~phx-click~ and never shows the hint or ~×N~. Verified by "flat extras and routine chores are unchanged: complete control included (AC-4)", which exercises both a routine chore and a flat extra in one loop (broadened during closeout after a ~story-verifier~ subagent flagged the original version as testing only the routine chore despite its name) — both tap-complete with no hint, both show ~data-done~ after. Also covered incidentally by the pre-existing "extras" describe block, unmodified and still passing against this diff.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:03] \\
+  All 4 ACs above are ~[X]~ with LOGBOOK evidence, independently confirmed by a ~story-verifier~ subagent reading the actual code (~today_live.ex~'s ~build_row/3~, ~counted?/1~, ~chore_row/1~) and the passing test run. No removal or deferral was needed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:03] \\
+  New ~describe "counted extras (Story 06, D113)"~ block in ~test/bear_cub_web/live/admin/today_live_test.exs~, one test per AC-1 (plus a forged-event regression), AC-2, AC-3 (undo and fail, split into two tests), and AC-4. ~mix test test/bear_cub_web/live/admin/today_live_test.exs --trace~ → 42 passed, 0 failures, all 6 new tests present and green. Verified independently by a ~story-verifier~ subagent.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:03] \\
+  Only existing files touched, no proactive doc creation. HEEx conventions followed: ~class={[...]}~ list syntax for the new conditional ~cursor-pointer~/~phx-click~, unique DOM ids (~#today-effort-{id}~, ~#today-counted-hint-{id}~) matching the file's existing ~#today-balance-~/~#fail-chore-~ pattern, predicate naming (~counted?/1~) with no ~is_~ prefix. ~mix format --check-formatted~ clean. Verified independently by a ~story-verifier~ subagent, including a line-length check on the new comment block (max 75 cols, under the 80-col Elixir-comment limit).
+:END:
+** [X] ~mix precommit~ passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 22:03] \\
+  Ran clean: exit 0, ~compile --warnings-as-errors~ no warnings, ~format~ made no changes, ~test~ → 695 passed, 0 failures. (Interleaved ~cannot find mock/stub BearCub.Notifications~ lines are pre-existing async noise from unrelated approval-queue tests, not failures — consistent with prior stories' LOGBOOK notes on this same characteristic.) Verified independently by a ~story-verifier~ subagent running the command itself.
+:END:
 
 * Technical Notes
 
