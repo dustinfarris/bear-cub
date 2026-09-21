@@ -186,12 +186,18 @@ defmodule BearCubWeb.Admin.TodayLive do
   # flag stands for the rest of the day even after a redo — the actionable
   # control never returns to a chore already failed today.
   defp build_row(chore, completions, failed_ids) do
+    completion = Map.get(completions, chore.id)
+
     %{
       chore: chore,
-      done?: Map.has_key?(completions, chore.id),
-      failed?: MapSet.member?(failed_ids, chore.id)
+      done?: not is_nil(completion),
+      failed?: MapSet.member?(failed_ids, chore.id),
+      effort?: counted?(chore),
+      effort_count: completion && completion.effort_count
     }
   end
+
+  defp counted?(%Chores.Chore{unit_rate: unit_rate}), do: not is_nil(unit_rate)
 
   @impl true
   def render(assigns) do
@@ -349,14 +355,24 @@ defmodule BearCubWeb.Admin.TodayLive do
 
   # Reused for morning/evening chores and extras alike (extras are chores
   # with routine = nil — same on-behalf toggle, same #today-chore-{id} row).
+  #
+  # A pending counted extra's control is inert (Story 06, D113): the `<li>`
+  # carries no `phx-click` at all, and a short hint stands in its place.
+  # An on-behalf tap would have to invent a count nobody entered — Story
+  # 01's `Completion` changeset already refuses a nil `effort_count` on a
+  # counted chore, so this is belt-and-suspenders with a real domain rule,
+  # not the only thing standing in the way.
   defp chore_row(assigns) do
     ~H"""
     <li
       id={"today-chore-#{@row.chore.id}"}
       data-done={@row.done?}
-      phx-click="toggle-chore"
+      phx-click={(@row.done? or not @row.effort?) && "toggle-chore"}
       phx-value-chore-id={@row.chore.id}
-      class="flex cursor-pointer select-none items-center gap-3 px-5 py-3 transition-colors"
+      class={[
+        "flex select-none items-center gap-3 px-5 py-3 transition-colors",
+        (@row.done? or not @row.effort?) && "cursor-pointer"
+      ]}
       style={@row.done? && "background-color: #{@kid.color}"}
     >
       <span class="text-2xl leading-none">{@row.chore.icon}</span>
@@ -365,6 +381,22 @@ defmodule BearCubWeb.Admin.TodayLive do
         @row.done? && "text-white drop-shadow-sm"
       ]}>
         {@row.chore.name}
+      </span>
+      <%!-- The count on a done counted extra (Story 06, D113): informational,
+           muted against whichever surface the row is on. --%>
+      <span
+        :if={@row.effort? and @row.done?}
+        id={"today-effort-#{@row.chore.id}"}
+        class="text-sm font-medium text-white/70"
+      >
+        ×{@row.effort_count}
+      </span>
+      <span
+        :if={@row.effort? and not @row.done?}
+        id={"today-counted-hint-#{@row.chore.id}"}
+        class="text-xs text-base-content/50"
+      >
+        Counted at the kiosk
       </span>
       <button
         :if={@row.done? and not @row.failed?}

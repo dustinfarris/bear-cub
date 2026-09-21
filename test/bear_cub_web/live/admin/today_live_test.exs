@@ -639,6 +639,105 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     end
   end
 
+  describe "counted extras (Story 06, D113)" do
+    import BearCub.ChoresFixtures
+
+    defp counted_extra_fixture(kid, attrs \\ %{}) do
+      chore_fixture(
+        kid,
+        Enum.into(attrs, %{
+          name: "Chess Puzzle",
+          icon: "♟️",
+          routine: nil,
+          points: 2,
+          unit_rate: 3,
+          unit_max: 10
+        })
+      )
+    end
+
+    test "a pending counted extra's complete control is inert and shows a hint that it's counted at the kiosk (AC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      extra = counted_extra_fixture(kid_a)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#today-chore-#{extra.id}[phx-click]")
+      assert has_element?(view, "#today-counted-hint-#{extra.id}", "Counted at the kiosk")
+    end
+
+    test "a forged toggle event on a pending counted extra completes nothing (AC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      extra = counted_extra_fixture(kid_a)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      render_click(view, "toggle-chore", %{"chore-id" => to_string(extra.id)})
+
+      refute has_element?(view, "#today-chore-#{extra.id}[data-done]")
+      refute Repo.one(from c in Completion, where: c.chore_id == ^extra.id)
+    end
+
+    test "a completed counted extra shows the count the kid entered (AC-2)",
+         %{conn: conn, kid_a: kid_a} do
+      extra = counted_extra_fixture(kid_a)
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk", 8)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "#today-effort-#{extra.id}", "×8")
+      refute has_element?(view, "#today-counted-hint-#{extra.id}")
+    end
+
+    test "a parent can still undo a completed counted extra (AC-3)",
+         %{conn: conn, kid_a: kid_a} do
+      extra = counted_extra_fixture(kid_a)
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk", 4)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#today-chore-#{extra.id}") |> render_click()
+
+      refute has_element?(view, "#today-chore-#{extra.id}[data-done]")
+
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^extra.id)
+      refute is_nil(completion.undone_at)
+    end
+
+    test "a parent can still fail a completed counted extra, and the persisted penalty reflects the entered count (AC-3)",
+         %{conn: conn, kid_a: kid_a} do
+      extra = counted_extra_fixture(kid_a)
+      {:ok, _} = Chores.complete_chore(extra, LocalTime.now(), "kiosk", 4)
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#fail-chore-#{extra.id}") |> render_click()
+
+      refute has_element?(view, "#today-chore-#{extra.id}[data-done]")
+      assert has_element?(view, "#failed-flag-#{extra.id}")
+
+      completion = Repo.one!(from c in Completion, where: c.chore_id == ^extra.id)
+      refute is_nil(completion.failed_at)
+      assert completion.effort_count == 4
+    end
+
+    test "flat extras and routine chores are unchanged: complete control included (AC-4)",
+         %{conn: conn, kid_a: kid_a} = ctx do
+      flat_extra = chore_fixture(kid_a, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      for row <- [ctx.a_active, flat_extra] do
+        assert has_element?(view, "#today-chore-#{row.id}[phx-click]")
+        refute has_element?(view, "#today-counted-hint-#{row.id}")
+
+        view |> element("#today-chore-#{row.id}") |> render_click()
+
+        assert has_element?(view, "#today-chore-#{row.id}[data-done]")
+      end
+    end
+  end
+
   describe "on-behalf extras toggle reaches the kiosk" do
     import BearCub.ChoresFixtures
 
