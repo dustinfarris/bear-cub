@@ -1115,6 +1115,38 @@ defmodule BearCub.ChoresTest do
 
       assert Chores.extra_contribution(failed, chore) == -7
     end
+
+    test "a live counted completion earns its base plus count times rate (SC-2)" do
+      chore =
+        chore_fixture(kid_fixture(), %{routine: nil, points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, completion} =
+        Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 4)
+
+      assert Chores.extra_contribution(completion, chore) == 2 + 4 * 3
+    end
+
+    test "an undone counted completion contributes zero (SC-3)" do
+      chore =
+        chore_fixture(kid_fixture(), %{routine: nil, points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 4)
+      {:ok, undone} = Chores.undo_chore(chore, la(~D[2026-07-10], ~T[08:05:00]))
+
+      assert Chores.extra_contribution(undone, chore) == 0
+    end
+
+    test "a failed counted completion costs exactly what it paid (SC-2)" do
+      chore =
+        chore_fixture(kid_fixture(), %{routine: nil, points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, completion} =
+        Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk", 4)
+
+      failed = fail_completion(completion, ~U[2026-07-10 15:00:00Z])
+
+      assert Chores.extra_contribution(failed, chore) == -(2 + 4 * 3)
+    end
   end
 
   describe "routine_day_status/3 (Story 01, D94, D92)" do
@@ -1766,6 +1798,61 @@ defmodule BearCub.ChoresTest do
       many_kids_query_count = count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end)
 
       assert one_kid_query_count == many_kids_query_count
+    end
+  end
+
+  describe "the effort payout across derivation routes (Story 02, D72)" do
+    import BearCub.ChoresFixtures
+
+    test "earnings/2 and earnings_by_kid/1 agree over a day holding flat, counted, undone, and failed extras together" do
+      kid = kid_fixture()
+
+      flat = chore_fixture(kid, %{name: "Flat", routine: nil, points: 5})
+
+      counted_live =
+        chore_fixture(kid, %{
+          name: "Counted Live",
+          routine: nil,
+          points: 2,
+          unit_rate: 3,
+          unit_max: 10
+        })
+
+      counted_undone =
+        chore_fixture(kid, %{
+          name: "Counted Undone",
+          routine: nil,
+          points: 1,
+          unit_rate: 4,
+          unit_max: 10
+        })
+
+      counted_failed =
+        chore_fixture(kid, %{
+          name: "Counted Failed",
+          routine: nil,
+          points: 3,
+          unit_rate: 5,
+          unit_max: 10
+        })
+
+      {:ok, _} = Chores.complete_chore(flat, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
+      {:ok, _} = Chores.complete_chore(counted_live, la(~D[2026-07-10], ~T[08:01:00]), "kiosk", 4)
+
+      {:ok, _} =
+        Chores.complete_chore(counted_undone, la(~D[2026-07-10], ~T[08:02:00]), "kiosk", 5)
+
+      {:ok, _} = Chores.undo_chore(counted_undone, la(~D[2026-07-10], ~T[08:03:00]))
+
+      {:ok, failed_completion} =
+        Chores.complete_chore(counted_failed, la(~D[2026-07-10], ~T[08:04:00]), "kiosk", 2)
+
+      fail_completion(failed_completion, ~U[2026-07-10 16:05:00Z])
+
+      expected = 5 + (2 + 4 * 3) + 0 + -(3 + 2 * 5)
+
+      assert Chores.earnings(kid, ~D[2026-07-10]) == expected
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => expected}
     end
   end
 

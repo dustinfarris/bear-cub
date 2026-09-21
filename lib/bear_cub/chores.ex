@@ -402,12 +402,20 @@ defmodule BearCub.Chores do
   checks `failed_at` first (the persistent penalty), then `undone_at`
   (an ordinary undo contributes nothing), otherwise the row is
   live/earned. Row-local — no clock, no date needed.
+
+  The value is `chore.points` plus the effort multiplier
+  (`completion.effort_count * chore.unit_rate`) when the chore is
+  counted; both operands are `nil` on a flat chore, so `value` is
+  `chore.points` there and the function is unchanged for every row
+  that predates counted chores (Story 02).
   """
   def extra_contribution(%Completion{} = completion, %Chore{} = chore) do
+    value = chore.points + (completion.effort_count || 0) * (chore.unit_rate || 0)
+
     cond do
-      completion.failed_at -> -chore.points
+      completion.failed_at -> -value
       completion.undone_at -> 0
-      true -> chore.points
+      true -> value
     end
   end
 
@@ -628,11 +636,15 @@ defmodule BearCub.Chores do
       select:
         {ch.kid_id,
          fragment(
-           "SUM(CASE WHEN ? IS NOT NULL THEN (0 - ?) WHEN ? IS NOT NULL THEN 0 ELSE ? END)",
+           "SUM(CASE WHEN ? IS NOT NULL THEN (0 - (? + COALESCE(?, 0) * COALESCE(?, 0))) WHEN ? IS NOT NULL THEN 0 ELSE (? + COALESCE(?, 0) * COALESCE(?, 0)) END)",
            c.failed_at,
            ch.points,
+           c.effort_count,
+           ch.unit_rate,
            c.undone_at,
-           ch.points
+           ch.points,
+           c.effort_count,
+           ch.unit_rate
          )}
     )
     |> Repo.all()
