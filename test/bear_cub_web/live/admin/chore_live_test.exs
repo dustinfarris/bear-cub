@@ -547,4 +547,148 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
                [existing_evening.id, updated.id]
     end
   end
+
+  describe "counted chore form (Story 03)" do
+    defp counted_chore_fixture(kid, attrs \\ %{}) do
+      chore_fixture(
+        kid,
+        Enum.into(attrs, %{
+          name: "Rake Leaves",
+          icon: "🍂",
+          routine: nil,
+          points: 5,
+          unit_rate: 2,
+          unit_max: 10
+        })
+      )
+    end
+
+    test "creating an extra chore, a parent can turn counting on and enter a rate and max (SC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      view
+      |> form("#chore-form", chore: %{name: "Rake Leaves", icon: "🍂", counts_units?: true})
+      |> render_change()
+
+      view
+      |> form("#chore-form", chore: %{unit_rate: "2", unit_max: "10"})
+      |> render_submit()
+
+      assert_redirect(view, ~p"/admin/chores?kid=#{kid_a.id}")
+
+      [created] = Chores.list_extras(kid_a, LocalTime.now() |> DateTime.to_date())
+      assert created.name == "Rake Leaves"
+      assert created.unit_rate == 2
+      assert created.unit_max == 10
+    end
+
+    test "the counting checkbox is hidden when the Morning + Add link forces the bucket (SC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+
+      refute has_element?(view, "input[name='chore[counts_units?]']")
+    end
+
+    test "the counting checkbox's visibility follows the Shows in select as it changes (SC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      assert html =~ ~s(name="chore[counts_units?]")
+
+      html =
+        view
+        |> form("#chore-form", chore: %{shows_in: "morning"})
+        |> render_change()
+
+      refute html =~ ~s(name="chore[counts_units?]")
+
+      html =
+        view
+        |> form("#chore-form", chore: %{shows_in: "extra_daily"})
+        |> render_change()
+
+      assert html =~ ~s(name="chore[counts_units?]")
+    end
+
+    test "checking Counts units reveals the per-unit rate and max fields (SC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      refute has_element?(view, "#chore_unit_rate")
+      refute has_element?(view, "#chore_unit_max")
+
+      view
+      |> form("#chore-form", chore: %{counts_units?: true})
+      |> render_change()
+
+      assert has_element?(view, "#chore_unit_rate")
+      assert has_element?(view, "#chore_unit_max")
+    end
+
+    test "checking Counts units relabels points as Base points (SC-1)",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+
+      refute has_element?(view, "label", "Base points")
+
+      view
+      |> form("#chore-form", chore: %{counts_units?: true})
+      |> render_change()
+
+      assert has_element?(view, "label", "Base points")
+    end
+
+    test "editing a counted chore shows its points, rate and max as read-only, with a fixed note (SC-4)",
+         %{conn: conn, kid_a: kid_a} do
+      chore = counted_chore_fixture(kid_a)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      refute has_element?(view, "input[name='chore[counts_units?]']")
+      refute has_element?(view, "#chore_points")
+      refute has_element?(view, "#chore_unit_rate")
+      assert has_element?(view, "#counted-chore-summary", "Points: 5")
+      assert has_element?(view, "#counted-chore-summary", "Per unit: 2")
+      assert has_element?(view, "#counted-chore-summary", "Max: 10")
+      assert has_element?(view, "#counted-chore-summary", "archive")
+    end
+
+    test "editing a flat chore is unchanged: no counting checkbox, points stays an ordinary input (SC-1, SC-4)",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Brush Teeth", icon: "🪥"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      refute has_element?(view, "input[name='chore[counts_units?]']")
+      refute has_element?(view, "#counted-chore-summary")
+      assert has_element?(view, "#chore_points")
+    end
+
+    test "a forged submit cannot change a counted chore's points, rate, max or counted status (SC-4)",
+         %{conn: conn, kid_a: kid_a} do
+      chore = counted_chore_fixture(kid_a)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      html =
+        render_submit(view, :save, %{
+          "chore" => %{
+            "name" => chore.name,
+            "icon" => chore.icon,
+            "points" => "99",
+            "unit_rate" => "99",
+            "unit_max" => "99",
+            "counts_units?" => "false"
+          }
+        })
+
+      assert html =~ "archive"
+
+      reloaded = Chores.get_chore!(chore.id)
+      assert reloaded.points == 5
+      assert reloaded.unit_rate == 2
+      assert reloaded.unit_max == 10
+    end
+  end
 end

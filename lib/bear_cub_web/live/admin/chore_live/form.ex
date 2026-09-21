@@ -84,6 +84,22 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     end
   end
 
+  defp counted?(%Chore{unit_rate: unit_rate}), do: !is_nil(unit_rate)
+
+  # The reveal follows the "Shows in" select on the form's existing
+  # phx-change="validate" pass — no new event needed.
+  defp show_counting_checkbox?(form) do
+    form[:shows_in].value in ~w(extra extra_daily)
+  end
+
+  defp counted_form?(form) do
+    Phoenix.HTML.Form.normalize_value("checkbox", form[:counts_units?].value)
+  end
+
+  defp points_label(form) do
+    if counted_form?(form), do: "Base points", else: "Points"
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -97,7 +113,27 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
         <.form for={@form} id="chore-form" phx-change="validate" phx-submit="save" class="space-y-2">
           <.input field={@form[:name]} type="text" label="Name" />
           <.input field={@form[:icon]} type="text" label="Icon (emoji)" placeholder="🪥" />
-          <.input field={@form[:points]} type="number" label="Points" />
+
+          <div
+            :if={@live_action == :edit && counted?(@chore)}
+            id="counted-chore-summary"
+            class="space-y-1 rounded-lg bg-base-200 p-3 text-sm"
+          >
+            <p>Points: <span class="font-semibold">{@chore.points}</span></p>
+            <p>Per unit: <span class="font-semibold">{@chore.unit_rate}</span></p>
+            <p>Max: <span class="font-semibold">{@chore.unit_max}</span></p>
+            <p class="text-base-content/60">
+              Fixed once created — archive this chore and create a new one to change them.
+            </p>
+          </div>
+
+          <.input
+            :if={!(@live_action == :edit && counted?(@chore))}
+            field={@form[:points]}
+            type="number"
+            label={points_label(@form)}
+          />
+
           <.input
             :if={@show_shows_in?}
             field={@form[:shows_in]}
@@ -110,6 +146,22 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
               {"After routines (repeats daily)", "extra_daily"}
             ]}
           />
+
+          <.input
+            :if={@live_action == :new && show_counting_checkbox?(@form)}
+            field={@form[:counts_units?]}
+            type="checkbox"
+            label="Counts units"
+          />
+
+          <div
+            :if={@live_action == :new && show_counting_checkbox?(@form) && counted_form?(@form)}
+            class="space-y-2"
+          >
+            <.input field={@form[:unit_rate]} type="number" label="Per unit" />
+            <.input field={@form[:unit_max]} type="number" label="Max" />
+          </div>
+
           <.input
             field={@form[:notify_on_complete?]}
             type="checkbox"
