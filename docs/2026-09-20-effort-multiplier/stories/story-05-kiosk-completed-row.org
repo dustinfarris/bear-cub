@@ -25,19 +25,59 @@ As a kid looking at the fridge after finishing my chores, I need a completed cou
 
 * Acceptance Criteria
 
-** [ ] A completed counted extra shows its count beside the chore's name, and its full earned value in the existing green chip (SC-2)
-** [ ] A failed counted extra shows its count beside the name, alongside the existing warning and the matching negative value (SC-2)
-** [ ] The count is rendered in the informational type, not the celebratory reward type (SC-2)
-** [ ] A pending counted extra looks exactly as a pending extra looks today, carrying no rate or maximum (SC-1)
-** [ ] A completed flat extra is unchanged, showing its green chip and no count (SC-1)
-** [ ] The count panel's treatment and the count beside the name are both recorded as rulings in ~docs/design-language.org~
+** [X] A completed counted extra shows its count beside the chore's name, and its full earned value in the existing green chip (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 19:57] \\
+  ~tag_counting/5~'s done-branch (~lib/bear_cub_web/live/kiosk_live.ex~) attaches ~effort_count~ and ~value~ (via ~Chores.extra_contribution/2~) to each extra row; the template renders ~×N~ beside the name and ~+{@value}~ in the chip. Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "a completed counted extra shows ×N beside its name, and its full earned value in the green chip (AC-1)" — points 2, unit_rate 3, effort_count 4 → ~#chore-effort-<id>~ shows "×4", ~#chore-earned-<id>~ shows "+14". Passing.
+:END:
+** [X] A failed counted extra shows its count beside the name, alongside the existing warning and the matching negative value (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 19:58] \\
+  New ~Chores.failed_completions/1~ (~lib/bear_cub/chores.ex~) reads the failed-and-not-redone row's own completion — invisible to ~current_completions/1~ since ~fail_chore/2~ stamps ~undone_at~ alongside ~failed_at~ — and ~tag_counting/5~'s failed-branch attaches the same ~effort_count~/~value~ pair from it. Verified by "a failed counted extra shows its count beside the name, alongside the warning and the matching negative value (AC-2)" — ~#chore-effort-<id>~ shows "×4", ~#chore-penalty-<id>~ shows "−14". Passing. ~failed_completions/1~ itself carries 5 dedicated tests in ~test/bear_cub/chores_test.exs~, all passing.
+:END:
+** [X] The count is rendered in the informational type, not the celebratory reward type (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 19:58] \\
+  The ~×N~ span carries ~text-lg font-medium~ plus a muted-opacity class (~text-white/70~ on a done row, ~text-base-content/50~ otherwise) and never ~font-reward~. Verified by "the count is rendered off the reward type (AC-3)": asserts the element exists and refutes ~#chore-effort-<id>.font-reward~. Passing.
+:END:
+** [X] A pending counted extra looks exactly as a pending extra looks today, carrying no rate or maximum (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 19:59] \\
+  ~tag_counting/5~'s pending clause always sets ~effort_count: nil, value: nil~; the rate/max markup only exists inside the ~@counting?~ (open-panel) branch from Story 04, never the plain pending row. Verified by "a pending counted extra carries no count, rate, or maximum (AC-4)": refutes ~#chore-effort-<id>~ on an untouched counted extra. Passing.
+:END:
+** [X] A completed flat extra is unchanged, showing its green chip and no count (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 19:59] \\
+  ~chore.points + (effort_count || 0) * (chore.unit_rate || 0)~ reduces to plain ~chore.points~ when both operands are nil (a flat chore), pointwise identical to the pre-story literal. Verified by "a completed flat extra is unchanged: its green chip shows and no count appears (AC-5)": ~#chore-earned-<id>~ shows "+12", ~#chore-effort-<id>~ absent. Passing, alongside the pre-existing "earned-value marking (Story 10, D54)" describe block (unmodified, still green).
+:END:
+** [X] The count panel's treatment and the count beside the name are both recorded as rulings in ~docs/design-language.org~
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 20:00] \\
+  Two new dated Rulings paragraphs appended: "Count panel on the extras' fixed neutral card [2026-09-20]" (crediting D111) and "The count beside a completed or failed extra's name [2026-09-20]" (crediting D112), plus an "Amended [2026-09-20]" clause on the pre-existing +N-chip ruling noting the formula now includes the effort multiplier. Cross-checked against the actual shipped code (~chore_card_style/5~'s extras branch) rather than the design's description, per this story's own Technical Notes.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 20:01] \\
+  All 6 ACs above are ~[X]~ with LOGBOOK evidence, independently confirmed by a ~story-verifier~ subagent reading the actual code and running each named test in isolation (~mix test test/bear_cub_web/live/kiosk_live_test.exs:2682 :2694 :2708 :2719 :2729~ → 5 passed; ~chores_test.exs:1997~ → 5 passed). ~done?~/~failed?~ confirmed mutually exclusive in ~build_rows/3~, so the two effort-attaching branches of ~tag_counting/5~ never double-fire on one row.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 20:01] \\
+  New ~describe "failed_completions/1 (Story 05)"~ block (5 tests) in ~test/bear_cub/chores_test.exs~, and new ~describe "kiosk completed row (Story 05)"~ block (5 tests, one per AC-1 through AC-5) in ~test/bear_cub_web/live/kiosk_live_test.exs~. Combined isolated run: ~mix test test/bear_cub/chores_test.exs test/bear_cub_web/live/kiosk_live_test.exs~ → 302 passed, 0 failures.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 20:02] \\
+  Only existing files touched, no proactive doc creation. HEEx conventions followed: ~class={[...]}~ list syntax, ~:if={@effort_count}~, unique DOM ids matching the existing ~#{@dom}-earned-~/~-penalty-~ pattern, ~<%!-- --%>~ comments. A stale comment referencing the pre-refactor ~tag_counting/3~ was corrected to ~tag_counting/5~ in the same diff. ~mix format --check-formatted~ clean. Verified independently by a ~story-verifier~ subagent, including a from-scratch recompile to rule out cached-compile false negatives on ~--warnings-as-errors~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 20:02] \\
+  Repo declares ~Verify command: mix precommit~ (CLAUDE.md). Ran clean: exit 0, ~compile --warnings-as-errors~ no warnings (confirmed from a from-scratch recompile too), ~deps.unlock --unused~ and ~format~ made no changes (~git diff mix.lock~ empty), ~test~ → 689 passed, 0 failures. (Interleaved ~cannot find mock/stub BearCub.Notifications~ lines are pre-existing async noise from unrelated tests, not failures — a known repo characteristic, not introduced by this story.)
+:END:
 
 * Technical Notes
 
