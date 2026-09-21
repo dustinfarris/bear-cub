@@ -18,6 +18,7 @@ defmodule BearCub.Dev.Scenarios do
 
       BearCub.Dev.Scenarios.early_bird()
       BearCub.Dev.Scenarios.midway()         # stake bar half filled, done rows sunk
+      BearCub.Dev.Scenarios.effort()         # a counted extra ready to tap, another done at x8
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
       BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
       BearCub.Dev.Scenarios.reset()
@@ -82,6 +83,38 @@ defmodule BearCub.Dev.Scenarios do
     end
 
     kids
+  end
+
+  @doc """
+  Both kids' mornings are otherwise done (band showing, extras revealed),
+  each holding one counted extra: `pending`'s is untouched, ready to tap
+  open in the browser — the panel itself is ephemeral kiosk state (Story
+  04, `counting`) and cannot be staged server-side, only its data can;
+  `done`'s is already completed at `x8`. Returns `%{pending: kid, done:
+  kid}`.
+  """
+  def effort(%DateTime{} = local_now \\ LocalTime.now()) do
+    [pending, done | _] = reset(local_now)
+
+    for kid <- [pending, done],
+        chore <- Chores.list_chores(kid, "morning") do
+      {:ok, _} = Chores.complete_chore(chore, local_now, "kiosk")
+    end
+
+    counted_attrs = %{
+      name: "Chess Puzzle",
+      icon: "♟️",
+      routine: nil,
+      points: 2,
+      unit_rate: 1,
+      unit_max: 20
+    }
+
+    {:ok, _} = Chores.create_chore(pending, counted_attrs, local_now)
+    {:ok, done_chore} = Chores.create_chore(done, counted_attrs, local_now)
+    {:ok, _} = Chores.complete_chore(done_chore, local_now, "kiosk", 8)
+
+    %{pending: pending, done: done}
   end
 
   @doc """

@@ -2458,4 +2458,212 @@ defmodule BearCubWeb.KioskLiveTest do
              )
     end
   end
+
+  describe "kiosk count panel (Story 04)" do
+    alias BearCub.Chores
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      %{kid: kid}
+    end
+
+    defp counted_extra_fixture(kid, attrs \\ %{}) do
+      chore_fixture(
+        kid,
+        Enum.into(attrs, %{
+          name: "Chess Puzzle",
+          icon: "♟️",
+          routine: nil,
+          points: 2,
+          unit_rate: 1,
+          unit_max: 10
+        })
+      )
+    end
+
+    # Completes this kid's morning routine so the band (and its extras)
+    # reveal, mirroring the "collapse band..." describe block's setup.
+    defp reveal_band(kid) do
+      morning_active()
+      now = LocalTime.now()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, now, "kiosk")
+    end
+
+    test "tapping a pending counted extra opens a count panel instead of completing it (AC-1)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+      assert has_element?(view, "#count-confirm-#{extra.id}")
+      assert has_element?(view, "#count-value-#{extra.id}", "1")
+    end
+
+    test "the stepper moves the count within 1..unit_max and clamps at both ends (AC-2, AC-3)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{unit_max: 3})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      view |> element("#count-dec-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-value-#{extra.id}", "1")
+
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-value-#{extra.id}", "3")
+
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-value-#{extra.id}", "3")
+    end
+
+    test "the slider sets the count directly, clamped server-side (AC-2)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      view |> element("#count-form-#{extra.id}") |> render_change(%{"count" => "6"})
+      assert has_element?(view, "#count-value-#{extra.id}", "6")
+
+      view |> element("#count-form-#{extra.id}") |> render_change(%{"count" => "999"})
+      assert has_element?(view, "#count-value-#{extra.id}", "10")
+    end
+
+    test "a malformed slider value is a harmless no-op, not a crash",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      view |> element("#count-form-#{extra.id}") |> render_change(%{"count" => ""})
+
+      assert has_element?(view, "#count-value-#{extra.id}", "1")
+    end
+
+    test "the confirm button shows the live payout and it changes with the count (AC-4)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-confirm-#{extra.id}", "+5")
+
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-confirm-#{extra.id}", "+8")
+    end
+
+    test "confirming completes the chore with the chosen count and awards base plus count times rate, with no approval step (AC-5)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-confirm-#{extra.id}") |> render_click()
+
+      assert has_element?(view, "#chore-#{extra.id}[data-done]")
+      refute has_element?(view, "#count-confirm-#{extra.id}")
+
+      completion = Chores.current_completions(DateTime.to_date(LocalTime.now()))[extra.id]
+      assert completion.effort_count == 3
+      assert completion.source == "kiosk"
+    end
+
+    test "cancelling closes the panel and leaves the chore pending, recording nothing (AC-6)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-cancel-#{extra.id}") |> render_click()
+
+      refute has_element?(view, "#count-confirm-#{extra.id}")
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+      refute Map.has_key?(Chores.current_completions(DateTime.to_date(LocalTime.now())), extra.id)
+    end
+
+    test "opening a second counted extra closes the first without completing it (AC-7)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      first = counted_extra_fixture(kid, %{name: "Chess Puzzle"})
+      second = counted_extra_fixture(kid, %{name: "Piano Practice", icon: "🎹"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{first.id}") |> render_click()
+      assert has_element?(view, "#count-confirm-#{first.id}")
+
+      view |> element("#chore-#{second.id}") |> render_click()
+
+      refute has_element?(view, "#count-confirm-#{first.id}")
+      assert has_element?(view, "#count-confirm-#{second.id}")
+      refute has_element?(view, "#chore-#{first.id}[data-done]")
+    end
+
+    test "undoing a completed counted extra takes a single tap, and completing it again asks for a fresh count (AC-8)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 1, unit_max: 10})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-confirm-#{extra.id}") |> render_click()
+      assert has_element?(view, "#chore-#{extra.id}[data-done]")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-value-#{extra.id}", "1")
+    end
+
+    test "flat extras still complete and undo on a single tap, with no panel (AC-9)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = chore_fixture(kid, %{name: "Wash Car", icon: "🚗", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#chore-#{extra.id}[data-done]")
+      refute has_element?(view, "#count-confirm-#{extra.id}")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+    end
+
+    test "the panel clears at a boundary re-render",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#count-confirm-#{extra.id}")
+
+      send(view.pid, :boundary)
+
+      refute has_element?(view, "#count-confirm-#{extra.id}")
+    end
+  end
 end

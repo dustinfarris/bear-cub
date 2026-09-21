@@ -64,6 +64,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:just_risen, nil)
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
+     |> assign(:counting, %{})
      |> load(now)
      |> schedule_boundary(now)}
   end
@@ -78,28 +79,92 @@ defmodule BearCubWeb.KioskLive do
         {:noreply, load(socket, now)}
 
       chore ->
-        if Map.has_key?(socket.assigns.completions, chore.id) do
-          case Chores.undo_chore(chore, now) do
-            # The undone completion is the rise's marker: its chore id names
-            # the row that grows back into its slot, and its timestamp is
-            # where the ghost sits in the done stack (that completion is
-            # gone from `completions` by the time `load/2` runs). Held in
-            # an assign because the write's own `:chores_changed` echo
-            # re-renders right behind this tap and must still carry it —
-            # unlike the sink, no timer separates the tap from the echo.
-            {:ok, completion} ->
-              {:noreply, socket |> assign(:just_risen, completion) |> load(now)}
+        cond do
+          Map.has_key?(socket.assigns.completions, chore.id) ->
+            case Chores.undo_chore(chore, now) do
+              # The undone completion is the rise's marker: its chore id names
+              # the row that grows back into its slot, and its timestamp is
+              # where the ghost sits in the done stack (that completion is
+              # gone from `completions` by the time `load/2` runs). Held in
+              # an assign because the write's own `:chores_changed` echo
+              # re-renders right behind this tap and must still carry it —
+              # unlike the sink, no timer separates the tap from the echo.
+              {:ok, completion} ->
+                {:noreply, socket |> assign(:just_risen, completion) |> load(now)}
 
-            # another surface undid it first — no-op
-            {:error, :not_completed} ->
-              {:noreply, load(socket, now)}
-          end
-        else
-          # a racing double-complete hits the partial unique index — already done
-          Chores.complete_chore(chore, now, "kiosk")
-          {:noreply, socket |> settle_later(chore.id) |> load(now)}
+              # another surface undid it first — no-op
+              {:error, :not_completed} ->
+                {:noreply, load(socket, now)}
+            end
+
+          # A pending counted extra opens the count panel instead of
+          # completing outright (Story 04): the tap that would otherwise
+          # complete a flat chore instead seeds a fresh entry (always 1,
+          # never a prior count) for this kid, replacing any other open
+          # panel of theirs — one panel per kid at a time (D-Story04).
+          counted?(chore) ->
+            counting =
+              Map.put(socket.assigns.counting, chore.kid_id, %{chore_id: chore.id, count: 1})
+
+            {:noreply, socket |> assign(:counting, counting) |> load(now)}
+
+          true ->
+            # a racing double-complete hits the partial unique index — already done
+            Chores.complete_chore(chore, now, "kiosk")
+            {:noreply, socket |> settle_later(chore.id) |> load(now)}
         end
     end
+  end
+
+  # Server-side clamp (Story 04): a forged event can never push the count
+  # outside 1..unit_max, and the changeset bound on confirm refuses it
+  # again if it somehow does.
+  def handle_event("count-step", %{"kid-id" => kid_id, "dir" => dir}, socket) do
+    delta = if dir == "inc", do: 1, else: -1
+    counting = step_count(socket, String.to_integer(kid_id), delta)
+    {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
+  end
+
+  # The slider lives in its own `<form phx-change="count-set">` (Technical
+  # Notes: a bare element has no phx-change) wrapping only the slider —
+  # the stepper and confirm are ordinary buttons outside it.
+  def handle_event("count-set", %{"kid-id" => kid_id, "count" => count}, socket) do
+    kid_id = String.to_integer(kid_id)
+
+    case Integer.parse(count) do
+      {count, _} ->
+        counting = set_count(socket, kid_id, count)
+        {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
+
+      # malformed input (only reachable via a forged event) — a harmless no-op
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("count-confirm", %{"kid-id" => kid_id}, socket) do
+    now = LocalTime.now()
+    kid_id = String.to_integer(kid_id)
+
+    case Map.fetch(socket.assigns.counting, kid_id) do
+      {:ok, %{chore_id: chore_id, count: count}} ->
+        case Chores.get_chore(chore_id) do
+          nil -> :ok
+          chore -> Chores.complete_chore(chore, now, "kiosk", count)
+        end
+
+      :error ->
+        :ok
+    end
+
+    counting = Map.delete(socket.assigns.counting, kid_id)
+    {:noreply, socket |> assign(:counting, counting) |> load(now)}
+  end
+
+  def handle_event("count-cancel", %{"kid-id" => kid_id}, socket) do
+    kid_id = String.to_integer(kid_id)
+    counting = Map.delete(socket.assigns.counting, kid_id)
+    {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
   end
 
   # Manual re-expand (state 4, D34): ephemeral, assign-level, never persisted.
@@ -196,6 +261,36 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, now)}
   end
 
+  defp counted?(%Chores.Chore{unit_rate: unit_rate}), do: not is_nil(unit_rate)
+
+  defp step_count(socket, kid_id, delta) do
+    update_count(socket, kid_id, fn count, _chore -> count + delta end)
+  end
+
+  defp set_count(socket, kid_id, count) do
+    update_count(socket, kid_id, fn _count, _chore -> count end)
+  end
+
+  # `unit_max` is always read fresh from the DB, never trusted from the
+  # client — the same server-side clamp both the stepper and the slider
+  # share.
+  defp update_count(socket, kid_id, next_count) do
+    case Map.fetch(socket.assigns.counting, kid_id) do
+      {:ok, %{chore_id: chore_id, count: count} = entry} ->
+        case Chores.get_chore(chore_id) do
+          nil ->
+            socket.assigns.counting
+
+          chore ->
+            clamped = next_count.(count, chore) |> max(1) |> min(chore.unit_max)
+            Map.put(socket.assigns.counting, kid_id, %{entry | count: clamped})
+        end
+
+      :error ->
+        socket.assigns.counting
+    end
+  end
+
   # The kiosk's own undo comes back as this broadcast a moment after the
   # tap rendered it; this render still carries the rise marker (dropping
   # it here would strip the animation mid-play) and is where it is spent.
@@ -227,6 +322,7 @@ defmodule BearCubWeb.KioskLive do
       socket
       |> cancel_all_rewards_idle_timers()
       |> assign(:rewards, MapSet.new())
+      |> assign(:counting, %{})
       |> load(now)
       |> schedule_boundary(now)
 
@@ -298,6 +394,7 @@ defmodule BearCubWeb.KioskLive do
     settling = socket.assigns.settling
     rewards = socket.assigns.rewards
     just_risen = socket.assigns.just_risen
+    counting = socket.assigns.counting
 
     {columns, pending_collapse} =
       Enum.map_reduce(Chores.list_kids(), pending_collapse, fn kid, pending_collapse ->
@@ -313,6 +410,7 @@ defmodule BearCubWeb.KioskLive do
           pending_collapse,
           settling,
           rewards,
+          counting,
           just_sunk,
           just_risen
         )
@@ -336,12 +434,27 @@ defmodule BearCubWeb.KioskLive do
       |> MapSet.new()
       |> MapSet.intersection(expanded)
 
+    # Count panel clearing (Story 04): a kid's entry survives only while
+    # its chore is still an open pending counted extra for them — dropped
+    # the moment it's archived from admin, completed from another surface,
+    # or the window closes (extras render empty at night and outside the
+    # band), all of which fall out of `tag_counting/3` already having said
+    # so on that kid's own extras this pass.
+    still_counting =
+      counting
+      |> Enum.filter(fn {kid_id, _entry} ->
+        column = Enum.find(columns, &(&1.kid.id == kid_id))
+        column != nil and Enum.any?(column.extras, & &1.counting?)
+      end)
+      |> Map.new()
+
     assign(socket,
       columns: columns,
       completions: completions,
       expanded: still_expanded,
       night?: night?,
       pending_collapse: pending_collapse,
+      counting: still_counting,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
   end
@@ -358,6 +471,7 @@ defmodule BearCubWeb.KioskLive do
          pending_collapse,
          settling,
          rewards,
+         counting,
          just_sunk,
          just_risen
        ) do
@@ -427,7 +541,9 @@ defmodule BearCubWeb.KioskLive do
 
     extras =
       if state == :band and auto == :morning do
-        build_rows(Chores.list_extras(kid, today), completions, failed_ids)
+        Chores.list_extras(kid, today)
+        |> build_rows(completions, failed_ids)
+        |> Enum.map(&tag_counting(&1, kid.id, counting))
       else
         []
       end
@@ -498,6 +614,25 @@ defmodule BearCubWeb.KioskLive do
     for chore <- chores do
       done? = Map.has_key?(completions, chore.id)
       %{chore: chore, done?: done?, failed?: not done? and MapSet.member?(failed_ids, chore.id)}
+    end
+  end
+
+  # Tags an extra row with this kid's open count panel, if any (Story 04).
+  # A done row is never tagged even when its chore id still matches a
+  # stale `counting` entry — the panel belongs to the pending tap only,
+  # never to a chore completed from elsewhere in the meantime — which is
+  # also what `load/2`'s `still_counting` filter reads back to drop that
+  # entry for good.
+  defp tag_counting(%{done?: true} = row, _kid_id, _counting),
+    do: Map.merge(row, %{counting?: false, count: nil})
+
+  defp tag_counting(row, kid_id, counting) do
+    case Map.get(counting, kid_id) do
+      %{chore_id: chore_id, count: count} when chore_id == row.chore.id ->
+        Map.merge(row, %{counting?: true, count: count})
+
+      _ ->
+        Map.merge(row, %{counting?: false, count: nil})
     end
   end
 
@@ -980,13 +1115,18 @@ defmodule BearCubWeb.KioskLive do
               class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
             >
               <.chore_row
-                :for={%{chore: chore, done?: done?, failed?: failed?} <- extras}
+                :for={
+                  %{chore: chore, done?: done?, failed?: failed?, counting?: counting?, count: count} <-
+                    extras
+                }
                 chore={chore}
                 done?={done?}
                 failed?={failed?}
                 kid={kid}
                 routine={routine}
                 extra?={true}
+                counting?={counting?}
+                count={count}
               />
             </ul>
           </div>
@@ -1093,6 +1233,13 @@ defmodule BearCubWeb.KioskLive do
   # time.
   attr :grow?, :boolean, default: false
   attr :ghost?, :boolean, default: false
+  # The count panel (Story 04): only ever true for a pending counted
+  # extra. While set, the row carries no `phx-click` of its own at all —
+  # the structural trap named in the design: a slider drag or ±tap inside
+  # an `<li phx-click="toggle-chore">` would otherwise bubble into a
+  # completion.
+  attr :counting?, :boolean, default: false
+  attr :count, :integer, default: nil
 
   # Shared row markup for both routine chores and extras (D34 technical
   # notes: extras are chores, so this is the same tappable row) — extras
@@ -1111,12 +1258,17 @@ defmodule BearCubWeb.KioskLive do
       id={"#{@dom}-#{@chore.id}"}
       data-done={@done?}
       data-failed={@failed?}
-      phx-click={not @ghost? && "toggle-chore"}
+      data-counting={@counting?}
+      phx-click={(not @ghost? and not @counting?) && "toggle-chore"}
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
       class={
         [
-          "flex cursor-pointer select-none items-center gap-4 overflow-hidden transition-all active:scale-[0.97]",
+          "select-none overflow-hidden transition-all",
+          if(@counting?,
+            do: "flex flex-col items-stretch gap-3 py-4",
+            else: "flex cursor-pointer items-center gap-4 active:scale-[0.97]"
+          ),
           # Move animation (D107), sink and rise alike: the real row grows
           # open from height 0 in its new stack, pushing the rows beneath
           # it down, while its ghost collapses in the place it left. The
@@ -1140,6 +1292,9 @@ defmodule BearCubWeb.KioskLive do
             # between consecutive done rows (D105). The rise ghost collapses
             # in this look.
             @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
+            # Count panel (Story 04): the row expands to hold it, in place —
+            # same ownership border as the pending extra it replaces.
+            @counting? -> "rounded-xl border-l-[length:var(--child-border-width)] px-6"
             # Pending extra: the fixed neutral card with the child-color
             # ownership border (docs/design-language.org).
             @extra? -> "h-24 border-l-[length:var(--child-border-width)] px-6"
@@ -1150,53 +1305,126 @@ defmodule BearCubWeb.KioskLive do
       }
       style={chore_card_style(@done?, @extra?, @slot?, @routine, @kid.color)}
     >
-      <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
-      <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>
-        {@chore.name}
-      </span>
-      <span
-        :if={@done? and @extra?}
-        id={"#{@dom}-earned-#{@chore.id}"}
-        class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-reward font-black text-success-content drop-shadow-sm"
-      >
-        +{@chore.points}
-      </span>
-      <%!-- Circled check (D105): a white disc carrying the check in the
-           kid's own color — it reads as "earned", not as a target, which is
-           also why a pending row has nothing in this column. --%>
-      <span
-        :if={@done?}
-        id={"#{@dom}-check-#{@chore.id}"}
-        class={
-          [
-            "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
-            not @extra? && "ml-auto",
-            # The disc springs in as the just-sunk row grows open — moved
-            # there from D106's hold once the beat got shorter than the
-            # pop — and only then: a done row at page load or after a
-            # reconnect is a re-inserted element, and re-popping below the
-            # fold is noise. The ghost is a new element too, mid-collapse:
-            # no re-pop.
-            @grow? && "animate-pop"
-          ]
-        }
-        style={"color: #{@kid.color}"}
-      >
-        <.icon name="hero-check" class="size-6" />
-      </span>
-      <.icon
-        :if={@failed? and not @extra?}
-        name="hero-exclamation-triangle"
-        class="ml-auto size-10 text-warning"
-      />
-      <span
-        :if={@failed? and @extra?}
-        id={"#{@dom}-penalty-#{@chore.id}"}
-        class="ml-auto flex items-center gap-2 text-warning"
-      >
-        <.icon name="hero-exclamation-triangle" class="size-8" />
-        <span class="font-reward text-2xl font-black">−{@chore.points}</span>
-      </span>
+      <%= if @counting? do %>
+        <div class="flex items-center gap-4">
+          <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
+          <span class="text-2xl font-bold">{@chore.name}</span>
+        </div>
+        <form
+          id={"count-form-#{@chore.id}"}
+          phx-change="count-set"
+          phx-value-kid-id={@kid.id}
+        >
+          <input
+            type="range"
+            name="count"
+            min="1"
+            max={@chore.unit_max}
+            value={@count}
+            class="w-full"
+          />
+        </form>
+        <div class="flex items-center justify-center gap-6">
+          <button
+            type="button"
+            id={"count-dec-#{@chore.id}"}
+            phx-click="count-step"
+            phx-value-kid-id={@kid.id}
+            phx-value-dir="dec"
+            class={[
+              "flex size-12 items-center justify-center rounded-full bg-base-300 text-2xl font-black",
+              @count <= 1 && "opacity-30"
+            ]}
+          >
+            −
+          </button>
+          <span id={"count-value-#{@chore.id}"} class="min-w-[3ch] text-center text-4xl font-black">
+            {@count}
+          </span>
+          <button
+            type="button"
+            id={"count-inc-#{@chore.id}"}
+            phx-click="count-step"
+            phx-value-kid-id={@kid.id}
+            phx-value-dir="inc"
+            class={[
+              "flex size-12 items-center justify-center rounded-full bg-base-300 text-2xl font-black",
+              @count >= @chore.unit_max && "opacity-30"
+            ]}
+          >
+            +
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            id={"count-cancel-#{@chore.id}"}
+            phx-click="count-cancel"
+            phx-value-kid-id={@kid.id}
+            class="flex size-10 items-center justify-center rounded-full bg-base-300/70 text-xl"
+          >
+            ✕
+          </button>
+          <button
+            type="button"
+            id={"count-confirm-#{@chore.id}"}
+            phx-click="count-confirm"
+            phx-value-kid-id={@kid.id}
+            phx-throttle="1000"
+            class="flex flex-1 items-center justify-center gap-2 rounded-full bg-success px-4 py-2 font-reward text-xl font-black text-success-content"
+          >
+            +{@chore.points + @count * @chore.unit_rate}
+          </button>
+        </div>
+      <% else %>
+        <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
+        <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>
+          {@chore.name}
+        </span>
+        <span
+          :if={@done? and @extra?}
+          id={"#{@dom}-earned-#{@chore.id}"}
+          class="ml-auto flex items-center rounded-full bg-success px-3 py-1 font-reward font-black text-success-content drop-shadow-sm"
+        >
+          +{@chore.points}
+        </span>
+        <%!-- Circled check (D105): a white disc carrying the check in the
+             kid's own color — it reads as "earned", not as a target, which is
+             also why a pending row has nothing in this column. --%>
+        <span
+          :if={@done?}
+          id={"#{@dom}-check-#{@chore.id}"}
+          class={
+            [
+              "flex size-9 shrink-0 items-center justify-center rounded-full bg-white drop-shadow-sm",
+              not @extra? && "ml-auto",
+              # The disc springs in as the just-sunk row grows open — moved
+              # there from D106's hold once the beat got shorter than the
+              # pop — and only then: a done row at page load or after a
+              # reconnect is a re-inserted element, and re-popping below the
+              # fold is noise. The ghost is a new element too, mid-collapse:
+              # no re-pop.
+              @grow? && "animate-pop"
+            ]
+          }
+          style={"color: #{@kid.color}"}
+        >
+          <.icon name="hero-check" class="size-6" />
+        </span>
+        <.icon
+          :if={@failed? and not @extra?}
+          name="hero-exclamation-triangle"
+          class="ml-auto size-10 text-warning"
+        />
+        <span
+          :if={@failed? and @extra?}
+          id={"#{@dom}-penalty-#{@chore.id}"}
+          class="ml-auto flex items-center gap-2 text-warning"
+        >
+          <.icon name="hero-exclamation-triangle" class="size-8" />
+          <span class="font-reward text-2xl font-black">−{@chore.points}</span>
+        </span>
+      <% end %>
     </li>
     """
   end
