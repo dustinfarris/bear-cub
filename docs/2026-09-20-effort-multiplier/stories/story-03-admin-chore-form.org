@@ -43,19 +43,59 @@ As a parent, I need to mark an extra chore as counted when I create it and give 
 
 * Acceptance Criteria
 
-** [ ] When creating an extra chore, a parent can turn counting on and enter a per-unit rate and a maximum count (SC-1)
-** [ ] The counting control is offered only when the chore is being filed as an extra, one-off or repeating, and not when it is being filed into a routine (SC-1)
-** [ ] With counting on, the points field reads as the base rather than as the whole payout (SC-1)
-** [ ] Editing a counted chore shows its points, rate and maximum as read-only, under a line saying they are fixed and that changing them means archiving this chore and creating a new one (SC-4)
-** [ ] Editing a flat chore is unchanged from today, and offers no way to turn counting on (SC-1, SC-4)
-** [ ] A submission that tries to change a counted chore's points, rate or maximum is refused even when it does not come from the form (SC-4)
+** [X] When creating an extra chore, a parent can turn counting on and enter a per-unit rate and a maximum count (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by ~test/bear_cub_web/live/admin/chore_live_test.exs~ "creating an extra chore, a parent can turn counting on and enter a rate and max (SC-1)" (line 566): checks the ~counts_units?~ checkbox via ~render_change/1~, fills ~unit_rate~/~unit_max~, submits, and asserts the created chore's ~unit_rate == 2~ and ~unit_max == 10~. Implementation: ~BearCubWeb.Admin.ChoreLive.Form~'s render clause rendering ~@form[:counts_units?]~ and, when checked, ~@form[:unit_rate]~/~@form[:unit_max]~ (form.ex:150-163). Also confirmed by hand in the running dev server (kid=1 "Solve Puzzles" chore, points 5 / rate 2 / max 10, created and archived after the check).
+:END:
+** [X] The counting control is offered only when the chore is being filed as an extra, one-off or repeating, and not when it is being filed into a routine (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by three tests in the same file: "the counting checkbox is hidden when the Morning + Add link forces the bucket (SC-1)" (line 588) and "the counting checkbox's visibility follows the Shows in select as it changes (SC-1)" (line 593), which switches the Shows in select between =morning=, =extra_daily= and back, asserting the checkbox appears/disappears each time. Implementation: ~show_counting_checkbox?/1~ (form.ex, gates on ~form[:shows_in].value in ~w(extra extra_daily)~), combined with the ~@live_action == :new~ guard on the checkbox's ~:if~.
+:END:
+** [X] With counting on, the points field reads as the base rather than as the whole payout (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by "checking Counts units relabels points as Base points (SC-1)" (line 629): asserts no "Base points" label pre-check, then asserts it appears after checking ~counts_units?~ via ~render_change/1~. Implementation: ~points_label/1~ (form.ex), driving the ~<.input field={@form[:points]} label={points_label(@form)}>~ call.
+:END:
+** [X] Editing a counted chore shows its points, rate and maximum as read-only, under a line saying they are fixed and that changing them means archiving this chore and creating a new one (SC-4)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by "editing a counted chore shows its points, rate and max as read-only, with a fixed note (SC-4)" (line 642): refutes the counting checkbox, the ~#chore_points~ input and ~#chore_unit_rate~ are all absent, and asserts the ~#counted-chore-summary~ block's text includes "Points: 5", "Per unit: 2", "Max: 10" and "archive". Implementation: the read-only ~<div id="counted-chore-summary">~ block (form.ex:117-128), gated on ~@live_action == :edit && counted?(@chore)~. Confirmed by hand in the running dev server (Edit Chore page for the counted "Solve Puzzles" chore rendered exactly this block, no editable rate/max/points inputs).
+:END:
+** [X] Editing a flat chore is unchanged from today, and offers no way to turn counting on (SC-1, SC-4)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by "editing a flat chore is unchanged: no counting checkbox, points stays an ordinary input (SC-1, SC-4)" (line 656): refutes the checkbox and the summary block, asserts ~#chore_points~ (the ordinary editable input) is present. All pre-existing flat-chore edit tests in the "form" describe block above (points, notify, archive, shows_in reclassification) were left untouched and still pass.
+:END:
+** [X] A submission that tries to change a counted chore's points, rate or maximum is refused even when it does not come from the form (SC-4)
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:20] \\
+  Verified by "a forged submit cannot change a counted chore's points, rate, max or counted status (SC-4)" (line 667): a raw ~render_submit(view, :save, %{"chore" => %{"points" => "99", "unit_rate" => "99", "unit_max" => "99", "counts_units?" => "false"}})~ against the edit LiveView, reloading the chore afterward and asserting ~points == 5~, ~unit_rate == 2~, ~unit_max == 10~ (unchanged). The primary mechanism is Story 01's ~check_immutability_locks/2~ (chore.ex:181-205); this story's job was the LiveView-level proof that a forged raw event (bypassing the form entirely) still hits that lock. Story-verifier subagent flagged the accompanying ~html =~ "archive"~ line as weak on its own (the Archive button always renders), but judged the AC soundly met on the DB-reload assertions alone.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:24] \\
+  All 6 Acceptance Criteria checkboxes above are ~[X]~, each with its own LOGBOOK entry citing a specific test and implementation function. A DoD-verification subagent independently re-checked every citation (test names, line numbers, implementation locations) against the live files rather than trusting the AC-pass LOGBOOK text.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:24] \\
+  ~mix test test/bear_cub_web/live/admin/chore_live_test.exs~ → 42 passed, 0 failures, including all 8 new tests in the "counted chore form (Story 03)" describe block and all 34 pre-existing tests in the file (no regression). Verified independently by a DoD-verification subagent.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:24] \\
+  Spot-checked against CLAUDE.md and ~.claude/rules/phoenix.md~ by a DoD-verification subagent: ~form[:field]~ access is the documented ~Phoenix.HTML.Form~ idiom, not forbidden struct map-access; ~counted_form?/1~'s ~Phoenix.HTML.Form.normalize_value("checkbox", ...)~ matches the existing pattern in ~core_components.ex:210~; predicate names (~counted?/1~, ~show_counting_checkbox?/1~, ~counted_form?/1~) end in ~?~ per convention; all template conditionals use ~:if={...}~ with ~{...}~ interpolation, no raw ~<%= %>~ misuse. ~mix format --check-formatted~ clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-20 Sun 17:24] \\
+  ~mix precommit~ (~compile --warnings-as-errors~, ~deps.unlock --unused~, ~format~, ~test~) → exit 0, ~Result: 668 passed~, 0 failures, 0 compiler warnings, no formatting diffs. Verified independently by a DoD-verification subagent running the command fresh rather than from a cached result.
+:END:
 
 * Technical Notes
 
