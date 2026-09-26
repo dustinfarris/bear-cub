@@ -39,3 +39,16 @@ npm-debug.log
 *.db
 *.db-*
 
+
+# /design-sync (Claude Design): staged converter scripts and their deps,
+# regenerated build output, machine-local state, and the stub package's
+# generated files (.design-sync/build.mjs writes them from compiled CSS
+# and docs/design-language.org — never edit or commit them).
+/.ds-sync/
+/ds-bundle/
+/.design-sync/.cache/
+/.design-sync/learnings/
+/.design-sync/node_modules
+/.design-sync/pkg/styles.css
+/.design-sync/pkg/fonts.css
+/.design-sync/pkg/guides/

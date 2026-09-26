@@ -1,0 +1,8 @@
+{
+  "name": "bear-cub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stub package for /design-sync: Bear Cub is Phoenix LiveView, not React, so this syncs tokens, fonts and guidelines only. styles.css is generated (see buildCmd in ../config.json), never edited.",
+  "type": "module",
+  "main": "index.js"
+}

@@ -1,0 +1,12 @@
+{
+  "projectId": "a02ed3bd-86de-4e06-b26a-0ef6da48434a",
+  "shape": "package",
+  "pkg": "bear-cub",
+  "globalName": "BearCub",
+  "buildCmd": "mix tailwind bear_cub && node .design-sync/build.mjs",
+  "cssEntry": "styles.css",
+  "extraFonts": [
+    "fonts.css"
+  ],
+  "readmeHeader": ".design-sync/conventions.md"
+}
