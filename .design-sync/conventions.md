@@ -15,11 +15,11 @@ Link `styles.css` once. No provider, no wrapper. Light theme is the default and 
 | Routine = time of day | `var(--routine-morning)` `var(--routine-evening)` (+ `-content`) |
 | Pending within a routine | `var(--routine-morning-tint)` `var(--routine-evening-tint)` |
 | Outline of a routine (dashed slot, empty segment) | `var(--routine-morning-edge)` `var(--routine-evening-edge)` |
-| Earned something (the one reward color) | `bg-success` `text-success-content` `text-success` `ring-success`, `var(--paid-tint)` `var(--paid-edge)` |
+| Earned something (the one reward color) | `bg-success` `text-success-content` `text-success` `ring-success`, `var(--paid-tint)` `var(--paid-edge)` `var(--paid-content)` |
 | Penalty / failed | `bg-warning` `text-warning-content` `text-warning`; declined = `text-error` |
-| Extras and reward cards: fixed neutral surface | `var(--extra-card-background)` `var(--extra-card-content)` |
+| Reward cards: fixed neutral surface; extras' text color | `var(--extra-card-background)` `var(--extra-card-content)` |
 | Controls on an extra's surface (stepper discs) | `var(--extra-card-control)` |
-| Ownership border on a pending extra | `border-l-[length:var(--child-border-width)]` + the kid's color |
+| Pending extra (and open count panel) ground / edge | the kid's color at 12% / 45% mixed in oklab into `var(--color-base-100)` |
 | Surfaces / text | `bg-base-100` `bg-base-300` `text-base-content/40` `text-base-content/60` |
 | Unavailable | `opacity-45` plus a glyph — never a second surface color |
 
@@ -38,8 +38,8 @@ Full text and rationale: `guidelines/guides/design-language.md` — read it befo
 - Pre-reader first: signal with color, scale, count and glyph. The kids' banner carries one word (`EARLY`); the stake bar and standing band carry none.
 - Routine chores never show a per-chore number; a routine pays one `+R`. Only extras carry `+N` / `−N` chips.
 - Pending routine row = dashed slot, whole `h-24` row is the tap target, nothing in the right column. Done row = kid-color fill, `h-20`, white disc with the check in the kid's color; done rows sink below pending ones.
-- Extras (optional chores, shown once the morning routine is done) sit in a `gap-2 p-2.5` group. Pending extra = neutral card, `h-24 rounded-xl`, kid-color ownership border on the left. Done extra = kid-color `h-20` row with `×N` (if counted), the `+N` chip and the check disc; it keeps its authored place and does not sink.
-- A counted extra opens a panel in its own row: name on the left, `−` count `+` on the right (`size-16` discs, count on the default sans), a full-width `h-20 rounded-xl bg-success` button below showing `+N` only. Tapping the name closes it. No slider, no ✕.
+- Extras (optional chores, shown once the morning routine is done) sit in a `gap-2 p-2.5` group. Pending extra = dashed slot in the kid's color, `h-24 rounded-xl border-[3px] border-dashed`, no ownership border. Done extras rise to the top as one joined kid-color mass (`h-20` rows, `border-white/35` hairlines, `rounded-xl` outer corners), newest first, each with `×N` (if counted), the `+N` chip and the check disc; an undo returns the row to its authored place.
+- A counted extra opens a panel in its own row: name on the left, `−` count `+` on the right (`size-16` discs, count on the default sans), a full-width `h-20 rounded-xl` button below showing `+N` only — soft green (`--paid-tint`, `--paid-edge`, `--paid-content`) at rest, solid `bg-success` with a 6px `ring-success/25` when tapped, held for 280 ms before the row lands as done. The panel keeps the slot's kid-color ground with a solid edge. Tapping the name closes it. No slider, no ✕.
 - Night (23:00–05:00) is `bg-stone-950` with one evening-colored moon and nothing else.
 - Five chores plus two events must fit a column without scrolling.
 
