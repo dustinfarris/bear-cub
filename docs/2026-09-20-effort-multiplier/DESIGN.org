@@ -7,7 +7,7 @@ PRD (invariant contract): [[file:PRD.org]]
 
 * Overview
 
-Some extras involve a variable amount of effort — chess puzzles solved, laps swum, bags of yard waste — but every extra pays a flat value, so a ten-puzzle morning and a one-puzzle morning pay the same. This design lets a parent mark a specific extra as /counted/: it carries a per-unit point rate and a maximum count alongside its existing point value, which becomes a base. At the kiosk, tapping that extra opens an inline panel where the kid sets a count with a slider and a pair of ±buttons, sees the payout update live, and confirms. The completion stores the count; the payout is ~base + count × rate~.
+Some extras involve a variable amount of effort — chess puzzles solved, laps swum, bags of yard waste — but every extra pays a flat value, so a ten-puzzle morning and a one-puzzle morning pay the same. This design lets a parent mark a specific extra as /counted/: it carries a per-unit point rate and a maximum count alongside its existing point value, which becomes a base. At the kiosk, tapping that extra opens an inline panel where the kid sets a count with a pair of ±buttons, sees the payout update live, and confirms. The completion stores the count; the payout is ~base + count × rate~.
 
 The feature is deliberately small at the data layer and deliberately careful at the kiosk layer, because the kiosk has never had an input that is not a binary tap. One new stored fact — the count the kid entered — plus the same multiplication in the two places the extras contribution is computed. Every other extra is untouched and keeps its flat one-tap behavior; routine chores cannot be counted at all.
 
@@ -64,13 +64,15 @@ One migration, ~add_chore_effort_units~: ~chores.unit_rate~ (integer, null), ~ch
 
 Counted extras appear exactly where extras appear now: the morning band state (~state == :band and routine == :morning~), gated by the reveal (D33). Nothing here changes when or whether extras are offered.
 
-Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel carries a range slider for the coarse move, a pair of large ±buttons to nudge, the current count shown large, and a confirm button showing the live payout; a ✕ cancels. Rationale: [[file:../decisions.org::#d111][D111]].
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel is two rows on the extra's own surface. The name row keeps the emoji and the (truncating) name on the left and carries the stepper on the right: a ~−~ disc, the count shown large (~text-[56px]~, tabular, on the system sans, wide enough that two digits do not shift the row), a ~+~ disc — the discs ~size-16~, filled with ~--extra-card-control~ (the extras' content color at 10%), their glyphs inline SVG. Below it a full-width ~h-20~ submit in the success color shows the live payout, ~+N~, and nothing else. There is no slider and no ✕: tapping the name area closes the panel. About 188 px tall. Rationale: [[file:../decisions.org::#d111][D111]], amended by [[file:../decisions.org::#d116][D116]].
 
 The legal range is ~1..unit_max~ and the panel opens at 1. A kid who did none of a thing does not tap it, so zero has no meaning to express, and keeping it out of range also keeps the confirm button from ever offering a payout for nothing. Opening at 1 makes the common case — "I did one" — a tap to open plus a tap to confirm. The ~−~ button is inert at 1 and ~+~ is inert at ~unit_max~.
 
 One panel per kid at a time: opening a second counted extra closes the first without writing anything. Per-kid rather than per-kiosk, matching ~expanded~ and ~rewards~, so two kids at the fridge never block each other.
 
-Cancel writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's ([[file:../decisions.org::#d65][D65]]), because an open panel holds no point balance in suspense and costs nothing to leave open.
+Closing — a tap on the name area, the same place that opened it — writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's ([[file:../decisions.org::#d65][D65]]), because an open panel holds no point balance in suspense and costs nothing to leave open.
+
+The extras list is a padded group of rounded cards — ~p-2.5 gap-2~, each row ~rounded-xl~ — the same frame as the routine slot group, so the panel's rounded card is no longer the only rounded extra. A done extra stays the flush ~h-20~ kid-color row spanning the group's padding, and still neither sinks nor holds. Rationale: [[file:../decisions.org::#d116][D116]].
 
 ** Kiosk — the completed row
 
@@ -154,19 +156,16 @@ A new ephemeral assign, ~counting~: ~%{kid_id => %{chore_id: id, count: n}}~, al
 
 ~toggle-chore~ forks once, at the top. A tap on a /pending/ counted extra opens the panel instead of writing. A tap on a /done/ one undoes, exactly as today: count entry is on the way in only, and undo stays a single tap.
 
-The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a slider drag or a ±tap inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
+The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a ±tap or the name-row close inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
 
-Four events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-set~, ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~. Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does.
-
-The slider needs a form: ~phx-change~ is not available on a bare element, so the slider sits inside a ~<form phx-change="count-set">~ wrapping only the slider; the stepper and the confirm are buttons outside it.
+Three events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~ (the name-row tap). Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does. No form: every control is a button, and there is nothing a ~phx-change~ would carry.
 
 Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~, drops the ~counting~ entry, and the row lands in the ordinary done-extra treatment. Extras do not sink, so this meets none of the sink/rise machinery ([[file:../decisions.org::#d105][D105]], [[file:../decisions.org::#d106][D106]], [[file:../decisions.org::#d107][D107]]); the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
 
 ** Left to the local kiosk gate
 
-Two tuning questions are observable at 1280 × 800 with a staged scenario and cost nothing to add once seen; building machinery for them in advance risks code nobody needed:
+One tuning question is observable at 1280 × 800 with a staged scenario and costs nothing to add once seen; building machinery for it in advance risks code nobody needed:
 
-- whether the slider's ~phx-change~ wants a ~phx-debounce~ — one LAN round-trip per drag frame, against keeping the live payout honest as the thumb moves;
 - whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list, and whether it pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
 
 If the panel proves too tall at the gate, the first move is to shrink the panel, not to move it out of the row — the in-row placement is a ruling; its height is not.
@@ -183,7 +182,7 @@ Changeset (~Chore~): counting is refused on a chore with a routine; rate and max
 
 Changeset (~Completion~): a count is required for a counted chore and refused for a flat one; ~0~ and ~unit_max + 1~ are both refused.
 
-LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; the slider sets a value; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; cancel writes nothing; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; closing by the name row writes nothing; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
 
 LiveView, admin: the chore form locks the three fields on edit and refuses a forged submit carrying them; Today's complete control is inert on a counted extra while fail still works and ~×N~ renders.
 
@@ -191,7 +190,7 @@ Test hygiene: fixed local dates, ~:routine_windows~ pinned (~docs/learnings.org~
 
 Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a pending counted extra ready to tap open and another completed at ~×8~, both mornings otherwise done so the band and its extras are showing — the reviewer's own tap opens the panel, and the gate screenshot at 1280 × 800 then has both states in one frame. The scenario cannot stage the panel itself: ~counting~ is per-socket ephemeral state (§Kiosk state and events), so nothing running in the server VM can reach a kiosk connection that has not happened yet, and a dev-only auto-open path in the kiosk's mount is refused rather than written. Rationale: [[file:../decisions.org::#d114][D114]].
 
-Verification beyond ~mix precommit~: the local kiosk review at 1280 × 800 is the gate, and it is where the two tuning questions above get answered.
+Verification beyond ~mix precommit~: the local kiosk review at 1280 × 800 is the gate, and it is where the tuning question above gets answered.
 
 * Out of Scope for This Design
 
@@ -211,7 +210,7 @@ Allowed by the PRD but deliberately deferred by this design:
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion; [[file:../decisions.org::#d114][D114]] was minted post-canon, during Story 04, and pairs with the Advisory below.
+Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion; [[file:../decisions.org::#d114][D114]] (during Story 04) and [[file:../decisions.org::#d116][D116]] (a Claude Design iteration on the count panel, ahead of the story that lands it) were minted post-canon and each pair with an Advisory below.
 
 * Advisories
 
@@ -227,3 +226,9 @@ Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 w
 /Sections affected: §Key Behaviors / Testing/
 
 This document previously specified that ~BearCub.Dev.Scenarios.effort/1~ stages "one kid with a counted extra mid-panel" — the panel already open, waiting to be screenshotted. It still reads as the natural thing to ask a scenario for, and a session chasing it has an obvious move available: add a dev-only auto-open path to ~BearCubWeb.KioskLive~'s mount (a param, a seeded assign, a flag ~Scenarios~ sets) so the sentence becomes literally true. Do not. It was never achievable as written — this same document's §Kiosk state and events makes ~counting~ per-socket and "never persisted, never broadcast", so no function running in the server VM can populate a kiosk connection that has not happened yet — and the workaround would put a dev-only branch in the mount path of the one surface whose reliability story is that the tablet always reconnects into exactly one code path. The scenario stages the rows; the reviewer's tap opens the panel. Rationale: [[file:../decisions.org::#d114][D114]].
+
+** [2026-09-26 Sat 17:11] The count panel no longer carries a slider or a ✕, and the extras list is no longer flush (D116)
+
+/Sections affected: §Overview; §Screens / Kiosk — the count panel; §Key Behaviors / Kiosk state and events; §Key Behaviors / Left to the local kiosk gate; §Key Behaviors / Testing/
+
+This document previously specified the panel as "a range slider for the coarse move, a pair of large ±buttons to nudge, the current count shown large, and a confirm button showing the live payout; a ✕ cancels" — four events including ~count-set~, the slider inside a ~<form phx-change="count-set">~, and a gate question about a ~phx-debounce~ on that slider — and it described the extras list as it still ships today: flush rows separated by ~gap-px~ hairlines, with only the counting row rounded. Both positions still look attractive: the slider is the obvious coarse move for a ~unit_max~ of twenty and is what D111's text argues for, and an explicit ✕ is the cancel every form has. Do not reintroduce either, and do not read story 04's excerpt, its ~count-form~/~count-set~ tests, or the ~<form>~ in ~chore_row/1~ as current — they are what story 07 replaces. The panel is stepper-only in the name row, the name row closes it, and the extras list is a padded rounded group. Rationale: [[file:../decisions.org::#d116][D116]].
