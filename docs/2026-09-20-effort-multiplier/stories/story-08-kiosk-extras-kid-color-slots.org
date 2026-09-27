@@ -1,0 +1,116 @@
+#+title: Story 08 — Extras as kid-color slots, done extras on top, and a panel that stays in view
+#+date: 2026-09-26
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the count panel and Kiosk — the completed row, §Key Behaviors / Kiosk state and events, §Key Behaviors / Left to the local kiosk gate, and the kiosk line of §Key Behaviors / Testing, all as amended by [[file:../../decisions.org::#d117][D117]]. The Claude Design handoff behind the amendment lives in the "Bear Cub" design project at =templates/extras-group/design_handoff_extras_group/README.md= (design file =templates/extras-group/ExtrasGroup.dc.html=, section 3d); it is the source for exact classes and measured contrast. The README predates the last change to the design file — the soft submit and its pressed beat are in the design file's 3d section and in the excerpt below, not in the README. Where it and the excerpt differ, the excerpt wins; the Technical Notes list the places it differs from the shipped code.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — the count panel
+
+Counted extras appear exactly where extras appear now: the morning band state (~state == :band and routine == :morning~), gated by the reveal (D33). Nothing here changes when or whether extras are offered.
+
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel is two rows on the pending slot's own ground — the kid's color at 12% — with the slot's dashed edge turned solid. The name row keeps the emoji and the (truncating) name on the left and carries the stepper on the right: a ~−~ disc, the count shown large (~text-[56px]~, tabular, on the system sans, wide enough that two digits do not shift the row), a ~+~ disc — the discs ~size-16~, filled with ~--extra-card-control~ (the extras' content color at 10%), their glyphs inline SVG. Below it a full-width ~h-20~ submit shows the live payout, ~+N~, and nothing else. At rest the submit is soft green — ground ~--paid-tint~, a ~border-[3px]~ edge in ~--paid-edge~, the ~+N~ in ~--paid-content~ — because nothing has been earned yet; tapped, it turns solid ~bg-success~ with a 6 px ring of the success color at 25% and presses in, and holds that look for 280 ms before the row lands as done. There is no slider and no ✕: tapping the name area closes the panel. About 188 px tall. When it opens it scrolls itself into view inside the extras list, so a panel opened near the bottom of the list is never left hanging below the fold. Rationale: [[file:../decisions.org::#d111][D111]], amended by [[file:../decisions.org::#d116][D116]] and [[file:../decisions.org::#d117][D117]].
+
+The legal range is ~1..unit_max~ and the panel opens at 1. A kid who did none of a thing does not tap it, so zero has no meaning to express, and keeping it out of range also keeps the confirm button from ever offering a payout for nothing. Opening at 1 makes the common case — "I did one" — a tap to open plus a tap to confirm. The ~−~ button is inert at 1 and ~+~ is inert at ~unit_max~.
+
+One panel per kid at a time: opening a second counted extra closes the first without writing anything. Per-kid rather than per-kiosk, matching ~expanded~ and ~rewards~, so two kids at the fridge never block each other.
+
+Closing — a tap on the name area, the same place that opened it — writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's ([[file:../decisions.org::#d65][D65]]), because an open panel holds no point balance in suspense and costs nothing to leave open.
+
+The extras list is a padded group — ~p-2.5 gap-2~ — under one corner rule, ~rounded-xl~. A pending extra is a dashed slot in the kid's own color, exactly as a routine slot is one in the routine's: ground the kid's color at 12%, a ~border-[3px] border-dashed~ edge at 45%, both mixed in oklab into ~--color-base-100~, and no child-color left border. The kid's color is data, so these are not tokens: the column sets ~--kid~ once and the mixes are written against it. Done extras rise to the top of the group as one joined kid-color mass, newest completion first — ~h-20~ rows, a ~border-white/35~ hairline between them, ~rounded-xl~ on the mass's outer corners, inside the group's padding — and the pending extras follow in authored order. An undo returns the row to its authored place. Done routine rows are unchanged. Rationale: [[file:../decisions.org::#d116][D116]], amended by [[file:../decisions.org::#d117][D117]].
+
+  ** Kiosk — the completed row
+
+A completed counted extra shows ~×8~ beside its name, in the system sans and muted; the green ~+N~ chip is unchanged and carries the full earned value, ~base + count × rate~. The failed mirror keeps the warning and ~−N~ and also carries the count beside the name, on the pending kid-color slot ([[file:../decisions.org::#d117][D117]]).
+
+This keeps D54's chip meaning exactly as ruled — earned value, nothing else — and puts the count where it belongs, as a fact about the chore rather than a second celebratory element. Per the reward-layer type ruling ([[file:../decisions.org::#d105][D105]]), ~×N~ is informational and stays off ~font-reward~. Rationale: [[file:../decisions.org::#d112][D112]].
+
+The pending row is unchanged: no rate hint, no "up to 12". A pre-reader gains nothing from two more numbers on a card they have not tapped yet.
+
+Two new kids'-view visuals are recorded in ~docs/design-language.org~ by the story that lands them, not at design time (the D48/D54 pattern): the inline count panel's surface, which it inherits by being an extra row (first the extras' fixed neutral card, since [[file:../decisions.org::#d117][D117]] the kid-color slot); and ~×N~ beside the name on a completed counted extra, with the explicit note that the ~+N~ chip's meaning is unchanged.
+
+  ** Kiosk state and events
+
+A new ephemeral assign, ~counting~: ~%{kid_id => %{chore_id: id, count: n}}~, alongside ~expanded~, ~rewards~ and ~settling~. Never persisted, never broadcast. Cleared by the ~:boundary~ handler (where ~:rewards~ is already cleared), by the night screen, and by ~load/2~ whenever the chore stops being an open pending counted extra for that kid — archived from admin, completed from another surface, window closed.
+
+~toggle-chore~ forks once, at the top. A tap on a /pending/ counted extra opens the panel instead of writing. A tap on a /done/ one undoes, exactly as today: count entry is on the way in only, and undo stays a single tap.
+
+The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a ±tap or the name-row close inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
+
+Three events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~ (the name-row tap). Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does. No form: every control is a button, and there is nothing a ~phx-change~ would carry.
+
+Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~ at the tap and marks the ~counting~ entry confirmed; the panel holds its pressed look for ~@confirm_delay_ms~ (280 ms, a ~Process.send_after~ like the settle delay's) and is inert meanwhile — the stepper, the name-row close and a second confirm all do nothing. When the timer fires the ~counting~ entry is dropped and the row lands in the done mass at the top of the extras group, newest first ([[file:../decisions.org::#d117][D117]]). A boundary or a ~load/2~ clearing that removes the entry first makes the late message a no-op. The move is a plain re-render: it meets none of the sink/rise ghost machinery ([[file:../decisions.org::#d105][D105]], [[file:../decisions.org::#d106][D106]], [[file:../decisions.org::#d107][D107]]); the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
+
+  ** Left to the local kiosk gate
+
+The question this section held — whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list — was answered by use on the tablet: it does, and the panel now scrolls itself into view ([[file:../decisions.org::#d117][D117]]). What remains for the gate is only to look: whether an open panel pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
+
+If the panel proves too tall at the gate, the first move is to shrink the panel, not to move it out of the row — the in-row placement is a ruling; its height is not.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; closing by the name row writes nothing; confirm holds the pressed panel for the confirm delay and only then shows the done row, with the completion already written; a completed extra renders above the pending ones, newest first, and an undo returns it to its authored place; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+#+end_quote
+
+* User Story
+
+As a kid at the fridge, I need my extras to look like my chores do — soft and dashed in my own color until I've done them, solid in my color once I have, with the done ones gathered at the top — and the count panel to stay where I can see it, so that the extras read as mine at a glance and tapping one near the bottom never opens something I have to hunt for.
+
+* Acceptance Criteria
+
+** [ ] A pending extra shows as a dashed slot in a soft tint of the kid's own color, with no colored bar down its left edge (SC-2)
+** [ ] An open count panel keeps that same soft ground and its edge is solid rather than dashed; its − and + buttons and its count behave exactly as before (SC-2)
+** [ ] The payout button is soft green while the panel is open and turns solid green, with a ring around it, when tapped (SC-2)
+** [ ] After the tap the panel holds that pressed look for a brief beat before the row shows as done, the points are awarded at the tap, and nothing in the panel responds during the beat (SC-2)
+** [ ] A completed extra shows in the kid's full color, and completed extras sit together at the top of the extras group as one rounded block, the most recently completed first (SC-2)
+** [ ] Pending extras follow the completed ones in their usual order, and undoing a completed extra returns it to its usual place among them (SC-3)
+** [ ] Every corner in the extras group is rounded the same way; the routine's own done rows look as they did (SC-2)
+** [ ] A failed extra that has not been redone shows as the pending slot with its count, its penalty chip and its warning, as before (SC-2)
+** [ ] Opening the count panel on an extra near the bottom of the list brings the whole panel into view without the kid scrolling (SC-2)
+** [ ] Flat extras still complete and undo on a single tap, with no panel, and take the same pending and done looks (SC-1)
+** [ ] The design-language rulings D117 assigns to this story are recorded: the extras' surface, the retired ownership border, done extras rising, and the reward card surface's reworded rationale
+# Traces to D117's explicit assignment rather than to a Success Criterion — the documentation obligation of the decision, not user-facing behavior.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 07, whose panel it reskins without touching its layout, events or sizes, and on Stories 04 and 05 beneath that. Read ~docs/design-language.org~ first: this story replaces one of its Invariants, which is what the rulings in D117 authorize and nothing more.
+
+Where the work lands: ~BearCubWeb.KioskComponents.chore_row/1~ and its ~chore_card_style/5~ helper (the pending-extra, counting and done-extra branches), the extras ~<ul>~ in ~BearCubWeb.KioskLive.render/1~, and wherever ~KioskLive~ builds a column's ~extras~ list, for the ordering.
+
+The kid's color is data. Set ~--kid~ once on the column ~<section>~ (~style={"--kid: #{kid.color}"}~) and write the two mixes against it, with the recipe the routine tokens use: ground ~color-mix(in oklab, var(--kid) 12%, var(--color-base-100))~, edge ~color-mix(in oklab, var(--kid) 45%, var(--color-base-100))~. Do not add tokens to ~assets/css/app.css~ for them — ~--kid~ differs per column. The existing inline ~style~ helpers already interpolate ~kid.color~ directly; either route is fine so long as no hex is written in a template.
+
+Where the handoff README differs from the shipped code, the shipped code wins:
+- it marks the ~−~ and ~+~ buttons ~disabled~ at the bounds; they stay dimmed and tappable, because ~Phoenix.LiveViewTest~ refuses to click a disabled element (Story 04's PLAN note);
+- it names events ~open_count~, ~close_count~, ~count_dec~, ~count_inc~, ~submit_count~; the events are ~toggle-chore~, ~count-cancel~, ~count-step~ and ~count-confirm~ and keep those names;
+- it puts ~animate-pop~ on every done row's check disc; keep whatever rule the shipped row uses for when the disc pops;
+- it says "no hooks, no JS"; the scroll-into-view criterion needs one.
+
+Ordering: done extras first, newest completion first, then pending in authored order — built where the column's ~extras~ rows are assembled, not in the template. A failed-and-not-redone extra is pending for this purpose. The open panel sits in its row's authored place among the pending extras.
+
+The done mass: one wrapper with ~overflow-hidden rounded-xl~ around the done rows gives the outer corners; the rows themselves lose ~-mx-2.5~ and take ~px-[17px]~ so the emoji column lines up with the pending slots (14 px padding + 3 px border). The ~border-white/35~ hairline between rows is the done routine mass's own.
+
+The submit: at rest ~bg-[color:var(--paid-tint)]~, ~border-[3px] border-[color:var(--paid-edge)]~ and the ~+N~ in ~--paid-content~, a new token added to ~assets/css/app.css~ beside the paid pair as ~color-mix(in oklab, var(--color-success) 60%, var(--color-base-content))~; pressed, ~bg-success text-success-content~, the press-in, and a 6 px ring of the success color at 25% (Tailwind's ~ring-[6px] ring-success/25~ if the built stylesheet resolves it, else an inline shadow written against the token). The pressed look is driven by the server's confirmed flag on the ~counting~ entry, not by ~active:~ alone, so it survives the finger lifting.
+
+The beat follows the settle delay already in ~KioskLive~ (~@settle_delay_ms~, ~settling~): a module attribute ~@confirm_delay_ms~ of 280, the completion written in the ~count-confirm~ handler, a ~Process.send_after~ for the landing, and a late message that is a no-op when the entry is gone. While confirmed, ~count-step~, ~count-cancel~ and a second ~count-confirm~ return the socket untouched. Test it the way the settle delay's tests do — no ~Process.sleep~.
+
+Scroll into view: a colocated hook (~Phoenix.LiveView.ColocatedHook~, name starting with a dot) calling ~scrollIntoView~ with ~block: "nearest"~ on the panel row. One trap to check rather than assume: the row that becomes the panel is the same ~<li id="chore-N">~ that was the pending slot, so a ~phx-hook~ attribute that appears only while counting may never get its ~mounted~ callback. If so, put the hook on every extra row and act in ~updated()~ when ~data-counting~ turns on. Respect ~prefers-reduced-motion~ by not animating the scroll. This cannot be asserted at the LiveView test layer beyond the hook's presence on the row; verify it by hand at the gate with enough extras to overflow the list.
+
+The design-language recordings (the last criterion) follow the file's existing shape, each citing D117: amend the Semantics paragraph (the child-color left border no longer marks anything; a kid-color tint now marks a kid's extras) and the Invariants paragraph (extras' fixed neutral surface replaced; extras still never take a routine tint); amend the "Count panel on the extras' fixed neutral card" and "The extras list as a rounded padded group" entries; record the soft submit, its pressed look and the confirm beat, and name ~--paid-content~ in the token block's comment; amend the "Reward card surface" entry's rationale, since reward cards now hold ~--extra-card-background~ and ~--extra-card-content~ alone; add an entry for done extras rising. ~--extra-card-control~ keeps its value; its "extras-only, like its pair" wording needs the same touch.
+
+Gate: the local review at 1280 × 800 through ~BearCub.Dev.Scenarios.effort/1~. Look at it with a palette color at the pale end as well as a dark one, and with a purple kid (~#7c3aed~, the evening routine's color) — both are accepted risks in D117, and the gate is where to see whether the acceptance holds. After this story ships, the Claude Design mirror is stale: re-run the sync per ~.design-sync/NOTES.md~ and update ~.design-sync/conventions.md~'s rules for extras.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.
