@@ -55,24 +55,80 @@ As a kid at the fridge, I need the count panel to be one row of big − and + bu
 
 * Acceptance Criteria
 
-** [ ] Tapping a pending counted extra opens the panel in that row: the chore's emoji and name on the left, a − button, the count shown large, and a + button on the right, and a full-width green button beneath showing the payout — with no slider and no ✕ (SC-2)
-** [ ] The − and + buttons move the count anywhere from 1 to the chore's maximum, and the payout on the green button updates as the count changes (SC-2)
-** [ ] At 1 the − button, and at the maximum the + button, is dimmed and does nothing, but stays visible (SC-2)
-** [ ] Tapping the chore's name area closes the panel, recording nothing and leaving the chore pending (SC-2)
-** [ ] Confirming completes the chore and awards its base plus the count times its rate straight away, and the row shows at once as the done extra — kid-color, ~×N~ beside the name, the ~+N~ chip and the check disc — with no full-height pause (SC-2)
-** [ ] A two-digit count does not shift the row, and a long chore name truncates rather than pushing the stepper (SC-2)
-** [ ] The extras list renders as a padded group of rounded cards, and a done extra spans the group's padding as a flush row (SC-2)
-** [ ] Undoing a completed counted extra takes a single tap, and completing it again — including after a parent has failed it — opens the panel at 1 rather than at any earlier count (SC-3)
-** [ ] Flat extras still complete and undo on a single tap, with no panel (SC-1)
-** [ ] The design-language rulings D116 assigns to this story are recorded: the rounded extras group, the name-row toggle, and the ~--extra-card-control~ token
+** [X] Tapping a pending counted extra opens the panel in that row: the chore's emoji and name on the left, a − button, the count shown large, and a + button on the right, and a full-width green button beneath showing the payout — with no slider and no ✕ (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "tapping a pending counted extra opens a count panel instead of completing it" (asserts confirm, value, no ~#count-form-N~, no range input, not done) and ~test/bear_cub_web/components/kiosk_components_test.exs~ "a counting row holds the count panel and no tap of its own" and "the count panel is buttons only: no slider, no form, no ✕". Markup in ~KioskComponents.chore_row/1~ counting branch.
+:END:
+** [X] The − and + buttons move the count anywhere from 1 to the chore's maximum, and the payout on the green button updates as the count changes (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "the stepper moves the count within 1..unit_max and clamps at both ends" and "the confirm button shows the live payout and it changes with the count" (+5 to +8); server-side clamp in ~update_count/3~.
+:END:
+** [X] At 1 the − button, and at the maximum the + button, is dimmed and does nothing, but stays visible (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/components/kiosk_components_test.exs~ "the stepper dims at its bounds but is never HTML-disabled" (~opacity-30~ at 1 and at max, no ~[disabled]~); inertness by the clamp test above.
+:END:
+** [X] Tapping the chore's name area closes the panel, recording nothing and leaving the chore pending (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "tapping the name area closes the panel and leaves the chore pending, recording nothing" (clicks ~#count-name-N~, no completion row) and ~test/bear_cub_web/components/kiosk_components_test.exs~ asserting ~#count-name-7[phx-click=count-cancel]~. The stepper is a sibling of the name area, not inside it.
+:END:
+** [X] Confirming completes the chore and awards its base plus the count times its rate straight away, and the row shows at once as the done extra — kid-color, ~×N~ beside the name, the ~+N~ chip and the check disc — with no full-height pause (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "confirming completes the chore with the chosen count…" (~data-done~, ~effort_count == 3~) plus Story 05's "a completed counted extra shows ×N beside its name, and its full earned value in the green chip" (×N, +N). The check disc is asserted at component level ("a done row carries the check disc"); kid-color fill and the absence of a full-height pause rest on extras taking the existing done-extra branch with no sink machinery, unchanged by this story — to be seen at the local gate.
+:END:
+** [X] A two-digit count does not shift the row, and a long chore name truncates rather than pushing the stepper (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by class assertions in ~test/bear_cub_web/live/kiosk_live_test.exs~ "the numeral holds a fixed slot and a long name truncates beside the stepper" (~min-w-20 tabular-nums~ numeral, ~min-w-0 flex-1~ name area with a ~truncate~ span). The visual check at ~unit_max: 20~ is the 1280 × 800 gate's and has not been recorded here.
+:END:
+** [X] The extras list renders as a padded group of rounded cards, and a done extra spans the group's padding as a flush row (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "the extras list is a padded group of rounded cards" (~p-2.5 gap-2~, ~rounded-xl~ row) and ~test/bear_cub_web/components/kiosk_components_test.exs~ "a pending extra is a rounded card and a done extra spans the group's padding" (~-mx-2.5~).
+:END:
+** [X] Undoing a completed counted extra takes a single tap, and completing it again — including after a parent has failed it — opens the panel at 1 rather than at any earlier count (SC-3)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "undoing a completed counted extra takes a single tap, and completing it again asks for a fresh count" and the new "a counted extra a parent failed opens the panel at 1 rather than its failed count". Writing the latter exposed a bug: ~tag_counting/5~ never tagged a failed row as counting, so a failed extra could not be redone through the panel; fixed by matching the open ~counting~ entry in the failed clause.
+:END:
+** [X] Flat extras still complete and undo on a single tap, with no panel (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified by ~test/bear_cub_web/live/kiosk_live_test.exs~ "flat extras still complete and undo on a single tap, with no panel".
+:END:
+** [X] The design-language rulings D116 assigns to this story are recorded: the rounded extras group, the name-row toggle, and the ~--extra-card-control~ token
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  Verified in ~docs/design-language.org~: amended the count-panel entry (stepper in the name row, name-row toggle, ~opacity-30~ bounds), new entry "The extras list as a rounded padded group [2026-09-26]", and a ~--extra-card-control~ line after the tokens pointer, each citing D116; the token itself, with its oklab note, is in ~assets/css/app.css~.
+:END:
 # Traces to D116's explicit assignment rather than to a Success Criterion — the documentation obligation of the decision, not user-facing behavior.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  All ten ACs are ticked [X] above with per-item evidence; none removed or deferred. Two rest partly on the local gate rather than a test — the visual check of the two-digit numeral at ~unit_max: 20~, and the kid-color/no-pause look of the confirmed row — and are named as such in their entries.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  ~mix precommit~ run at close-out: 723 tests, 0 failures. Unit: ~kiosk_components_test.exs~ (counting row, buttons-only panel, SVG discs on the control token, bound dimming, rounded/~-mx-2.5~ rows). LiveView: ~kiosk_live_test.exs~ (open, stepper clamp, payout, confirm, name-area close, one panel per kid, undo/redo, failed-then-redo, flat extras, boundary clear, padded group, fixed numeral slot). Each new test was seen red before the code that turned it green.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  ~mix format --check-formatted~ passes (part of ~mix precommit~). No dead code left from the slider: ~count-set~, ~set_count/3~ and the form are gone (grep clean); the stale slider comment on ~chore_row~'s ~counting?~ attr was reworded. Comments and naming match the surrounding kiosk code.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:25] \\
+  ~mix precommit~ (the declared Verify command) run twice at close-out, the last time just before this entry: Result 723 passed. The ~BearCub.Notifications~ Req.Test mock errors and ~Exqlite~ disconnect lines in its output are pre-existing background-task noise and fail no test.
+:END:
 
 * Technical Notes
 
