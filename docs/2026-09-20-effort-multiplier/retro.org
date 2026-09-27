@@ -1,0 +1,33 @@
+#+title: Retro — effort-multiplier
+
+* Batch 1 — Effort multiplier — 2026-09-26
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 6 | 34 | 42 | 39 | 8(42.2m) | 329.3k | 1484 | 2832 | also read story-02, story-03, story-04, story-05, story-06 |
+| story-02 | 13 | 37 | 57 | 39 | 8(30.6m) | 347.2k | 1380 | 2550 | also read story-01, story-03 |
+| story-03 | 9 | 8 | 61 | 21 | 6(13.8m) | 333.8k | 1382 | 2373 | also read story-01, story-04, story-05, story-06 |
+| story-04 | 12 | 11 | 179 | 31 | 6(7.7m) | 752.6k | 2025 | 2970 | also read story-05, story-07, story-08 |
+| story-05 | 4 | 6 | 57 | 28 | 6(11.6m) | 338.3k | 1596 | 2329 | also read story-03, story-04, story-06, story-07 |
+| story-06 | 10 | 9 | 3 | 11 | 2(0.0m) | 114.5k | 32 | 99 | also read story-04, story-05 |
+| story-07 | 3 | 4 | 7 | 11 | 1(0.0m) | 65.5k | 8 | 52 |  |
+| story-08 | 17 | 3 | 4 | 11 | 2(0.0m) | 87.0k | 154 | 155 |  |
+| story-09 | 1 | 14 | 8 | 8 | 1(0.0m) | 51.8k | 11 | 7 |  |
+| total | 75 | 126 | 417 | 199 | 40(105.8m) | 2420.1k | 8072 | 13367 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- Rows story-01 through story-05 are inflated. The script matched sessions by story filename, so each row also counts the same-numbered stories of the ~chore-lifecycle~ (2026-09-05) and ~good-standing~ (2026-09-06) initiatives. Only the 2026-09-20/21 sessions in those rows belong to this batch. The story-01 and story-02 verifier counts (8 each) and the re-verify loops in their timelines come from the earlier initiatives.
+- The story-04 row also absorbs the Claude Design adoption work that followed it: the research, ~/design-sync~ setup and login, two design rounds and the D115–D117 update-design runs, from 2026-09-21 to 09-27. That is most of its 179 update-design minutes and 752.6k output tokens.
+- Human questions raised in this batch's own sessions: story-04's close-out asked about AC-10 (a scenario cannot stage the panel open), which became D114. The design rounds that became D116 and D117 asked about entry into the chain and the three rulings.
+- Three stories were inserted mid-batch. Story 07 and Story 08 each followed a Claude Design round. Story 09 followed a gate attempt that found Story 08's scroll hook never loaded and its panel ground flooding during the confirm beat, while ~mix precommit~ was green.
+- Story 08 and Story 09 each had the human ask for a dev server on a spare port to look at the extras outside the evening routine. In Story 09 the human's requested manual check at 1280 × 800 found the panel still 20 px short, and a fix followed within the same session.
+- Stories 07 and 09 dispatched one verifier each, for ACs only. Story 07's LOGBOOK records that its DoD was ticked on fresh runs without a second subagent pass.
+- Deferred discovery: one, the ~BearCub.Notifications~ log noise from Story 01, already in ~docs/backlog.org~.
+- At the gate itself, 16 tests failed only because the run fell inside the 23:00–05:00 Good Night gap. Every story's green run had happened earlier in the day.
+
+** Retro

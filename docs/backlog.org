@@ -5,6 +5,24 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO Admin chore form: moving a counted extra into a routine fails the save with no visible error
+:PROPERTIES:
+:CREATED:  [2026-09-26 Sat 23:21]
+:END:
+
+On ~:edit~, ~BearCubWeb.Admin.ChoreLive.Form~ renders the counted chore's Points, Per unit and Max as read-only text, but still offers the "Shows in" select (~show_shows_in?~ is true; ~lib/bear_cub_web/live/admin/chore_live/form.ex~ near the ~:shows_in~ input). If a parent moves a counted extra to Morning or Evening, ~Chore.changeset/2~'s ~validate_no_routine_when_counted/1~ refuses it with the error on ~:unit_rate~ (~lib/bear_cub/chores/chore.ex~). The edit form renders no ~:unit_rate~ input, so the save fails and the parent sees nothing explaining why. The exception is a chore with completion history, where ~check_reclassification_lock/2~ also fires and shows its error on ~:shows_in~. The refusal is correct, since counting is extras-only ([[file:decisions.org::#d108][D108]]); only its visibility is wrong. Plausible fixes: restrict the edit form's Shows in options for a counted chore to =extra= / =extra_daily=, or surface the ~:unit_rate~ error on the Shows in field.
+
+Found [2026-09-26 Sat 23:21] by the design audit at the effort-multiplier Batch 1 gate. The human ruled it a backlog item, not a batch story.
+
+* TODO Kiosk: a confirmed counted extra jumps to the top of the extras group while the list stays scrolled down
+:PROPERTIES:
+:CREATED:  [2026-09-26 Sat 23:21]
+:END:
+
+Seen at the effort-multiplier Batch 1 gate at 1280 × 800. The panel opened on the last extra of a long list scrolls itself into view, which is correct ([[file:decisions.org::#d117][D117]]). After confirm and the 280 ms beat, the row lands at the top of the done mass ([[file:decisions.org::#d117][D117]]), but the ~overflow-y-auto~ extras list keeps its scroll position. The row the kid just confirmed disappears from view, and a pending slot slides into its place under their finger. DESIGN is silent on scroll position after the landing. Open question for a design pass: whether to scroll the list to the top on landing, keep the landing in view some other way, or accept it. Kids'-view visuals, so ~docs/design-language.org~ is binding.
+
+Found [2026-09-26 Sat 23:21] in the effort-multiplier Batch 1 gate review. The human signed off on the gate and asked for it to be backlogged.
+
 * TODO ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run
 :PROPERTIES:
 :CREATED:  [2026-09-21 Mon 06:57]

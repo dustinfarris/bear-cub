@@ -184,7 +184,7 @@ LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted ex
 
 LiveView, admin: the chore form locks the three fields on edit and refuses a forged submit carrying them; Today's complete control is inert on a counted extra while fail still works and ~×N~ renders.
 
-Test hygiene: fixed local dates, ~:routine_windows~ pinned (~docs/learnings.org~ [2026-07-17]); no new test derives a date from the wall clock.
+Test hygiene: every test that renders the kiosk pins ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]), and that pin is what makes it deterministic. A test of a function that takes the local datetime as an argument (contribution, changesets, ~Chores~ queries) passes a fixed local date. A LiveView test takes today from ~LocalTime.now/0~, the same clock the kiosk reads at mount, because clock mocking is forbidden and a test-only clock in the kiosk mount is refused ([[file:../decisions.org::#d119][D119]]).
 
 Dev scenario: ~BearCub.Dev.Scenarios.effort/1~, staging one kid with a pending counted extra ready to tap open and another completed at ~×8~, both mornings otherwise done so the band and its extras are showing — the reviewer's own tap opens the panel, and the gate screenshot at 1280 × 800 then has both states in one frame. The scenario cannot stage the panel itself: ~counting~ is per-socket ephemeral state (§Kiosk state and events), so nothing running in the server VM can reach a kiosk connection that has not happened yet, and a dev-only auto-open path in the kiosk's mount is refused rather than written. Rationale: [[file:../decisions.org::#d114][D114]].
 
@@ -208,7 +208,7 @@ Allowed by the PRD but deliberately deferred by this design:
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion; [[file:../decisions.org::#d114][D114]] (during Story 04) and [[file:../decisions.org::#d116][D116]] (a Claude Design iteration on the count panel, ahead of the story that lands it) [[file:../decisions.org::#d117][D117]] (a second round: kid-color slots, done extras rising, the panel scrolling into view) and [[file:../decisions.org::#d118][D118]] (during Story 08: the kid-color mixes inline rather than through ~--kid~) were minted post-canon and each pair with an Advisory below.
+Decisions for this initiative: [[file:../decisions.org]] — D108 through D113 were minted at promotion; [[file:../decisions.org::#d114][D114]] (during Story 04) and [[file:../decisions.org::#d116][D116]] (a Claude Design iteration on the count panel, ahead of the story that lands it) [[file:../decisions.org::#d117][D117]] (a second round: kid-color slots, done extras rising, the panel scrolling into view) and [[file:../decisions.org::#d118][D118]] (during Story 08: the kid-color mixes inline rather than through ~--kid~) and [[file:../decisions.org::#d119][D119]] (at the Batch 1 gate: LiveView tests take today from the real clock and pin the windows) were minted post-canon and each pair with an Advisory below.
 
 * Advisories
 
@@ -242,3 +242,9 @@ This document previously put every extra on the fixed neutral card — ~--extra-
 /Sections affected: §Screens / Kiosk — the count panel/
 
 This document previously said the column ~<section>~ sets ~--kid~ once (~style={"--kid: #{kid.color}"}~) and the pending slot's ground and edge mixes are written against ~var(--kid)~. It still reads as the tidier choice, and D117 and Story 08's Technical Notes both name it, so a session tidying the kiosk may add ~--kid~ to the section and expect the slots to pick it up. They will not: nothing reads ~--kid~. ~chore_card_style/5~ interpolates ~kid.color~ into both ~color-mix~ expressions, as it does for every other kid-color style on the row. Rationale: [[file:../decisions.org::#d118][D118]].
+
+** [2026-09-26 Sat 23:20] §Testing no longer requires every new test to use a fixed date and never read the wall clock (D119)
+
+/Sections affected: §Key Behaviors / Testing/
+
+This document previously said "Test hygiene: fixed local dates, ~:routine_windows~ pinned; no new test derives a date from the wall clock," as one rule for every test. The count-panel and completed-row tests in ~kiosk_live_test.exs~ break its second half: they call ~LocalTime.now()~. A session auditing against the old line will want to "fix" them, either by hard-coding a date the kiosk will not agree with or by adding a clock param or assign to ~BearCubWeb.KioskLive~'s mount so a test can fix one. Do neither. The kiosk reads its own clock, clock mocking is forbidden, and a test-only branch in the mount path is refused for the same reason [[file:../decisions.org::#d114][D114]] refused a dev-only one. Pinning the windows is what makes those tests deterministic. The fixed-date rule still holds for every function that takes the datetime as an argument. Rationale: [[file:../decisions.org::#d119][D119]].
