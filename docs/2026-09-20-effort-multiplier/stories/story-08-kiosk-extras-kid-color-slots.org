@@ -63,25 +63,85 @@ As a kid at the fridge, I need my extras to look like my chores do — soft and 
 
 * Acceptance Criteria
 
-** [ ] A pending extra shows as a dashed slot in a soft tint of the kid's own color, with no colored bar down its left edge (SC-2)
-** [ ] An open count panel keeps that same soft ground and its edge is solid rather than dashed; its − and + buttons and its count behave exactly as before (SC-2)
-** [ ] The payout button is soft green while the panel is open and turns solid green, with a ring around it, when tapped (SC-2)
-** [ ] After the tap the panel holds that pressed look for a brief beat before the row shows as done, the points are awarded at the tap, and nothing in the panel responds during the beat (SC-2)
-** [ ] A completed extra shows in the kid's full color, and completed extras sit together at the top of the extras group as one rounded block, the most recently completed first (SC-2)
-** [ ] Pending extras follow the completed ones in their usual order, and undoing a completed extra returns it to its usual place among them (SC-3)
-** [ ] Every corner in the extras group is rounded the same way; the routine's own done rows look as they did (SC-2)
-** [ ] A failed extra that has not been redone shows as the pending slot with its count, its penalty chip and its warning, as before (SC-2)
-** [ ] Opening the count panel on an extra near the bottom of the list brings the whole panel into view without the kid scrolling (SC-2)
-** [ ] Flat extras still complete and undo on a single tap, with no panel, and take the same pending and done looks (SC-1)
-** [ ] The design-language rulings D117 assigns to this story are recorded: the extras' surface, the retired ownership border, done extras rising, and the reward card surface's reworded rationale
+** [X] A pending extra shows as a dashed slot in a soft tint of the kid's own color, with no colored bar down its left edge (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Verified by story-verifier against the diff: pending-extra branch ~border-[3px] border-dashed~ in ~KioskComponents.chore_row/1~, ~chore_card_style/5~ mixing the kid color at 12% ground / 45% edge, no ~border-l-~. Test: 'a pending extra is a dashed slot in the kid's own color, with no ownership bar (D117)'. Also reviewed by the human in the running app.
+:END:
+** [X] An open count panel keeps that same soft ground and its edge is solid rather than dashed; its − and + buttons and its count behave exactly as before (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Counting branch is ~rounded-xl border-[3px] border-solid~ on the same kid-color ground. Tests: 'the open panel keeps the kid-color ground with a solid edge (D117)' plus the unchanged stepper, clamp and dim-not-disabled tests.
+:END:
+** [X] The payout button is soft green while the panel is open and turns solid green, with a ring around it, when tapped (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Soft ~--paid-tint~/~--paid-edge~/~--paid-content~ at rest; ~bg-success ring-[6px] ring-success/25~ once confirmed. Test: 'the submit is soft green at rest and solid green once tapped (D117)'. Human confirmed the look in the browser.
+:END:
+** [X] After the tap the panel holds that pressed look for a brief beat before the row shows as done, the points are awarded at the tap, and nothing in the panel responds during the beat (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  ~@confirm_delay_ms~ 280; ~count-confirm~ writes at the tap and marks the entry confirmed; step, cancel and second confirm are no-ops meanwhile. Tests: 'confirm writes at the tap, holds the pressed panel inert, and lands as done on the timer (D117)' and the late-landing no-op after a boundary; no ~Process.sleep~.
+:END:
+** [X] A completed extra shows in the kid's full color, and completed extras sit together at the top of the extras group as one rounded block, the most recently completed first (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  ~raise_done_extras/2~ sorts done rows newest first (completion id breaks same-second ties) into the ~#extras-done-N~ wrapper with ~overflow-hidden rounded-xl~. Test: 'completed extras rise above the pending ones, newest first...' (tightened to an exact order after the verifier flagged a vacuous assertion).
+:END:
+** [X] Pending extras follow the completed ones in their usual order, and undoing a completed extra returns it to its usual place among them (SC-3)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Same test asserts pending rows keep authored order and that undoing both rows returns a, b, c with the done wrapper gone.
+:END:
+** [X] Every corner in the extras group is rounded the same way; the routine's own done rows look as they did (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Pending, counting and the done mass all ~rounded-xl~; the done-routine branch is textually unchanged and the routine tests still pass. Component test 'a pending extra is a rounded dashed slot and a done extra is a flush row of the mass'.
+:END:
+** [X] A failed extra that has not been redone shows as the pending slot with its count, its penalty chip and its warning, as before (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Failed rows take the shared pending-extra branch. New test 'a failed, not-redone extra keeps the kid-color dashed slot with its count and penalty (D117)' plus the existing AC-2 failed-count test.
+:END:
+** [X] Opening the count panel on an extra near the bottom of the list brings the whole panel into view without the kid scrolling (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Colocated ~.ScrollIntoView~ hook on every extra row acting in ~updated()~ when ~data-counting~ turns on (~block: nearest~, no smooth scroll under reduced motion). Test asserts hook presence and the marker only, as the story permits; the human reviewed the running app.
+:END:
+** [X] Flat extras still complete and undo on a single tap, with no panel, and take the same pending and done looks (SC-1)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  Existing test 'flat extras still complete and undo on a single tap, with no panel (AC-9)' passes; flat extras use the same slot and done-mass looks.
+:END:
+** [X] The design-language rulings D117 assigns to this story are recorded: the extras' surface, the retired ownership border, done extras rising, and the reward card surface's reworded rationale
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:12] \\
+  ~docs/design-language.org~ amended (Semantics, Invariants, count panel, padded group, reward card surface, ~--extra-card-control~ wording, stale 'Extras do not sink' line) and new entries for the soft submit/confirm beat, done extras rising and ~--paid-content~, all citing D117; ~.design-sync/conventions.md~ updated.
+:END:
 # Traces to D117's explicit assignment rather than to a Success Criterion — the documentation obligation of the decision, not user-facing behavior.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:14] \\
+  All 11 Acceptance Criteria are ticked ~[X]~, each with a LOGBOOK note naming its evidence; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:14] \\
+  New and updated LiveView tests in ~kiosk_live_test.exs~ and a component test in ~kiosk_components_test.exs~ cover every criterion (the scroll-into-view hook at presence level only, as the story allows); all pass in the 730-test run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:14] \\
+  story-verifier found one comment over 80 columns above ~chore_card_style/5~; re-wrapped. ~git diff --check~ clean, docs unwrapped per the no-hard-wrap rule, no hex literals in templates, no ~Process.sleep~ in tests.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:14] \\
+  ~mix precommit~ (compile with warnings as errors, format, test) exits 0 with 730 passed after the final edit; the BearCub.Notifications Task-crash log lines are test noise, not failures.
+:END:
 
 * Technical Notes
 
