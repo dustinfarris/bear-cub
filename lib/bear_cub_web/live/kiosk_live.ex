@@ -27,6 +27,9 @@ defmodule BearCubWeb.KioskLive do
   # the slightest beat, not a hold. Same shape as the collapse delay
   # above; tuned at the local gate, not design-pinned.
   @settle_delay_ms 150
+  # The pressed beat on a confirmed count panel (D117): the write lands at the
+  # tap, the row lands as done this much later.
+  @confirm_delay_ms 280
 
   # Reward-shop idle auto-return (Story 05, D65): how long a column stays
   # open with no tap before it snaps back to normal, in case a child wanders
@@ -105,7 +108,11 @@ defmodule BearCubWeb.KioskLive do
           # panel of theirs — one panel per kid at a time (D-Story04).
           counted?(chore) ->
             counting =
-              Map.put(socket.assigns.counting, chore.kid_id, %{chore_id: chore.id, count: 1})
+              Map.put(socket.assigns.counting, chore.kid_id, %{
+                chore_id: chore.id,
+                count: 1,
+                confirmed?: false
+              })
 
             {:noreply, socket |> assign(:counting, counting) |> load(now)}
 
@@ -126,29 +133,40 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
   end
 
+  # The write lands at the tap; the entry stays, marked confirmed, so the
+  # panel holds its pressed look for `@confirm_delay_ms` and is inert
+  # meanwhile (D117). `{:confirm_landed, ...}` drops it.
   def handle_event("count-confirm", %{"kid-id" => kid_id}, socket) do
     now = LocalTime.now()
     kid_id = String.to_integer(kid_id)
 
     case Map.fetch(socket.assigns.counting, kid_id) do
-      {:ok, %{chore_id: chore_id, count: count}} ->
+      {:ok, %{confirmed?: false, chore_id: chore_id, count: count} = entry} ->
         case Chores.get_chore(chore_id) do
           nil -> :ok
           chore -> Chores.complete_chore(chore, now, "kiosk", count)
         end
 
-      :error ->
-        :ok
-    end
+        Process.send_after(self(), {:confirm_landed, kid_id, chore_id}, @confirm_delay_ms)
+        counting = Map.put(socket.assigns.counting, kid_id, %{entry | confirmed?: true})
+        {:noreply, socket |> assign(:counting, counting) |> load(now)}
 
-    counting = Map.delete(socket.assigns.counting, kid_id)
-    {:noreply, socket |> assign(:counting, counting) |> load(now)}
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("count-cancel", %{"kid-id" => kid_id}, socket) do
     kid_id = String.to_integer(kid_id)
-    counting = Map.delete(socket.assigns.counting, kid_id)
-    {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
+
+    case Map.get(socket.assigns.counting, kid_id) do
+      %{confirmed?: true} ->
+        {:noreply, socket}
+
+      _ ->
+        counting = Map.delete(socket.assigns.counting, kid_id)
+        {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
+    end
   end
 
   # Manual re-expand (state 4, D34): ephemeral, assign-level, never persisted.
@@ -255,6 +273,9 @@ defmodule BearCubWeb.KioskLive do
   # client — the server-side clamp the stepper goes through.
   defp update_count(socket, kid_id, next_count) do
     case Map.fetch(socket.assigns.counting, kid_id) do
+      {:ok, %{confirmed?: true}} ->
+        socket.assigns.counting
+
       {:ok, %{chore_id: chore_id, count: count} = entry} ->
         case Chores.get_chore(chore_id) do
           nil ->
@@ -344,6 +365,20 @@ defmodule BearCubWeb.KioskLive do
      socket
      |> assign(:settling, settling)
      |> load(LocalTime.now(), just_sunk: chore_id)}
+  end
+
+  # The confirm beat is over (D117): the panel's entry goes and the row
+  # lands in the done mass. A boundary or `load/2` clearing that already
+  # removed the entry makes this a no-op.
+  def handle_info({:confirm_landed, kid_id, chore_id}, socket) do
+    case Map.get(socket.assigns.counting, kid_id) do
+      %{chore_id: ^chore_id, confirmed?: true} ->
+        counting = Map.delete(socket.assigns.counting, kid_id)
+        {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   defp settle_later(socket, chore_id) do
@@ -530,6 +565,7 @@ defmodule BearCubWeb.KioskLive do
         Chores.list_extras(kid, today)
         |> build_rows(completions, failed_ids)
         |> Enum.map(&tag_counting(&1, kid.id, counting, completions, failed_completions))
+        |> raise_done_extras(completions)
       else
         []
       end
@@ -569,6 +605,26 @@ defmodule BearCubWeb.KioskLive do
     {column, pending_collapse}
   end
 
+  # Done extras rise (D117): newest completion first, then the pending rows
+  # in authored order. A row mid-confirm-beat is still the panel, so it
+  # holds its authored place until it lands. `completed_at` is
+  # second-resolution — the completion id breaks ties, as for `sink_done/5`.
+  defp raise_done_extras(rows, completions) do
+    {done, pending} = Enum.split_with(rows, &(&1.done? and not &1.counting?))
+
+    done =
+      Enum.sort_by(
+        done,
+        fn row ->
+          completion = Map.fetch!(completions, row.chore.id)
+          {DateTime.to_unix(completion.completed_at), completion.id}
+        end,
+        :desc
+      )
+
+    done ++ pending
+  end
+
   # Reward cards, in catalog order, resolved through the seven-row
   # precedence table (D66/D77) and filtered to what's actually rendered —
   # rows 1 and 2 render nothing, so an `:absent` card never reaches the
@@ -606,8 +662,22 @@ defmodule BearCubWeb.KioskLive do
   # the pending tap only, never to a chore completed from elsewhere in the
   # meantime — which is also what `load/2`'s `still_counting` filter reads
   # back to drop that entry for good.
-  defp tag_counting(%{done?: true} = row, _kid_id, _counting, completions, _failed_completions) do
-    attach_effort(row, Map.fetch!(completions, row.chore.id))
+  defp tag_counting(%{done?: true} = row, kid_id, counting, completions, _failed_completions) do
+    # ...except during the confirm beat (D117): the completion is already
+    # written but the panel holds its pressed look until it lands.
+    case Map.get(counting, kid_id) do
+      %{chore_id: chore_id, count: count, confirmed?: true} when chore_id == row.chore.id ->
+        Map.merge(row, %{
+          counting?: true,
+          confirmed?: true,
+          count: count,
+          effort_count: nil,
+          value: nil
+        })
+
+      _ ->
+        attach_effort(row, Map.fetch!(completions, row.chore.id))
+    end
   end
 
   # A failed row is pending again (D45, D46): tapping it to redo opens the
@@ -616,7 +686,13 @@ defmodule BearCubWeb.KioskLive do
   defp tag_counting(%{failed?: true} = row, kid_id, counting, _completions, failed_completions) do
     case Map.get(counting, kid_id) do
       %{chore_id: chore_id, count: count} when chore_id == row.chore.id ->
-        Map.merge(row, %{counting?: true, count: count, effort_count: nil, value: nil})
+        Map.merge(row, %{
+          counting?: true,
+          confirmed?: false,
+          count: count,
+          effort_count: nil,
+          value: nil
+        })
 
       _ ->
         attach_effort(row, Map.fetch!(failed_completions, row.chore.id))
@@ -626,10 +702,22 @@ defmodule BearCubWeb.KioskLive do
   defp tag_counting(row, kid_id, counting, _completions, _failed_completions) do
     case Map.get(counting, kid_id) do
       %{chore_id: chore_id, count: count} when chore_id == row.chore.id ->
-        Map.merge(row, %{counting?: true, count: count, effort_count: nil, value: nil})
+        Map.merge(row, %{
+          counting?: true,
+          confirmed?: false,
+          count: count,
+          effort_count: nil,
+          value: nil
+        })
 
       _ ->
-        Map.merge(row, %{counting?: false, count: nil, effort_count: nil, value: nil})
+        Map.merge(row, %{
+          counting?: false,
+          confirmed?: false,
+          count: nil,
+          effort_count: nil,
+          value: nil
+        })
     end
   end
 
@@ -641,6 +729,7 @@ defmodule BearCubWeb.KioskLive do
   defp attach_effort(row, completion) do
     Map.merge(row, %{
       counting?: false,
+      confirmed?: false,
       count: nil,
       effort_count: completion.effort_count,
       value: abs(Chores.extra_contribution(completion, row.chore))
@@ -913,6 +1002,28 @@ defmodule BearCubWeb.KioskLive do
               id={"extras-#{kid.id}"}
               class="grid auto-rows-min gap-2 overflow-y-auto p-2.5"
             >
+              <%!-- Done extras rise as one joined kid-color mass, newest
+                   first (D117); pending rows follow in authored order. --%>
+              <li
+                :if={Enum.any?(extras, &(&1.done? and not &1.counting?))}
+                id={"extras-done-#{kid.id}"}
+              >
+                <ul class="flex flex-col overflow-hidden rounded-xl">
+                  <.chore_row
+                    :for={
+                      %{chore: chore, effort_count: effort_count, value: value} <-
+                        Enum.filter(extras, &(&1.done? and not &1.counting?))
+                    }
+                    chore={chore}
+                    done?={true}
+                    kid={kid}
+                    routine={routine}
+                    extra?={true}
+                    effort_count={effort_count}
+                    value={value}
+                  />
+                </ul>
+              </li>
               <.chore_row
                 :for={
                   %{
@@ -920,10 +1031,11 @@ defmodule BearCubWeb.KioskLive do
                     done?: done?,
                     failed?: failed?,
                     counting?: counting?,
+                    confirmed?: confirmed?,
                     count: count,
                     effort_count: effort_count,
                     value: value
-                  } <- extras
+                  } <- Enum.reject(extras, &(&1.done? and not &1.counting?))
                 }
                 chore={chore}
                 done?={done?}
@@ -932,6 +1044,7 @@ defmodule BearCubWeb.KioskLive do
                 routine={routine}
                 extra?={true}
                 counting?={counting?}
+                confirmed?={confirmed?}
                 count={count}
                 effort_count={effort_count}
                 value={value}

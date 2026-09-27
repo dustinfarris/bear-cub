@@ -313,6 +313,9 @@ defmodule BearCubWeb.KioskComponents do
   # completion.
   attr :counting?, :boolean, default: false
   attr :count, :integer, default: nil
+  # The confirm beat (D117): the panel has been tapped to completion and
+  # holds its pressed look, inert, until the row lands as done.
+  attr :confirmed?, :boolean, default: false
   # The persisted count and its earned/lost value (Story 05, D112): set
   # only for a done or failed-and-not-redone counted extra. `effort_count`
   # is what ×N shows; `value` is the chip's own figure — for a flat chore
@@ -337,9 +340,10 @@ defmodule BearCubWeb.KioskComponents do
     ~H"""
     <li
       id={"#{@dom}-#{@chore.id}"}
-      data-done={@done?}
+      data-done={@done? and not @counting?}
       data-failed={@failed?}
       data-counting={@counting?}
+      phx-hook={(@extra? and not @ghost?) && ".ScrollIntoView"}
       phx-click={(not @ghost? and not @counting?) && "toggle-chore"}
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
@@ -366,22 +370,25 @@ defmodule BearCubWeb.KioskComponents do
           @grow? && "animate-sink-grow motion-reduce:animate-none",
           @ghost? && "animate-sink-collapse motion-reduce:hidden",
           cond do
+            # Count panel (Story 04): the row expands to hold it, in place —
+            # the pending slot's own ground, its dashed edge turned solid
+            # (D117). Ahead of the done branches: a confirmed panel is
+            # already `done?` but holds its look through the beat.
+            @counting? -> "rounded-xl border-[3px] border-solid px-3.5"
             # Mid-beat (D106), and then the sink ghost: the slot, filled —
             # the same box as the dashed slot so nothing around it shifts.
             @done? and @slot? -> "h-24 rounded-xl border-[3px] px-3.5"
-            # Done (routine or extra): kid-color fill, flush, a hairline
-            # between consecutive done rows (D105). The rise ghost collapses
-            # in this look.
-            # Extras sit in a padded group (D116): a done extra spans that
-            # padding so it stays a flush band.
-            @done? and @extra? -> "-mx-2.5 h-20 border-t border-white/35 px-[27px] first:border-t-0"
+            # Done extra (D117): a row of the joined mass at the top of the
+            # extras group. The mass's wrapper clips the outer corners; 17px
+            # (14 padding + 3 border) lines the emoji up with the slots.
+            @done? and @extra? -> "h-20 border-t border-white/35 px-[17px] first:border-t-0"
+            # Done routine row: kid-color fill, flush, a hairline between
+            # consecutive done rows (D105). The rise ghost collapses in this
+            # look.
             @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
-            # Count panel (Story 04): the row expands to hold it, in place —
-            # same ownership border as the pending extra it replaces.
-            @counting? -> "rounded-xl border-l-[length:var(--child-border-width)] px-6"
-            # Pending extra: the fixed neutral card with the child-color
-            # ownership border (docs/design-language.org).
-            @extra? -> "h-24 rounded-xl border-l-[length:var(--child-border-width)] px-6"
+            # Pending extra (D117): a dashed slot in the kid's own color,
+            # exactly as a routine slot is one in the routine's.
+            @extra? -> "h-24 rounded-xl border-[3px] border-dashed px-3.5"
             # Pending routine chore: a dashed slot in the routine tint (D105).
             true -> "h-24 rounded-xl border-[3px] border-dashed px-3.5"
           end
@@ -470,7 +477,15 @@ defmodule BearCubWeb.KioskComponents do
           phx-click="count-confirm"
           phx-value-kid-id={@kid.id}
           phx-throttle="1000"
-          class="flex h-20 w-full items-center justify-center rounded-xl bg-success font-reward text-[44px] font-black text-success-content"
+          class={[
+            "flex h-20 w-full items-center justify-center rounded-xl border-[3px] font-reward text-[44px] font-black transition-all",
+            if(@confirmed?,
+              do:
+                "scale-[0.97] border-transparent bg-success text-success-content ring-[6px] ring-success/25",
+              else:
+                "border-[color:var(--paid-edge)] bg-[color:var(--paid-tint)] text-[color:var(--paid-content)]"
+            )
+          ]}
         >
           +{@chore.points + @count * @chore.unit_rate}
         </button>
@@ -537,6 +552,27 @@ defmodule BearCubWeb.KioskComponents do
           <span class="font-reward text-2xl font-black">−{@value}</span>
         </span>
       <% end %>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollIntoView">
+        // An extra row that opens as the count panel scrolls itself into view
+        // inside the extras list (D117). The row is the same <li> as the
+        // pending slot, so `mounted` never sees the panel open — `updated`
+        // acts when data-counting turns on.
+        export default {
+          mounted() {
+            this.counting = this.el.hasAttribute("data-counting")
+            if (this.counting) this.reveal()
+          },
+          updated() {
+            const counting = this.el.hasAttribute("data-counting")
+            if (counting && !this.counting) this.reveal()
+            this.counting = counting
+          },
+          reveal() {
+            const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            this.el.scrollIntoView({block: "nearest", behavior: reduce ? "auto" : "smooth"})
+          }
+        }
+      </script>
     </li>
     """
   end
@@ -628,19 +664,21 @@ defmodule BearCubWeb.KioskComponents do
   defp reward_card_click(_), do: nil
 
   # Done: full kid-color fill, no border of any kind — the fill is already
-  # the child's own color. Pending extra: fixed neutral surface plus the
-  # child-color ownership border (docs/design-language.org). Pending routine
-  # chore: routine tint fill with a dashed routine-colored edge (D105) — the
-  # column already carries ownership, so no child-color border here.
+  # the child's own color. Pending routine chore: routine tint fill with a
+  # dashed routine-colored edge (D105) — the column already carries
+  # ownership, so no child-color border here.
   defp chore_card_style(true, _extra?, true, _routine, kid_color),
     do: "background-color: #{kid_color}; border-color: #{kid_color}"
 
   defp chore_card_style(true, _extra?, false, _routine, kid_color),
     do: "background-color: #{kid_color}"
 
+  # Pending extra (D117): the kid's color at 12% ground and 45% edge, mixed
+  # into the page surface like the routine tints. The kid's color is data,
+  # so these cannot be tokens.
   defp chore_card_style(false, true, _slot?, _routine, kid_color),
     do:
-      "background-color: var(--extra-card-background); border-left-color: #{kid_color}; color: var(--extra-card-content)"
+      "background-color: color-mix(in oklab, #{kid_color} 12%, var(--color-base-100)); border-color: color-mix(in oklab, #{kid_color} 45%, var(--color-base-100)); color: var(--extra-card-content)"
 
   defp chore_card_style(false, false, _slot?, routine, _kid_color),
     do:

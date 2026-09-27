@@ -710,7 +710,7 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{retired.id}")
     end
 
-    test "an extra renders on the fixed neutral card surface, not the routine tint",
+    test "a pending extra is a dashed slot in the kid's own color, with no ownership bar (D117)",
          %{conn: conn, kid: kid} do
       morning_active()
       now = LocalTime.now()
@@ -721,15 +721,13 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(
-               view,
-               "#extras-#{kid.id} #chore-#{extra.id}[style*='var(--extra-card-background)']"
-             )
-
-      refute has_element?(
-               view,
-               "#extras-#{kid.id} #chore-#{extra.id}[style*='var(--routine-morning-tint)']"
-             )
+      row = "#extras-#{kid.id} #chore-#{extra.id}"
+      assert has_element?(view, "#{row}.border-dashed.border-\\[3px\\]")
+      assert has_element?(view, "#{row}[style*='#{kid.color} 12%']")
+      assert has_element?(view, "#{row}[style*='#{kid.color} 45%']")
+      refute has_element?(view, "#{row}[style*='var(--extra-card-background)']")
+      refute has_element?(view, "#{row}[style*='var(--routine-morning-tint)']")
+      refute has_element?(view, "#{row}[class*='border-l-']")
     end
 
     test "a recurring extra completed yesterday is present and tappable at today's reveal (Story 05, D82)",
@@ -2485,6 +2483,13 @@ defmodule BearCubWeb.KioskLiveTest do
       )
     end
 
+    # The confirm beat's landing (D117): the timer's own message, sent by
+    # hand so no test sleeps.
+    defp land(view, kid, extra) do
+      send(view.pid, {:confirm_landed, kid.id, extra.id})
+      _ = render(view)
+    end
+
     # Completes this kid's morning routine so the band (and its extras)
     # reveal, mirroring the "collapse band..." describe block's setup.
     defp reveal_band(kid) do
@@ -2562,6 +2567,7 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#count-inc-#{extra.id}") |> render_click()
       view |> element("#count-inc-#{extra.id}") |> render_click()
       view |> element("#count-confirm-#{extra.id}") |> render_click()
+      land(view, kid, extra)
 
       assert has_element?(view, "#chore-#{extra.id}[data-done]")
       refute has_element?(view, "#count-confirm-#{extra.id}")
@@ -2613,6 +2619,7 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#count-inc-#{extra.id}") |> render_click()
       view |> element("#count-inc-#{extra.id}") |> render_click()
       view |> element("#count-confirm-#{extra.id}") |> render_click()
+      land(view, kid, extra)
       assert has_element?(view, "#chore-#{extra.id}[data-done]")
 
       view |> element("#chore-#{extra.id}") |> render_click()
@@ -2634,6 +2641,23 @@ defmodule BearCubWeb.KioskLiveTest do
 
       view |> element("#chore-#{extra.id}") |> render_click()
       assert has_element?(view, "#count-value-#{extra.id}", "1")
+    end
+
+    test "a failed, not-redone extra keeps the kid-color dashed slot with its count and penalty (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+      now = LocalTime.now()
+      {:ok, _} = Chores.complete_chore(extra, now, "kiosk", 4)
+      {:ok, _} = Chores.fail_chore(extra, now)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      row = "#extras-#{kid.id} #chore-#{extra.id}"
+      assert has_element?(view, "#{row}.border-dashed[style*='#{kid.color} 12%']")
+      assert has_element?(view, "#chore-effort-#{extra.id}", "×4")
+      assert has_element?(view, "#chore-penalty-#{extra.id}", "−14")
+      refute has_element?(view, "#extras-done-#{kid.id}")
     end
 
     test "the numeral holds a fixed slot and a long name truncates beside the stepper (AC-6)",
@@ -2666,6 +2690,136 @@ defmodule BearCubWeb.KioskLiveTest do
 
       view |> element("#chore-#{extra.id}") |> render_click()
       refute has_element?(view, "#chore-#{extra.id}[data-done]")
+    end
+
+    test "the open panel keeps the kid-color ground with a solid edge (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      row = "#chore-#{extra.id}"
+      assert has_element?(view, "#{row}[style*='#{kid.color} 12%']")
+      refute has_element?(view, "#{row}.border-dashed")
+      refute has_element?(view, "#{row}[class*='border-l-']")
+    end
+
+    test "the submit is soft green at rest and solid green once tapped (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+
+      confirm = "#count-confirm-#{extra.id}"
+      assert has_element?(view, "#{confirm}.bg-\\[color\\:var\\(--paid-tint\\)\\]")
+      refute has_element?(view, "#{confirm}.bg-success")
+
+      view |> element(confirm) |> render_click()
+
+      assert has_element?(view, "#{confirm}.bg-success.ring-success\\/25")
+      refute has_element?(view, "#{confirm}.bg-\\[color\\:var\\(--paid-tint\\)\\]")
+    end
+
+    test "confirm writes at the tap, holds the pressed panel inert, and lands as done on the timer (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid, %{points: 2, unit_rate: 3, unit_max: 10})
+      today = DateTime.to_date(LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      view |> element("#count-inc-#{extra.id}") |> render_click()
+      view |> element("#count-confirm-#{extra.id}") |> render_click()
+
+      # written already, but the panel is still up
+      assert Chores.current_completions(today)[extra.id].effort_count == 2
+      assert has_element?(view, "#count-confirm-#{extra.id}")
+      refute has_element?(view, "#chore-#{extra.id}[data-done]")
+
+      # inert meanwhile: stepper, close and a second confirm do nothing
+      render_click(view, "count-step", %{"kid-id" => "#{kid.id}", "dir" => "inc"})
+      render_click(view, "count-cancel", %{"kid-id" => "#{kid.id}"})
+      render_click(view, "count-confirm", %{"kid-id" => "#{kid.id}"})
+      assert has_element?(view, "#count-value-#{extra.id}", "2")
+      assert has_element?(view, "#count-confirm-#{extra.id}")
+
+      land(view, kid, extra)
+
+      refute has_element?(view, "#count-confirm-#{extra.id}")
+      assert has_element?(view, "#chore-#{extra.id}[data-done]")
+      assert has_element?(view, "#chore-earned-#{extra.id}", "+8")
+      assert has_element?(view, "#chore-effort-#{extra.id}", "×2")
+    end
+
+    test "a late landing message after a boundary cleared the panel is a no-op",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#chore-#{extra.id}") |> render_click()
+      view |> element("#count-confirm-#{extra.id}") |> render_click()
+      send(view.pid, :boundary)
+      land(view, kid, extra)
+
+      assert Process.alive?(view.pid)
+    end
+
+    test "completed extras rise above the pending ones, newest first, and an undo returns the row to its place (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      a = chore_fixture(kid, %{name: "Aa", icon: "🅰️", routine: nil})
+      b = chore_fixture(kid, %{name: "Bb", icon: "🅱️", routine: nil})
+      c = chore_fixture(kid, %{name: "Cc", icon: "🌊", routine: nil})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      order = fn ->
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#extras-#{kid.id} li[id^=chore-]")
+        |> LazyHTML.attribute("id")
+      end
+
+      assert order.() == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
+
+      view |> element("#chore-#{c.id}") |> render_click()
+      assert order.() == ["chore-#{c.id}", "chore-#{a.id}", "chore-#{b.id}"]
+
+      view |> element("#chore-#{b.id}") |> render_click()
+      # same-second completions break the tie on completion id: b is newer
+      assert order.() == ["chore-#{b.id}", "chore-#{c.id}", "chore-#{a.id}"]
+
+      # done rows share one rounded, clipped mass
+      assert has_element?(
+               view,
+               "#extras-done-#{kid.id} > ul.overflow-hidden.rounded-xl #chore-#{c.id}"
+             )
+
+      refute has_element?(view, "#extras-done-#{kid.id} #chore-#{a.id}")
+
+      view |> element("#chore-#{c.id}") |> render_click()
+      view |> element("#chore-#{b.id}") |> render_click()
+      assert order.() == ["chore-#{a.id}", "chore-#{b.id}", "chore-#{c.id}"]
+      refute has_element?(view, "#extras-done-#{kid.id}")
+    end
+
+    test "every extra row carries the scroll-into-view hook, marked while counting (D117)",
+         %{conn: conn, kid: kid} do
+      reveal_band(kid)
+      extra = counted_extra_fixture(kid)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#chore-#{extra.id}[phx-hook]")
+      refute has_element?(view, "#chore-#{extra.id}[data-counting]")
+
+      view |> element("#chore-#{extra.id}") |> render_click()
+      assert has_element?(view, "#chore-#{extra.id}[phx-hook][data-counting]")
     end
 
     test "the panel clears at a boundary re-render",

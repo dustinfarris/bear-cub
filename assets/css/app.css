@@ -122,8 +122,11 @@
      chip) as a ground and a rule, for the bar once every chore is done. */
   --paid-tint: color-mix(in oklab, var(--color-success) 16%, var(--color-base-100));
   --paid-edge: color-mix(in oklab, var(--color-success) 35%, var(--color-base-100));
+  /* --paid-content, the count panel's soft submit (D117): the +N at rest, before anything is
+     earned — success pulled toward the content color so it reads on --paid-tint. */
+  --paid-content: color-mix(in oklab, var(--color-success) 60%, var(--color-base-content));
 
-  /* Extras are a fixed neutral surface — never tinted by routine or theme. */
+  /* Reward cards are a fixed neutral surface, and extras keep this content color (D117) — never tinted by routine or theme. */
   --extra-card-background: #ffffff;
   --extra-card-content: #1c1917;
   /* The count panel's stepper discs (D116): the extras' content color at 10%

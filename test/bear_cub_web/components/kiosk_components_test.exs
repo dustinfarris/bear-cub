@@ -232,9 +232,10 @@ defmodule BearCubWeb.KioskComponentsTest do
       refute has?(at_max, "#count-dec-7.opacity-30")
     end
 
-    test "a pending extra is a rounded card and a done extra spans the group's padding" do
-      assert has?(chore_row(%{extra?: true}), "#chore-7.rounded-xl")
-      assert has?(chore_row(%{extra?: true, done?: true}), "#chore-7.-mx-2\\.5")
+    test "a pending extra is a rounded dashed slot and a done extra is a flush row of the mass" do
+      assert has?(chore_row(%{extra?: true}), "#chore-7.rounded-xl.border-dashed")
+      assert has?(chore_row(%{extra?: true, done?: true}), "#chore-7.px-\\[17px\\]")
+      refute has?(chore_row(%{extra?: true, done?: true}), "#chore-7.-mx-2\\.5")
     end
 
     test "a ghost takes its own id prefix and is inert" do
