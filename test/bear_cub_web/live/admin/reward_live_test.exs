@@ -173,6 +173,16 @@ defmodule BearCubWeb.Admin.RewardLiveTest do
 
     test "a successful direct-redeem lowers the kid's balance and drops live on the connected kiosk without a reload",
          %{conn: conn, kid_a: kid_a} do
+      # The kiosk's badge lives in a column banner, which never renders in
+      # the Good Night gap (docs/learnings.org [2026-07-17]).
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+
+      Application.put_env(:bear_cub, :routine_windows,
+        morning: {~T[00:00:00], ~T[23:59:59]},
+        evening: {~T[23:59:59], ~T[23:59:59]}
+      )
+
       reward = reward_fixture(nil, %{name: "Bike", icon: "🚲", points: 10})
       # an extra (routine: nil), so the full chore.points value counts —
       # a routine chore only ever contributes the flat routine bonus R,

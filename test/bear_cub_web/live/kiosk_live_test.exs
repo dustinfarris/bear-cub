@@ -49,6 +49,13 @@ defmodule BearCubWeb.KioskLiveTest do
 
   describe "with two kids" do
     setup do
+      # Pinned so the columns render at any wall-clock hour: inside the
+      # 23:00-05:00 Good Night gap the kiosk renders no columns at all
+      # (docs/learnings.org [2026-07-17]).
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
       kid_b = kid_fixture(%{name: "Kid B", color: "#0ea5e9", position: 1})
       %{kid_a: kid_a, kid_b: kid_b}
@@ -1856,6 +1863,12 @@ defmodule BearCubWeb.KioskLiveTest do
     end
 
     setup do
+      # The badge sits in the column banner, which never renders in the
+      # Good Night gap (docs/learnings.org [2026-07-17]).
+      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
+      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
+
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
       %{kid: kid}
     end
