@@ -196,9 +196,45 @@ defmodule BearCubWeb.KioskComponentsTest do
     test "a counting row holds the count panel and no tap of its own" do
       html = chore_row(%{extra?: true, counting?: true, count: 2})
 
-      assert has?(html, "#chore-7[data-counting] #count-form-7")
+      assert has?(html, "#chore-7[data-counting] #count-name-7[phx-click=count-cancel]")
       assert text(html, "#count-confirm-7") =~ "+4"
+      assert text(html, "#count-value-7") =~ "2"
       refute has?(html, "#chore-7[phx-click]")
+    end
+
+    test "the count panel is buttons only: no slider, no form, no ✕" do
+      html = chore_row(%{extra?: true, counting?: true, count: 2})
+
+      refute has?(html, "#count-form-7")
+      refute has?(html, "input[type=range]")
+      refute has?(html, "#count-cancel-7")
+      refute html =~ "✕"
+    end
+
+    test "the stepper discs are inline SVG on the control token, not text glyphs" do
+      html = chore_row(%{extra?: true, counting?: true, count: 2})
+
+      assert has?(html, "#count-dec-7.size-16 svg")
+      assert has?(html, "#count-inc-7.size-16 svg")
+      assert html =~ "var(--extra-card-control)"
+      refute text(html, "#count-dec-7") =~ "−"
+      refute text(html, "#count-inc-7") =~ "+"
+    end
+
+    test "the stepper dims at its bounds but is never HTML-disabled" do
+      at_min = chore_row(%{extra?: true, counting?: true, count: 1, chore: chore(%{unit_max: 5})})
+      assert has?(at_min, "#count-dec-7.opacity-30")
+      refute has?(at_min, "#count-inc-7.opacity-30")
+      refute has?(at_min, "#count-dec-7[disabled]")
+
+      at_max = chore_row(%{extra?: true, counting?: true, count: 5, chore: chore(%{unit_max: 5})})
+      assert has?(at_max, "#count-inc-7.opacity-30")
+      refute has?(at_max, "#count-dec-7.opacity-30")
+    end
+
+    test "a pending extra is a rounded card and a done extra spans the group's padding" do
+      assert has?(chore_row(%{extra?: true}), "#chore-7.rounded-xl")
+      assert has?(chore_row(%{extra?: true, done?: true}), "#chore-7.-mx-2\\.5")
     end
 
     test "a ghost takes its own id prefix and is inert" do

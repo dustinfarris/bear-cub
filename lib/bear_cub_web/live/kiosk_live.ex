@@ -126,23 +126,6 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
   end
 
-  # The slider lives in its own `<form phx-change="count-set">` (Technical
-  # Notes: a bare element has no phx-change) wrapping only the slider —
-  # the stepper and confirm are ordinary buttons outside it.
-  def handle_event("count-set", %{"kid-id" => kid_id, "count" => count}, socket) do
-    kid_id = String.to_integer(kid_id)
-
-    case Integer.parse(count) do
-      {count, _} ->
-        counting = set_count(socket, kid_id, count)
-        {:noreply, socket |> assign(:counting, counting) |> load(LocalTime.now())}
-
-      # malformed input (only reachable via a forged event) — a harmless no-op
-      :error ->
-        {:noreply, socket}
-    end
-  end
-
   def handle_event("count-confirm", %{"kid-id" => kid_id}, socket) do
     now = LocalTime.now()
     kid_id = String.to_integer(kid_id)
@@ -268,13 +251,8 @@ defmodule BearCubWeb.KioskLive do
     update_count(socket, kid_id, fn count, _chore -> count + delta end)
   end
 
-  defp set_count(socket, kid_id, count) do
-    update_count(socket, kid_id, fn _count, _chore -> count end)
-  end
-
   # `unit_max` is always read fresh from the DB, never trusted from the
-  # client — the same server-side clamp both the stepper and the slider
-  # share.
+  # client — the server-side clamp the stepper goes through.
   defp update_count(socket, kid_id, next_count) do
     case Map.fetch(socket.assigns.counting, kid_id) do
       {:ok, %{chore_id: chore_id, count: count} = entry} ->
@@ -632,8 +610,17 @@ defmodule BearCubWeb.KioskLive do
     attach_effort(row, Map.fetch!(completions, row.chore.id))
   end
 
-  defp tag_counting(%{failed?: true} = row, _kid_id, _counting, _completions, failed_completions) do
-    attach_effort(row, Map.fetch!(failed_completions, row.chore.id))
+  # A failed row is pending again (D45, D46): tapping it to redo opens the
+  # panel like any pending counted extra, and the panel replaces the
+  # failed look until it closes or confirms.
+  defp tag_counting(%{failed?: true} = row, kid_id, counting, _completions, failed_completions) do
+    case Map.get(counting, kid_id) do
+      %{chore_id: chore_id, count: count} when chore_id == row.chore.id ->
+        Map.merge(row, %{counting?: true, count: count, effort_count: nil, value: nil})
+
+      _ ->
+        attach_effort(row, Map.fetch!(failed_completions, row.chore.id))
+    end
   end
 
   defp tag_counting(row, kid_id, counting, _completions, _failed_completions) do
@@ -924,7 +911,7 @@ defmodule BearCubWeb.KioskLive do
             <ul
               :if={state == :band and routine == :morning}
               id={"extras-#{kid.id}"}
-              class="grid auto-rows-min gap-px overflow-y-auto bg-base-300"
+              class="grid auto-rows-min gap-2 overflow-y-auto p-2.5"
             >
               <.chore_row
                 :for={

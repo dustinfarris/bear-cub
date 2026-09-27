@@ -308,7 +308,7 @@ defmodule BearCubWeb.KioskComponents do
   attr :ghost?, :boolean, default: false
   # The count panel (Story 04): only ever true for a pending counted
   # extra. While set, the row carries no `phx-click` of its own at all —
-  # the structural trap named in the design: a slider drag or ±tap inside
+  # the structural trap named in the design: a ±tap or the name-row close inside
   # an `<li phx-click="toggle-chore">` would otherwise bubble into a
   # completion.
   attr :counting?, :boolean, default: false
@@ -347,7 +347,7 @@ defmodule BearCubWeb.KioskComponents do
         [
           "select-none overflow-hidden transition-all",
           if(@counting?,
-            do: "flex flex-col items-stretch gap-3 py-4",
+            do: "flex flex-col items-stretch gap-1 py-4",
             else: "flex cursor-pointer items-center gap-4 active:scale-[0.97]"
           ),
           # Move animation (D107), sink and rise alike: the real row grows
@@ -372,13 +372,16 @@ defmodule BearCubWeb.KioskComponents do
             # Done (routine or extra): kid-color fill, flush, a hairline
             # between consecutive done rows (D105). The rise ghost collapses
             # in this look.
+            # Extras sit in a padded group (D116): a done extra spans that
+            # padding so it stays a flush band.
+            @done? and @extra? -> "-mx-2.5 h-20 border-t border-white/35 px-[27px] first:border-t-0"
             @done? -> "h-20 border-t border-white/35 px-[27px] first:border-t-0"
             # Count panel (Story 04): the row expands to hold it, in place —
             # same ownership border as the pending extra it replaces.
             @counting? -> "rounded-xl border-l-[length:var(--child-border-width)] px-6"
             # Pending extra: the fixed neutral card with the child-color
             # ownership border (docs/design-language.org).
-            @extra? -> "h-24 border-l-[length:var(--child-border-width)] px-6"
+            @extra? -> "h-24 rounded-xl border-l-[length:var(--child-border-width)] px-6"
             # Pending routine chore: a dashed slot in the routine tint (D105).
             true -> "h-24 rounded-xl border-[3px] border-dashed px-3.5"
           end
@@ -387,76 +390,90 @@ defmodule BearCubWeb.KioskComponents do
       style={chore_card_style(@done?, @extra?, @slot?, @routine, @kid.color)}
     >
       <%= if @counting? do %>
-        <div class="flex items-center gap-4">
-          <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
-          <span class="text-2xl font-bold">{@chore.name}</span>
-        </div>
-        <form
-          id={"count-form-#{@chore.id}"}
-          phx-change="count-set"
-          phx-value-kid-id={@kid.id}
-        >
-          <input
-            type="range"
-            name="count"
-            min="1"
-            max={@chore.unit_max}
-            value={@count}
-            class="w-full"
-          />
-        </form>
-        <div class="flex items-center justify-center gap-6">
-          <button
-            type="button"
-            id={"count-dec-#{@chore.id}"}
-            phx-click="count-step"
-            phx-value-kid-id={@kid.id}
-            phx-value-dir="dec"
-            class={[
-              "flex size-12 items-center justify-center rounded-full bg-base-300 text-2xl font-black",
-              @count <= 1 && "opacity-30"
-            ]}
-          >
-            −
-          </button>
-          <span id={"count-value-#{@chore.id}"} class="min-w-[3ch] text-center text-4xl font-black">
-            {@count}
-          </span>
-          <button
-            type="button"
-            id={"count-inc-#{@chore.id}"}
-            phx-click="count-step"
-            phx-value-kid-id={@kid.id}
-            phx-value-dir="inc"
-            class={[
-              "flex size-12 items-center justify-center rounded-full bg-base-300 text-2xl font-black",
-              @count >= @chore.unit_max && "opacity-30"
-            ]}
-          >
-            +
-          </button>
-        </div>
-        <div class="flex items-center gap-3">
-          <button
-            type="button"
-            id={"count-cancel-#{@chore.id}"}
+        <%!-- The count panel (D111 as amended by D116): two rows on the
+             extra's own surface. The name area is the close target and the
+             stepper sits *beside* it, not inside it, so a ± tap never
+             reaches the close binding. Both discs stay tappable at their
+             bounds (opacity only, never `disabled`) — the server clamps. --%>
+        <div class="flex h-18 items-center gap-4">
+          <div
+            id={"count-name-#{@chore.id}"}
             phx-click="count-cancel"
             phx-value-kid-id={@kid.id}
-            class="flex size-10 items-center justify-center rounded-full bg-base-300/70 text-xl"
+            class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4"
           >
-            ✕
-          </button>
-          <button
-            type="button"
-            id={"count-confirm-#{@chore.id}"}
-            phx-click="count-confirm"
-            phx-value-kid-id={@kid.id}
-            phx-throttle="1000"
-            class="flex flex-1 items-center justify-center gap-2 rounded-full bg-success px-4 py-2 font-reward text-xl font-black text-success-content"
-          >
-            +{@chore.points + @count * @chore.unit_rate}
-          </button>
+            <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
+            <span class="truncate text-2xl font-bold">{@chore.name}</span>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              id={"count-dec-#{@chore.id}"}
+              phx-click="count-step"
+              phx-value-kid-id={@kid.id}
+              phx-value-dir="dec"
+              aria-label="Fewer"
+              class={[
+                "flex size-16 items-center justify-center rounded-full",
+                @count <= 1 && "opacity-30"
+              ]}
+              style="background: var(--extra-card-control)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                class="size-8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+            <span
+              id={"count-value-#{@chore.id}"}
+              class="min-w-20 text-center text-[56px] font-extrabold leading-none tabular-nums"
+            >
+              {@count}
+            </span>
+            <button
+              type="button"
+              id={"count-inc-#{@chore.id}"}
+              phx-click="count-step"
+              phx-value-kid-id={@kid.id}
+              phx-value-dir="inc"
+              aria-label="More"
+              class={[
+                "flex size-16 items-center justify-center rounded-full",
+                @count >= @chore.unit_max && "opacity-30"
+              ]}
+              style="background: var(--extra-card-control)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                class="size-8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
         </div>
+        <button
+          type="button"
+          id={"count-confirm-#{@chore.id}"}
+          phx-click="count-confirm"
+          phx-value-kid-id={@kid.id}
+          phx-throttle="1000"
+          class="flex h-20 w-full items-center justify-center rounded-xl bg-success font-reward text-[44px] font-black text-success-content"
+        >
+          +{@chore.points + @count * @chore.unit_rate}
+        </button>
       <% else %>
         <span class="text-[2.5rem] leading-none">{@chore.icon}</span>
         <span class={["text-2xl font-bold", @done? && "text-white drop-shadow-sm"]}>

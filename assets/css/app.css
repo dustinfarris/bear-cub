@@ -126,6 +126,10 @@
   /* Extras are a fixed neutral surface — never tinted by routine or theme. */
   --extra-card-background: #ffffff;
   --extra-card-content: #1c1917;
+  /* The count panel's stepper discs (D116): the extras' content color at 10%
+     — mixed in oklab like the tints above, so it stays a tint of the card
+     rather than a grey. */
+  --extra-card-control: color-mix(in oklab, var(--extra-card-content) 10%, transparent);
 }
 
 /* Reward layer type (D105): Nunito, self-hosted (SIL OFL; latin and
