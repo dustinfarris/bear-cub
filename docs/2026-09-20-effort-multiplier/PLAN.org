@@ -94,7 +94,14 @@ Design: [[file:DESIGN.org]]
   *Still owed from the story's gate notes:* re-run the Claude Design sync per ~.design-sync/NOTES.md~, now that the mirror is stale. Also look at the gate with a pale kid color and a purple one (~#7c3aed~), the two risks D117 accepted.
 :END:
 
-** TODO [[file:stories/story-09-kiosk-panel-gate-fixes.org][Story 09 — The count panel scrolls into view and keeps its ground through the confirm beat]]
+** DONE [[file:stories/story-09-kiosk-panel-gate-fixes.org][Story 09 — The count panel scrolls into view and keeps its ground through the confirm beat]]
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 23:04] \\
+  Closed out: all 5 ACs and all 4 DoD items ~[X]~. ~mix precommit~ is clean with 730 passed. Three changes in ~BearCubWeb.KioskComponents.chore_row/1~. First, ~phx-hook=".ScrollIntoView"~ is now a literal on every row, so LiveView expands the name, and the old ~(@extra? and not @ghost?) && ...~ expression is gone. Only a counting extra sets ~data-counting~, so the other rows never scroll. Second, ~chore_card_style/5~ now receives ~@done? and not @counting?~, so the panel keeps its 12% ground and 45% edge through the 280 ms beat. Third, the ~@doc~ and the extras ~<ul>~ comment in ~KioskLive.render/1~ now describe the kid-color slot. The tests were written first and watched failing. The hook test now asserts the expanded value ~BearCubWeb.KioskComponents.ScrollIntoView~, not just the attribute's presence. The confirm-beat test gained mid-beat assertions on the 12% and 45% mixes. \\
+  The hook body was changed after all. The story said it "is fine and should stay as it is", but the manual 1280 × 800 check through ~Scenarios.effort/1~ (15 extras on one kid, the list 1572 px in a 534 px box) showed the first fix leaving the panel 20 px short: the submit's bottom edge sat at y = 785 against the list's bottom at 784. ~updated()~ fires as ~data-counting~ flips, while the row's ~transition-all~ height change is still running, so ~scrollIntoView~ measures a short row. ~reveal()~ now scrolls a second time after 400 ms (a ~settle~ timer, cleared in ~destroyed()~). Re-checked: the row's bottom is at 784 and the submit's at 765. The console showed 0 errors and 0 warnings on load and after opening. No automated test covers the second scroll, since it cannot run at the LiveView layer. The manual check is its only evidence. \\
+  No DESIGN edit and no D-entry. The body says the panel "scrolls itself into view", and it now does. How the hook times its scroll is mechanism, not design. \\
+  Still owed at the Batch 1 gate re-run, carried from Story 08: look at the kiosk with a pale kid color and with a purple one (~#7c3aed~), and re-run the Claude Design sync per ~.design-sync/NOTES.md~.
+:END:
 
 * Deferred
 

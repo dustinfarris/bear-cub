@@ -33,19 +33,55 @@ As a kid at the fridge, I need a count panel I open near the bottom of my extras
 
 * Acceptance Criteria
 
-** [ ] Opening the count panel on an extra near the bottom of the list brings the whole panel, payout button included, into view without the kid scrolling (SC-2)
-** [ ] During the beat after the payout tap, the panel keeps its soft kid-color ground and solid kid-color edge; only the payout button shows the pressed look (SC-2)
-** [ ] Once the beat ends, the row still lands as a done extra in the kid's full color at the top of the group, exactly as it does today (SC-2)
-** [ ] The browser console shows no hook errors when the kiosk loads with extras showing (SC-2)
-** [ ] The code comments that still describe extras as a fixed neutral card describe the kid-color slot instead
+** [X] Opening the count panel on an extra near the bottom of the list brings the whole panel, payout button included, into view without the kid scrolling (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:59] \\
+  Verified by hand at 1280 × 800 through ~BearCub.Dev.Scenarios.effort/1~ plus five added extras (list 1572 px in a 534 px box): opening the last extra scrolled the panel fully into view (row bottom 784 = list bottom 784, submit bottom 765). The first attempt with the hook body unchanged stopped 20 px short, because ~updated()~ fires while the row is still opening; ~reveal()~ now also scrolls again after 400 ms (~this.settle~, cleared in ~destroyed()~) — a change to the hook body the story had called fine. Value test in ~kiosk_live_test.exs~ covers the attribute; ~mix precommit~ 730 passed.
+:END:
+** [X] During the beat after the payout tap, the panel keeps its soft kid-color ground and solid kid-color edge; only the payout button shows the pressed look (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  Verified by the mid-beat assertions added to the test "confirm writes at the tap, holds the pressed panel inert, and lands as done on the timer (D117)": the row's style carries ~<kid.color> 12%~ and ~<kid.color> 45%~ after the confirm tap and before the timer; failed before the change (~chore_card_style/5~ now gets ~@done? and not @counting?~), passes after. Full ~mix precommit~: 730 passed.
+:END:
+** [X] Once the beat ends, the row still lands as a done extra in the kid's full color at the top of the group, exactly as it does today (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  Verified by the same test's post-landing assertions (~data-done~, ~+8~, ×2) still passing; the style change applies only while ~counting?~ is true, ordering untouched.
+:END:
+** [X] The browser console shows no hook errors when the kiosk loads with extras showing (SC-2)
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:59] \\
+  Verified by hand at 1280 × 800: the page carries ~phx-hook="BearCubWeb.KioskComponents.ScrollIntoView"~ on all 21 extra rows, and the console shows 0 errors and 0 warnings on load and after opening the panel.
+:END:
+** [X] The code comments that still describe extras as a fixed neutral card describe the kid-color slot instead
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  Verified: ~chore_row/1~'s ~@doc~ and the extras ~<ul>~ comment in ~KioskLive.render/1~ now describe the kid-color slot (D117); ~grep "fixed neutral" lib~ returns nothing.
+:END:
 # Traces to D117 and the gate review rather than to a Success Criterion: a comment left describing the superseded surface is the kind of stale position an Advisory exists to fence off, living in the code instead of the document.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:59] \\
+  All five criteria are now met: three by test, two by the manual 1280 × 800 check.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  Tests for the hook value and the mid-beat style were written first and watched failing, then passing; ~mix test test/bear_cub_web/live/kiosk_live_test.exs~ 148 passed after the change.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  ~mix format --check-formatted~ clean; comments wrap at 80 per CLAUDE.md; the verifier found no scope drift or design-invariant violation.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 22:53] \\
+  ~mix precommit~ re-run after the final comment reflow: 730 passed, compile with warnings-as-errors and format clean.
+:END:
 
 * Technical Notes
 
