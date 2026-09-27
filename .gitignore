@@ -52,3 +52,6 @@ npm-debug.log
 /.design-sync/pkg/styles.css
 /.design-sync/pkg/fonts.css
 /.design-sync/pkg/guides/
+
+# Playwright MCP browser artifacts (screenshots, console logs)
+/.playwright-mcp/
