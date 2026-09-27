@@ -326,10 +326,11 @@ defmodule BearCubWeb.KioskComponents do
   @doc """
   Shared row markup for both routine chores and extras (D34 technical
   notes: extras are chores, so this is the same tappable row) — extras
-  render on the fixed neutral card surface instead of the routine tint. A
-  failed-and-not-redone card (D45, D46) shows a warning icon; a failed
-  extra also carries its own −N, but a failed routine chore never does —
-  its impact is the single capped routine-penalty strip shown once above.
+  render as a slot in the kid's own color (D117) and never take a routine
+  tint. A failed-and-not-redone card (D45, D46) shows a warning icon; a
+  failed extra also carries its own −N, but a failed routine chore never
+  does — its impact is the single capped routine-penalty strip shown once
+  above.
   """
   def chore_row(assigns) do
     # The ghost is a second element for the same chore, so every id it
@@ -343,7 +344,7 @@ defmodule BearCubWeb.KioskComponents do
       data-done={@done? and not @counting?}
       data-failed={@failed?}
       data-counting={@counting?}
-      phx-hook={(@extra? and not @ghost?) && ".ScrollIntoView"}
+      phx-hook=".ScrollIntoView"
       phx-click={(not @ghost? and not @counting?) && "toggle-chore"}
       phx-value-chore-id={@chore.id}
       phx-throttle="1000"
@@ -394,7 +395,7 @@ defmodule BearCubWeb.KioskComponents do
           end
         ]
       }
-      style={chore_card_style(@done?, @extra?, @slot?, @routine, @kid.color)}
+      style={chore_card_style(@done? and not @counting?, @extra?, @slot?, @routine, @kid.color)}
     >
       <%= if @counting? do %>
         <%!-- The count panel (D111 as amended by D116): two rows on the
@@ -556,7 +557,9 @@ defmodule BearCubWeb.KioskComponents do
         // An extra row that opens as the count panel scrolls itself into view
         // inside the extras list (D117). The row is the same <li> as the
         // pending slot, so `mounted` never sees the panel open — `updated`
-        // acts when data-counting turns on.
+        // acts when data-counting turns on. Every row carries the hook (the
+        // name is only expanded from a literal attribute); only a counting
+        // extra ever sets data-counting, so the rest never scroll.
         export default {
           mounted() {
             this.counting = this.el.hasAttribute("data-counting")
@@ -567,9 +570,17 @@ defmodule BearCubWeb.KioskComponents do
             if (counting && !this.counting) this.reveal()
             this.counting = counting
           },
+          // The row is still opening when data-counting flips, so a single
+          // scroll measures a short row and stops before the panel's foot.
+          // Scroll now, then once more when the expansion has settled.
           reveal() {
             const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
             this.el.scrollIntoView({block: "nearest", behavior: reduce ? "auto" : "smooth"})
+            clearTimeout(this.settle)
+            this.settle = setTimeout(() => this.el.scrollIntoView({block: "nearest"}), 400)
+          },
+          destroyed() {
+            clearTimeout(this.settle)
           }
         }
       </script>

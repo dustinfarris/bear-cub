@@ -2740,6 +2740,10 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#count-confirm-#{extra.id}")
       refute has_element?(view, "#chore-#{extra.id}[data-done]")
 
+      # mid-beat the row keeps the panel's ground and edge, not the done fill
+      assert has_element?(view, "#chore-#{extra.id}[style*='#{kid.color} 12%']")
+      assert has_element?(view, "#chore-#{extra.id}[style*='#{kid.color} 45%']")
+
       # inert meanwhile: stepper, close and a second confirm do nothing
       render_click(view, "count-step", %{"kid-id" => "#{kid.id}", "dir" => "inc"})
       render_click(view, "count-cancel", %{"kid-id" => "#{kid.id}"})
@@ -2815,11 +2819,14 @@ defmodule BearCubWeb.KioskLiveTest do
       extra = counted_extra_fixture(kid)
 
       {:ok, view, _html} = live(conn, ~p"/")
-      assert has_element?(view, "#chore-#{extra.id}[phx-hook]")
+      # the value, not just presence: an expression-valued phx-hook is not
+      # expanded from `.ScrollIntoView`, and the browser finds no such hook
+      hook = ~s([phx-hook="BearCubWeb.KioskComponents.ScrollIntoView"])
+      assert has_element?(view, "#chore-#{extra.id}#{hook}")
       refute has_element?(view, "#chore-#{extra.id}[data-counting]")
 
       view |> element("#chore-#{extra.id}") |> render_click()
-      assert has_element?(view, "#chore-#{extra.id}[phx-hook][data-counting]")
+      assert has_element?(view, "#chore-#{extra.id}#{hook}[data-counting]")
     end
 
     test "the panel clears at a boundary re-render",

@@ -996,7 +996,7 @@ defmodule BearCubWeb.KioskLive do
             <%!-- Extras: below the routine card, never tinted (invariant —
                  docs/design-language.org). Morning-only reveal, gated with
                  the band (D34 technical notes: extras are chores, so this is
-                 the same tappable row, just styled as a fixed neutral card). --%>
+                 the same tappable row, styled as a slot in the kid's own color). --%>
             <ul
               :if={state == :band and routine == :morning}
               id={"extras-#{kid.id}"}
