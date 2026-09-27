@@ -1,0 +1,66 @@
+#+title: Story 09 — The count panel scrolls into view and keeps its ground through the confirm beat
+#+date: 2026-09-26
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the count panel, §Key Behaviors / Kiosk state and events, §Key Behaviors / Left to the local kiosk gate, and the kiosk line of §Key Behaviors / Testing. Nothing in DESIGN changes for this story: both defects are places where Story 08's shipped code falls short of what the body below already says, found at the Batch 1 gate review on 2026-09-26.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — the count panel
+
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel is two rows on the pending slot's own ground — the kid's color at 12% — with the slot's dashed edge turned solid. The name row keeps the emoji and the (truncating) name on the left and carries the stepper on the right: a ~−~ disc, the count shown large (~text-[56px]~, tabular, on the system sans, wide enough that two digits do not shift the row), a ~+~ disc — the discs ~size-16~, filled with ~--extra-card-control~ (the extras' content color at 10%), their glyphs inline SVG. Below it a full-width ~h-20~ submit shows the live payout, ~+N~, and nothing else. At rest the submit is soft green — ground ~--paid-tint~, a ~border-[3px]~ edge in ~--paid-edge~, the ~+N~ in ~--paid-content~ — because nothing has been earned yet; tapped, it turns solid ~bg-success~ with a 6 px ring of the success color at 25% and presses in, and holds that look for 280 ms before the row lands as done. There is no slider and no ✕: tapping the name area closes the panel. About 188 px tall. When it opens it scrolls itself into view inside the extras list, so a panel opened near the bottom of the list is never left hanging below the fold. Rationale: [[file:../decisions.org::#d111][D111]], amended by [[file:../decisions.org::#d116][D116]] and [[file:../decisions.org::#d117][D117]].
+
+  ** Kiosk state and events
+
+Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~ at the tap and marks the ~counting~ entry confirmed; the panel holds its pressed look for ~@confirm_delay_ms~ (280 ms, a ~Process.send_after~ like the settle delay's) and is inert meanwhile — the stepper, the name-row close and a second confirm all do nothing. When the timer fires the ~counting~ entry is dropped and the row lands in the done mass at the top of the extras group, newest first ([[file:../decisions.org::#d117][D117]]). A boundary or a ~load/2~ clearing that removes the entry first makes the late message a no-op. The move is a plain re-render: it meets none of the sink/rise ghost machinery ([[file:../decisions.org::#d105][D105]], [[file:../decisions.org::#d106][D106]], [[file:../decisions.org::#d107][D107]]); the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
+
+  ** Left to the local kiosk gate
+
+The question this section held — whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list — was answered by use on the tablet: it does, and the panel now scrolls itself into view ([[file:../decisions.org::#d117][D117]]). What remains for the gate is only to look: whether an open panel pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; closing by the name row writes nothing; confirm holds the pressed panel for the confirm delay and only then shows the done row, with the completion already written; a completed extra renders above the pending ones, newest first, and an undo returns it to its authored place; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+#+end_quote
+
+* User Story
+
+As a kid at the fridge, I need a count panel I open near the bottom of my extras to come fully into view, and the panel to stay my soft color while it answers my tap, so that I can always reach the payout button and the only thing that changes when I tap it is the button I tapped.
+
+* Acceptance Criteria
+
+** [ ] Opening the count panel on an extra near the bottom of the list brings the whole panel, payout button included, into view without the kid scrolling (SC-2)
+** [ ] During the beat after the payout tap, the panel keeps its soft kid-color ground and solid kid-color edge; only the payout button shows the pressed look (SC-2)
+** [ ] Once the beat ends, the row still lands as a done extra in the kid's full color at the top of the group, exactly as it does today (SC-2)
+** [ ] The browser console shows no hook errors when the kiosk loads with extras showing (SC-2)
+** [ ] The code comments that still describe extras as a fixed neutral card describe the kid-color slot instead
+# Traces to D117 and the gate review rather than to a Success Criterion: a comment left describing the superseded surface is the kind of stale position an Advisory exists to fence off, living in the code instead of the document.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 08, whose shipped code it corrects, and on Story 07 beneath that. It changes no layout, event, size, token or ordering rule. If a fix seems to need one, stop and surface it: that would be a design change, not a repair.
+
+Scroll into view, and why it never runs: ~BearCubWeb.KioskComponents.chore_row/1~ sets ~phx-hook={(@extra? and not @ghost?) && ".ScrollIntoView"}~ (around line 346). LiveView rewrites a dot-prefixed colocated hook name to its full name (~BearCubWeb.KioskComponents.ScrollIntoView~) only when ~phx-hook~ is a literal string attribute. An expression is emitted as written, so the page carries the literal =.ScrollIntoView=, the JS bundle registers only the full name, and the browser logs =unknown hook found for ".ScrollIntoView"= once per extra row. At the gate, a panel opened on the fifth extra at 1280 × 800 ended at y = 870, with its submit cut off below the fold. The hook body itself (~mounted~/~updated~ watching ~data-counting~, ~block: "nearest"~, no smooth scroll under reduced motion) is fine and should stay as it is. The fix is to keep the attribute literal and move the condition out of it. Two ways to do that: render the ~<li>~ in two branches, or give the hook to every row and have it check for an extra-row marker itself. Either is fine. Watch the trap Story 08 recorded: the hook must be on the pending row before it becomes the panel, because the panel is the same ~<li id="chore-N">~ and a hook attached only while counting never sees its first render.
+
+Why the tests missed it: The existing assertions (~kiosk_live_test.exs~ around lines 2818 and 2822) check only ~[phx-hook]~ presence, which the broken attribute satisfies. The new test should assert the attribute's /value/ is the expanded name (for example ~[phx-hook="BearCubWeb.KioskComponents.ScrollIntoView"]~), which fails against the current code. The scroll itself cannot be exercised at the LiveView layer. Verify it by hand at 1280 × 800 through ~BearCub.Dev.Scenarios.effort/1~, with enough extras to overflow the list, and check the console for the fourth criterion there.
+
+The ground through the beat, and why it floods: During the 280 ms beat the completion already exists, so the row reaches ~chore_row/1~ with ~done?: true~ and ~counting?: true~. Story 08 guarded the ~data-done~ attribute and the class branches against this, but not the inline style: line 397 passes ~@done?~ to ~chore_card_style/5~, which picks the done clause (~background-color: <kid color>~ and nothing else). For the beat, the panel's 12% ground, its 45% solid edge and ~--extra-card-content~ are replaced by the full kid fill with the default border colour. Measured at the gate: the row's style during the beat was just =background-color: #f59e0b=. Passing ~@done? and not @counting?~ (or the equivalent) keeps the pending-extra style through the beat. The new test should render a confirmed panel mid-beat, which the existing "confirm writes at the tap, holds the pressed panel inert…" test already stages, and assert the row's style still carries the 12% ground and 45% edge mixes. The existing "the open panel keeps the kid-color ground with a solid edge" test checks only before the confirm tap.
+
+Stale comments: The extras ~<ul>~ comment in ~BearCubWeb.KioskLive.render/1~ (around line 996: "never tinted … styled as a fixed neutral card") and ~chore_row/1~'s ~@doc~ ("extras render on the fixed neutral card surface instead of the routine tint") both predate D117. Reword them to the kid-color slot, keeping what is still true: extras never take a routine tint. Elixir comments wrap at 80.
+
+Gate follow-ups still owed from Story 08, which are not this story's criteria: look at the kiosk with a pale palette color and with a purple kid (~#7c3aed~), and re-run the Claude Design sync per ~.design-sync/NOTES.md~. Both happen at the Batch 1 gate re-run.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.
