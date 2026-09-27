@@ -1,0 +1,99 @@
+#+title: Story 07 — The count panel, restyled from the Claude Design handoff
+#+date: 2026-09-26
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the count panel, §Key Behaviors / Kiosk state and events, §Key Behaviors / Left to the local kiosk gate, and the kiosk line of §Key Behaviors / Testing, all as amended by [[file:../../decisions.org::#d116][D116]]. The handoff that produced the amendment — bundle =2026-09-26-count-panel-handoff.zip=, card 2b, its README =design_handoff_count_panel/README.md= — is the source for exact sizes and classes; where it and the excerpt differ, the excerpt wins, and where the handoff is more specific the Technical Notes say how far to trust it.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — the count panel
+
+Counted extras appear exactly where extras appear now: the morning band state (~state == :band and routine == :morning~), gated by the reveal (D33). Nothing here changes when or whether extras are offered.
+
+Tapping a pending counted extra expands /that row/ into a taller card holding the panel. The column around it — banner, points badge, completion icon, the other extras — stays put. The panel is two rows on the extra's own surface. The name row keeps the emoji and the (truncating) name on the left and carries the stepper on the right: a ~−~ disc, the count shown large (~text-[56px]~, tabular, on the system sans, wide enough that two digits do not shift the row), a ~+~ disc — the discs ~size-16~, filled with ~--extra-card-control~ (the extras' content color at 10%), their glyphs inline SVG. Below it a full-width ~h-20~ submit in the success color shows the live payout, ~+N~, and nothing else. There is no slider and no ✕: tapping the name area closes the panel. About 188 px tall. Rationale: [[file:../decisions.org::#d111][D111]], amended by [[file:../decisions.org::#d116][D116]].
+
+The legal range is ~1..unit_max~ and the panel opens at 1. A kid who did none of a thing does not tap it, so zero has no meaning to express, and keeping it out of range also keeps the confirm button from ever offering a payout for nothing. Opening at 1 makes the common case — "I did one" — a tap to open plus a tap to confirm. The ~−~ button is inert at 1 and ~+~ is inert at ~unit_max~.
+
+One panel per kid at a time: opening a second counted extra closes the first without writing anything. Per-kid rather than per-kiosk, matching ~expanded~ and ~rewards~, so two kids at the fridge never block each other.
+
+Closing — a tap on the name area, the same place that opened it — writes nothing and leaves the chore pending. A kid who walks away mid-panel is cleared at the next boundary; no dedicated idle timer, unlike the reward shop's ([[file:../decisions.org::#d65][D65]]), because an open panel holds no point balance in suspense and costs nothing to leave open.
+
+The extras list is a padded group of rounded cards — ~p-2.5 gap-2~, each row ~rounded-xl~ — the same frame as the routine slot group, so the panel's rounded card is no longer the only rounded extra. A done extra stays the flush ~h-20~ kid-color row spanning the group's padding, and still neither sinks nor holds. Rationale: [[file:../decisions.org::#d116][D116]].
+
+  ** Kiosk state and events
+
+A new ephemeral assign, ~counting~: ~%{kid_id => %{chore_id: id, count: n}}~, alongside ~expanded~, ~rewards~ and ~settling~. Never persisted, never broadcast. Cleared by the ~:boundary~ handler (where ~:rewards~ is already cleared), by the night screen, and by ~load/2~ whenever the chore stops being an open pending counted extra for that kid — archived from admin, completed from another surface, window closed.
+
+~toggle-chore~ forks once, at the top. A tap on a /pending/ counted extra opens the panel instead of writing. A tap on a /done/ one undoes, exactly as today: count entry is on the way in only, and undo stays a single tap.
+
+The expanded row drops its own ~phx-click~. This is not a preference but the failure mode the layout invites: a ±tap or the name-row close inside an ~<li>~ carrying ~phx-click="toggle-chore"~ would bubble into a completion. ~chore_row/1~ takes a ~counting?~ attr; when set, the ~<li>~ carries no click binding at all and the panel renders inside it.
+
+Three events: ~count-step~ (with ~phx-value-dir~, clamped server-side to ~1..unit_max~), ~count-confirm~ (throttled ~1000~, like every other committing tap), ~count-cancel~ (the name-row tap). Clamping is server-side, so a forged event cannot exceed the max, and the changeset bound refuses it again if it somehow does. No form: every control is a button, and there is nothing a ~phx-change~ would carry.
+
+Confirm calls ~Chores.complete_chore(chore, now, "kiosk", count)~, drops the ~counting~ entry, and the row lands in the ordinary done-extra treatment. Extras do not sink, so this meets none of the sink/rise machinery ([[file:../decisions.org::#d105][D105]], [[file:../decisions.org::#d106][D106]], [[file:../decisions.org::#d107][D107]]); the expand and collapse are a plain height transition, not one of the ghost animations, and nothing new is needed for ~prefers-reduced-motion~ beyond what that transition already respects.
+
+  ** Left to the local kiosk gate
+
+One tuning question is observable at 1280 × 800 with a staged scenario and costs nothing to add once seen; building machinery for it in advance risks code nobody needed:
+
+- whether the expanded panel needs scroll-into-view inside the ~overflow-y-auto~ extras list, and whether it pushes extras below the fold against the MVP PRD's five-chore no-scroll budget (FR-6).
+
+If the panel proves too tall at the gate, the first move is to shrink the panel, not to move it out of the row — the in-row placement is a ruling; its height is not.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+LiveView, kiosk (~kiosk_live_test.exs~): the panel opens on a pending counted extra and does not complete it; the stepper clamps at both ends; confirm awards ~base + count × rate~ and the row then shows ~×N~ and ~+N~; closing by the name row writes nothing; undo then redo demands a fresh count — SC-3 end to end, at the layer where a regression would actually appear; the panel clears at a boundary.
+#+end_quote
+
+* User Story
+
+As a kid at the fridge, I need the count panel to be one row of big − and + buttons beside the chore's name with a single green button below showing what I'll get, so that saying how many I did is as plain as tapping a chore — nothing to drag, nothing to dismiss.
+
+* Acceptance Criteria
+
+** [ ] Tapping a pending counted extra opens the panel in that row: the chore's emoji and name on the left, a − button, the count shown large, and a + button on the right, and a full-width green button beneath showing the payout — with no slider and no ✕ (SC-2)
+** [ ] The − and + buttons move the count anywhere from 1 to the chore's maximum, and the payout on the green button updates as the count changes (SC-2)
+** [ ] At 1 the − button, and at the maximum the + button, is dimmed and does nothing, but stays visible (SC-2)
+** [ ] Tapping the chore's name area closes the panel, recording nothing and leaving the chore pending (SC-2)
+** [ ] Confirming completes the chore and awards its base plus the count times its rate straight away, and the row shows at once as the done extra — kid-color, ~×N~ beside the name, the ~+N~ chip and the check disc — with no full-height pause (SC-2)
+** [ ] A two-digit count does not shift the row, and a long chore name truncates rather than pushing the stepper (SC-2)
+** [ ] The extras list renders as a padded group of rounded cards, and a done extra spans the group's padding as a flush row (SC-2)
+** [ ] Undoing a completed counted extra takes a single tap, and completing it again — including after a parent has failed it — opens the panel at 1 rather than at any earlier count (SC-3)
+** [ ] Flat extras still complete and undo on a single tap, with no panel (SC-1)
+** [ ] The design-language rulings D116 assigns to this story are recorded: the rounded extras group, the name-row toggle, and the ~--extra-card-control~ token
+# Traces to D116's explicit assignment rather than to a Success Criterion — the documentation obligation of the decision, not user-facing behavior.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+The Design excerpt above is the source of truth for this story; DESIGN.org is broader context only.
+
+This story depends on Story 04 (the ~counting~ assign, ~toggle-chore~'s fork, the ~count-*~ handlers, ~tag_counting~) and Story 05 (the ~×N~ span, ~value~ and ~effort_count~ attrs). It is a restyle of Story 04's panel, not a rebuild: the ephemeral state, the boundary clearing, the server-side clamp, one-panel-per-kid, and the structural rule that the expanded ~<li>~ carries no ~phx-click~ all stand. What changes is markup and one handler.
+
+Where the markup lives now: ~BearCubWeb.KioskComponents.chore_row/1~ (~lib/bear_cub_web/components/kiosk_components.ex~), extracted from ~KioskLive~ after Story 05. The counting branch of that component is the whole visual scope, plus the extras ~<ul>~ in ~KioskLive.render/1~ (currently ~grid auto-rows-min gap-px bg-base-300~; becomes the padded rounded group).
+
+What the handoff README is authoritative for, adapted per D105 (every value a token or a class that already exists in the built stylesheet; no hex but the kid's): the name row at ~h-18~, the ~size-16~ discs filled with ~var(--extra-card-control)~, the numeral at ~text-[56px] font-extrabold leading-none tabular-nums~ in a ~min-w-20~ slot on the system sans, the submit at ~h-20 rounded-xl bg-success text-success-content font-reward font-black text-[44px]~, the extras group at ~gap-2 p-2.5~ with ~rounded-xl~ rows, and the done row spanning the padding with ~-mx-2.5~. The README also states the click events and the width arithmetic (64 + 8 + 80 + 8 + 64 = 224 px for the stepper block at a 620 px column).
+
+The − and + glyphs ship as inline SVG (D103: any glyph outside the emoji set), not the =−= / =+= text characters Story 04 used. Keep the discs tappable at the bounds — ~opacity-30~, never HTML-~disabled~ — for the reason Story 04's PLAN note records: ~Phoenix.LiveViewTest~ refuses to click a disabled element, which makes the inert-at-bound AC unverifiable.
+
+Removals: the ~<form phx-change="count-set">~ and the range input; the ~count-set~ handler and its malformed-input branch; the ✕ cancel button. ~count-cancel~ stays and is fired by the name area's ~phx-click~. Tests that go with them: the ~count-form~ ~render_change~ tests in ~kiosk_live_test.exs~ (slider sets a value, forged 999, malformed input) and the ~#count-form-7~ assertion in ~kiosk_components_test.exs~; the ~#count-cancel~ click test becomes a name-area click.
+
+New token, in ~assets/css/app.css~ beside the extras pair, exactly as the handoff defines it: ~--extra-card-control: color-mix(in oklab, var(--extra-card-content) 10%, transparent);~ — with the oklab note the block already carries for its other mixes.
+
+The design-language recordings (AC-10) go in ~docs/design-language.org~ per its existing entries' shape: amend the "Count panel on the extras' fixed neutral card [2026-09-20]" entry for the stepper-in-name-row panel and the name-row toggle; a new entry for the extras list as a rounded padded group (pending extras ~rounded-xl~ in ~p-2.5 gap-2~, done extras flush spanning the padding — and the Invariants line about extras' fixed neutral surface is unchanged); a line in the tokens block comment naming ~--extra-card-control~. Each cites D116.
+
+Gate: the local review at 1280 × 800 through ~BearCub.Dev.Scenarios.effort/1~, which stages ~unit_max: 20~ — the handoff only checked to 10, so look at the two-digit numeral at 20 and at the row before deciding anything is fine. The one remaining tuning question (scroll-into-view for the expanded panel) is answered there, not in advance.
+
+Every handler that mutates an ephemeral assign feeding a column must end in ~load/2~ (Story 04's PLAN note); the name-area close is ~count-cancel~ and already does.
+
+Deferred discoveries go to PLAN.org's Deferred section, never fixed inline.

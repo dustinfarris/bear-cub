@@ -6,6 +6,10 @@
 Design: [[file:DESIGN.org]]
 
 * Batch 1 — Effort multiplier
+:LOGBOOK:
+- Note taken on [2026-09-26 Sat 17:14] \\
+  Story inserted into the open batch: [[file:stories/story-07-kiosk-count-panel-restyle.org][Story 07 — The count panel, restyled from the Claude Design handoff]], after Story 06. Evidence: a Claude Design iteration on the count panel against the tokens-only mirror ([[file:../decisions.org::#d115][D115]]) produced a simpler panel — stepper alone in the name row, full-width ~+N~ submit, name row closes, rounded extras group — recorded as [[file:../decisions.org::#d116][D116]] with the DESIGN body edit and Advisory in ~3c9be67~; gating Batch 1 on the slider panel would review a design already superseded on paper. Authorization, quoted from the human's choice on 2026-09-26 between inserting here and closing the batch first: "A: Story 07 in open Batch 1". This note is an insertion record, not the gate record — the batch stays open.
+:END:
 
 # Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
 
@@ -67,6 +71,8 @@ Design: [[file:DESIGN.org]]
   *The rule shipped is "not currently done", which is one state wider than the word "pending" suggests.* A failed-and-not-redone counted extra is also not done, so it too renders the hint and carries no ~phx-click~ — a parent cannot redo it on the kid's behalf. That follows from the same reasoning the design gives (a redo would have to invent a count) and from the same domain refusal, so it needed no body edit; but a reader matching the design's "pending" against the shipped condition ~(@row.done? or not @row.effort?)~ should know the two were reconciled deliberately rather than by accident. Admin's day-scoped ~failed?~ (D53) is untouched: the solid flag still stands beside the hint in that state. \\
   *Story 05's prediction held exactly, and the reason is worth keeping.* That story's LOGBOOK ends by saying Story 06 would not need ~Chores.failed_completions/1~ because admin shows ~×N~ on done rows only, whose completions are live in the map admin already assembles. It did not: ~build_row/3~ switched from ~Map.has_key?~ to ~Map.get~ on the same ~current_completions/1~ map and read the count straight off the struct. The kiosk needed the extra context function only because it also renders ~×N~ on the failed mirror, which admin does not.
 :END:
+
+** TODO [[file:stories/story-07-kiosk-count-panel-restyle.org][Story 07 — The count panel, restyled from the Claude Design handoff]]
 
 * Deferred
 
