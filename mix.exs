@@ -43,8 +43,8 @@ defmodule BearCub.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.8.9"},
-      {:tidewave, "~> 0.6", only: :dev},
+      {:phoenix, "~> 1.8.15"},
+      {:tidewave, "~> 0.9", only: :dev},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:ecto_sqlite3, ">= 0.0.0"},
@@ -52,7 +52,7 @@ defmodule BearCub.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:phoenix_live_dashboard, "~> 0.9"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
       {:heroicons,
@@ -64,7 +64,7 @@ defmodule BearCub.MixProject do
        depth: 1},
       {:daisyui,
        github: "saadeghi/daisyui",
-       tag: "v5.5.20",
+       tag: "v5.7.47",
        sparse: "packages/bundle",
        app: false,
        compile: false,
@@ -74,8 +74,8 @@ defmodule BearCub.MixProject do
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"},
       {:tzdata, "~> 1.1"},
-      {:req, "~> 0.5"},
-      {:deps_nix, "~> 3.0", only: :dev}
+      {:req, "~> 0.7"},
+      {:deps_nix, "~> 3.1", only: :dev}
     ]
   end
 
