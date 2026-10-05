@@ -142,6 +142,8 @@ test transaction's first statement, because a read-then-write upgrade
 fails at once with "Database busy" while another connection holds the
 write lock (async modules skip the pin for the same reason).
 
+The pin fixes the /window/, nothing else the clock decides. A test that stages a tap relative to the real clock (~DateTime.add(LocalTime.now(), -10 * 60)~) still inherits two things from the hour it runs: the local /date/ (just after midnight, ten minutes back is yesterday, so today's routine-day never completes), and the early bird /verdict/ (before the 07:45 cutoff, an earn is early and a badge reads +R+E). Two routine-schedule kiosk tests rode both through Story 04's close-out and failed only at the 00:06 gate run (fixed in =dc94516=). Clock-relative instants stay inside today, and a test asserting a plain +R pins the cutoff with ~put_cutoff(~T[00:00:00])~.
+
 * [2026-07-10 Fri] Ops: reach the server over Tailscale, not the LAN IP
 From the dev machine the box's LAN IP times out on ssh; the Tailscale
 machine name (~nixos~) connects. Non-sudo deploy steps (~git pull~,

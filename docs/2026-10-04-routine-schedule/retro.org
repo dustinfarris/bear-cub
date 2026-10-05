@@ -1,0 +1,28 @@
+#+title: Retro — routine-schedule
+
+* Batch 1 — Routine schedule — 2026-10-05
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 5 | 4 | 11 | 12 | 1(0.6m) | 62.9k | 286 | 290 |  |
+| story-02 | 3 | 3 | 2 | 12 | 2(1.8m) | 71.8k | 65 | 290 |  |
+| story-03 | 14 | 3 | 2 | 24 | 2(2.2m) | 119.3k | 119 | 189 |  |
+| story-04 | 12 | 8 | 3 | 8 | 2(1.6m) | 101.9k | -23 | 49 | also read story-05 |
+| story-05 | 8 | 3 | 18 | 21 | 2(1.6m) | 174.4k | 257 | 361 |  |
+| total | 42 | 21 | 37 | 77 | 9(7.7m) | 530.3k | 704 | 1179 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- Stories 02–05 each ran a second verifier pass after the first; Story 05's is labelled "after evidence fix", and Story 04's followed a human question.
+- One human question across the five sessions: Story 04's AC 4 (the priced/live split on admin Today), which the human deferred because Today renders no routine figures.
+- Update-design ran far longer on Story 01 (11 min) and Story 05 (18 min) than on Stories 02–04 (2–3 min each).
+- Story 03 had the longest implementation (14 min, 24 test runs); it and Story 04 each paused on Tidewave connectivity, resolved by the human restarting ~mix phx.server~ or reconnecting the MCP server.
+- Deferred discoveries: three from Story 02, two from Story 04 (plus Story 02's three resolved there), two from Story 05.
+- Two kiosk tests added in Story 04 were clock-dependent and passed every story run, failing only at the 00:06 gate run (a tap staged ten minutes back lands on yesterday before 00:10; an earn before 07:45 is early). Fixed test-only at the gate in =dc94516=.
+- Two unrecorded divergences surfaced at the gate rather than in a per-story pass, both already flagged in Plan LOGBOOK notes as "for the gate": the env-var deletion's timing (Stories 01 and 04) and the shop closing on a schedule save (Story 03).
+
+** Retro

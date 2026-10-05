@@ -63,7 +63,7 @@ These are production's actual values: the deployed NixOS module (~nixos/bear-cub
 
 The seed is schema-independent: version 0 is written with ~Repo.insert_all/3~ on the table name with plain maps and a literal JSON ~days~ value (times as ISO ~"HH:MM:SS"~ strings, the form the embed serialises ~Time~ to), never through the ~ScheduleVersion~ module, so a later schema change cannot break the migration on a fresh database. A test loads version 0 through the schema and asserts it round-trips.
 
-The ~BEAR_CUB_MORNING_WINDOW~, ~BEAR_CUB_EVENING_WINDOW~, ~BEAR_CUB_ROUTINE_BONUS~, ~BEAR_CUB_EARLY_BIRD_CUTOFF~ and ~BEAR_CUB_EARLY_BIRD_BONUS~ variables and their ~runtime.exs~ parsing and checks are deleted in the same change.
+The ~BEAR_CUB_MORNING_WINDOW~, ~BEAR_CUB_EVENING_WINDOW~, ~BEAR_CUB_ROUTINE_BONUS~, ~BEAR_CUB_EARLY_BIRD_CUTOFF~ and ~BEAR_CUB_EARLY_BIRD_BONUS~ variables and their ~runtime.exs~ parsing and checks are deleted within this initiative's first batch (Story 04, once nothing reads them), before it deploys. The batch deploys as one unit, so production never runs with both the table and the variables.
 
 ** ~routine_day_status/3~ gains ~first_failed_at~
 
@@ -154,7 +154,7 @@ end
 
 ~Schedules.change/1~ broadcasts ~:schedule_changed~ on a ~"schedules"~ topic after a successful insert. ~KioskLive~ and admin ~TodayLive~ subscribe at mount beside their existing ~Chores~ / ~Rewards~ subscriptions.
 
-On ~:schedule_changed~ the kiosk reloads — re-resolving the version in force now and today's day entry — and re-arms its boundary timer.
+On ~:schedule_changed~ the kiosk reloads — re-resolving the version in force now and today's day entry — and re-arms its boundary timer. Like ~:boundary~, it first closes any open reward shop and count panel ([[file:../decisions.org::#d131][D131]]).
 
 *The boundary timer keeps its ref* ([[file:../decisions.org::#d124][D124]]). ~schedule_boundary/2~ today fires ~Process.send_after~ and discards the ref; each ~:boundary~ arms the next. This feature is the first thing that arms it from anywhere else, and a second arm would start a second chain that never ends. The ref is stored in an assign and cancelled before every re-arm.
 
@@ -212,7 +212,7 @@ Unit and LiveView layers both, per the MVP design's §11 test map.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion; D128–D130 at implementation)
+Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion; D128–D130 at implementation; D131 at the Batch 1 gate)
 
 * Advisories
 
@@ -246,3 +246,15 @@ This document said the stake chip "shows ~R~ from the version in force now", for
 /Sections affected: Screens / Interfaces — Admin Today screen/
 
 This document said Today's routine sections show "routine figures priced as above". Today has never rendered ~R~, ~E~ or penalty figures; the line described figures that do not exist, and Story 04's acceptance criterion on them was deferred by the human for that reason. Do not add figures to Today to satisfy the old line. If figures are wanted there, that is new scope, and they follow the kiosk's priced/live split. Repair, no D-entry.
+
+** [2026-10-05 Mon 00:15] A schedule save no longer only reloads the kiosk (D131)
+
+/Sections affected: Key Behaviors — Immediate effect/
+
+This document said that on ~:schedule_changed~ the kiosk "reloads … and re-arms its boundary timer", and nothing more. Read alone, that suggests an open reward shop or count panel survives a parent's save, and a cleanup that drops the ~:rewards~ / ~:counting~ reset from the handler would look like it was restoring the design. Don't: a save can flip the routine under the open column, so the handler closes the shop exactly as ~:boundary~ does. Rationale: [[file:../decisions.org::#d131][D131]].
+
+** [2026-10-05 Mon 00:15] The routine env vars were not deleted with the table
+
+/Sections affected: Data Model — The seed/
+
+This document said the five ~BEAR_CUB_*~ routine variables and their ~runtime.exs~ parsing were "deleted in the same change" as the ~schedule_versions~ table. They were not: the table landed in Story 01 and the variables went in Story 04, once nothing read them. If you are reading git history between those commits, config and version 0 coexist on purpose. Do not take the old line as a rule that schedule data and config must change in one commit. Repair, no D-entry.

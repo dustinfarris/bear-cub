@@ -24,27 +24,6 @@ A badge for earning the bonus similar to the Early Bird badge.
 
 An icon for hot/normal/cold and an icon for sunny or raining
 (i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
-* TODO [#A] snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 14:10]
-:END:
-Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
-
-Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/), which settles it with an append-only ~schedule_versions~ table priced term-by-term at the instant each term came into being ([[file:decisions.org::#d120][D120]], [[file:decisions.org::#d121][D121]]). Leaves this file when that initiative closes.
-
-* TODO [#B] LiveView test case should pin ~:routine_windows~ by default, with an explicit opt-out for tests that need the real windows :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:30]
-:END:
-
-Pin ~:routine_windows~ in the LiveView test case's shared setup so every LiveView test runs under a known window by default, and make a test that needs the real windows opt out explicitly, so that leaving the pin off is a deliberate act rather than the thing you get by forgetting. Tests today pin it per describe block through the ~morning_active~ / ~evening_active~ / ~put_windows~ idiom, so any test that does not remember inherits whichever routine, or the 23:00–05:00 Good Night gap, the wall clock lands in. That is the recurring failure behind the [2026-07-17] entry in ~docs/learnings.org~, which itself revised an earlier 2026-07-10 entry: the Batch 1 gate record in docs/2026-09-20-effort-multiplier/PLAN.org (its LOGBOOK, check (1)) shows the third occurrence, 16 of 730 tests failing at the 23:13 run, none of which pinned the windows, every story's green run having happened earlier in the day. The ruling is to build the mechanism rather than record the lesson a third time. The pin still reads the real clock (~LocalTime.now()~ is never mocked); it only fixes which window that clock falls into, per the [2026-07-17] entry.
-
-The 2026-07-17 learnings entry is to be revised to point at the mechanism once it exists, not before; revising it now would describe a default that is not there.
-
-Ruled [2026-10-04 Sun] at the effort-multiplier Batch 1 retro ("The Good Night gap, third time").
-
-Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/): with routine timings moving into the database, the default pin becomes a schedule-version insert in the LiveView case's shared setup rather than a ~put_env~ ([[file:decisions.org::#d126][D126]]). Leaves this file when that initiative closes.
-
 * TODO [#B] Admin chore form: moving a counted extra into a routine fails the save with no visible error :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-26 Sat 23:21]
@@ -231,9 +210,9 @@ Still owed, on the tablet in Fully Kiosk, during the morning window, for a kid i
 
 Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute for the tablet, but it makes items 3 and 4 checkable before a deploy, which is what was missing:
 
-- Force the morning window to cover the current time and push evening past it: ~BEAR_CUB_MORNING_WINDOW=05:00-22:00 BEAR_CUB_EVENING_WINDOW=22:00-23:00 mix phx.server~. ~config/runtime.exs~ is not guarded by ~config_env()~, so both vars apply in dev; confirmed by reading ~:routine_windows~ back after an override. On an overlap ~Routines.current/2~ takes the first matching window in config order, which is morning.
+- Force the morning window to cover the current time and push evening past it: ~BearCub.Dev.Scenarios.open(:morning)~, run through Tidewave ~project_eval~ so its ~:schedule_changed~ broadcast reaches the open kiosk; ~Scenarios.restore/0~ brings the real schedule back. (Routine timings are schedule versions now, not ~BEAR_CUB_*~ env vars, [[file:decisions.org::#d120][D120]].)
 - Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
-- Watch the disappearance without waiting for 17:00: set the morning end a few minutes ahead of now, e.g. ~BEAR_CUB_MORNING_WINDOW=05:00-09:25 BEAR_CUB_EVENING_WINDOW=09:25-23:00~. ~Routines.next_boundary/2~ schedules a re-render at every window edge, so the band and ring vanish on their own at that edge.
+- Watch the disappearance without waiting for 17:00: from the real schedule (run ~Scenarios.restore/0~ first if a scenario wrote one, since the Schedule page refuses its zero-length window), set today's morning end a few minutes ahead of now on ~/admin/schedule~ and Save. The save re-arms the kiosk's boundary timer ([[file:decisions.org::#d124][D124]]), so the band and ring vanish on their own at that edge.
 
 What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
 

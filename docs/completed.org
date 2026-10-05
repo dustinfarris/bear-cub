@@ -183,3 +183,26 @@ The seed script computes and assigns ~position~ itself rather than calling ~crea
 Swept [2026-09-06 Sun] from docs/2026-09-04-chore-lifecycle/PLAN.org's Deferred section (Story 01 discovery). Triage [2026-09-06 Sun]: hand — route the script through ~create_chore/3~, or confirm why it can't and drop this entry.
 
 Done [2026-10-04 Sun]: ~seeds.exs~ now calls ~Chores.create_chore/3~ (clock read once at the script edge). Verified on a scratch database: seeded 14 chores with positions 0–4 / 0–1 and ~active_from~ today, and a second run was a no-op.
+* DONE [#A] snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 14:10]
+:END:
+Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
+
+Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/), which settles it with an append-only ~schedule_versions~ table priced term-by-term at the instant each term came into being ([[file:decisions.org::#d120][D120]], [[file:decisions.org::#d121][D121]]). Leaves this file when that initiative closes.
+
+Done [2026-10-05 Mon]: the routine-schedule initiative's Batch 1 gate closed; routine timings and bonuses are versioned data and each points term is priced at its own instant ([[file:decisions.org::#d120][D120]], [[file:decisions.org::#d121][D121]]). Swept at that gate.
+* DONE [#B] LiveView test case should pin ~:routine_windows~ by default, with an explicit opt-out for tests that need the real windows :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:30]
+:END:
+
+Pin ~:routine_windows~ in the LiveView test case's shared setup so every LiveView test runs under a known window by default, and make a test that needs the real windows opt out explicitly, so that leaving the pin off is a deliberate act rather than the thing you get by forgetting. Tests today pin it per describe block through the ~morning_active~ / ~evening_active~ / ~put_windows~ idiom, so any test that does not remember inherits whichever routine, or the 23:00–05:00 Good Night gap, the wall clock lands in. That is the recurring failure behind the [2026-07-17] entry in ~docs/learnings.org~, which itself revised an earlier 2026-07-10 entry: the Batch 1 gate record in docs/2026-09-20-effort-multiplier/PLAN.org (its LOGBOOK, check (1)) shows the third occurrence, 16 of 730 tests failing at the 23:13 run, none of which pinned the windows, every story's green run having happened earlier in the day. The ruling is to build the mechanism rather than record the lesson a third time. The pin still reads the real clock (~LocalTime.now()~ is never mocked); it only fixes which window that clock falls into, per the [2026-07-17] entry.
+
+The 2026-07-17 learnings entry is to be revised to point at the mechanism once it exists, not before; revising it now would describe a default that is not there.
+
+Ruled [2026-10-04 Sun] at the effort-multiplier Batch 1 retro ("The Good Night gap, third time").
+
+Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/): with routine timings moving into the database, the default pin becomes a schedule-version insert in the LiveView case's shared setup rather than a ~put_env~ ([[file:decisions.org::#d126][D126]]). Leaves this file when that initiative closes.
+
+Done [2026-10-05 Mon]: built in the routine-schedule initiative as a version insert rather than a ~put_env~ — ~BearCub.ScheduleHelpers.pin_default_schedule/0~ in ~BearCubWeb.ConnCase~'s setup, opted out with ~@tag :real_schedule~ ([[file:decisions.org::#d126][D126]], [[file:decisions.org::#d129][D129]]); the [2026-07-17] learnings entry now points at it. Swept at that initiative's Batch 1 gate.
