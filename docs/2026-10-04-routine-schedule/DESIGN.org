@@ -146,9 +146,9 @@ end
 
 ** Modules and boundaries
 
-- *~BearCub.Schedules~* (new context, persistence): ~versions/0~ (full history, ordered by ~effective_at~), ~current/0~, ~change_version/1~ (form changeset, prefilled from current), ~change/1~ (insert effective now, then broadcast), ~subscribe/0~. The "now" for ~change/1~ is taken at the context boundary like every other write's timestamp; no domain function reads the clock.
+- *~BearCub.Schedules~* (new context, persistence): ~versions/0~ (full history, ordered by ~effective_at~), ~current/0~, ~change_version/1~ (form changeset, prefilled from current), ~change/1~ (insert effective now, then broadcast), ~subscribe/0~, ~day_entry/1~ (the day entry governing a local instant: ~Routines.in_force/2~ over ~versions/0~, then ~Routines.day/2~ — [[file:../decisions.org::#d128][D128]]). The "now" for ~change/1~ is taken at the context boundary like every other write's timestamp; no domain function reads the clock.
 - *~BearCub.Routines~* stays pure and DB-free. It gains ~in_force(versions, %DateTime{})~ — the version with the latest ~effective_at~ ≤ the instant; raises when there is none, because a silent default would re-score history — and ~day(version, %Date{})~. ~current/2~ and ~next_boundary/2~ take a resolved day entry instead of reading config. ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed; every caller receives values from a resolved version.
-- *~BearCub.Chores~* depends on ~Schedules~ (scheduling is part of the points core). ~Schedules~ depends on nothing. ~BearCub.Points~ is unchanged.
+- *~BearCub.Chores~* depends on ~Schedules~ (scheduling is part of the points core). ~Schedules~ depends only on the pure ~Routines~, for ~day_entry/1~ ([[file:../decisions.org::#d128][D128]]). ~BearCub.Points~ is unchanged.
 
 ** Immediate effect (SC-3, SC-4)
 
@@ -177,9 +177,9 @@ Midnight stays a boundary, so a new weekday's timings take over with no special 
 
 *Scenarios* ([[file:../decisions.org::#d126][D126]]). ~BearCub.Dev.Scenarios.open/1~ and ~cutoff/1~ stop calling ~Application.put_env~ and instead insert a version effective now, copied from current with only the timing changed — a real write, reaching kiosks through the new broadcast. ~open/1~ fakes the other routine with a zero-length window, which the changeset rightly refuses, so scenarios insert via ~Repo.insert!~ on the struct (dev/test-only module). "Restart the server to get the real windows back" no longer holds, since the windows are in the DB: the first scenario write in a VM stashes the id of the version it displaced in ~:persistent_term~ (later scenario writes leave the stash alone), and a new ~Scenarios.restore/0~ inserts a copy of that stashed version effective now and clears the stash. No column marks scenario versions. ~ensure_config/2~'s routine keys go.
 
-*Tests.* Migrations run in the test DB, so every test starts with version 0. The ~put_windows~ / ~morning_active~ / ~evening_active~ idioms become version inserts (effective one second before now) inside the sandbox; the real clock still runs ([[file:../decisions.org::#d119][D119]]).
+*Tests.* Migrations run in the test DB, so every test starts with version 0. The ~put_windows~ / ~morning_active~ / ~evening_active~ idioms become version inserts inside the sandbox, stamped one second after the latest version so several in one test stay ordered and in force; the real clock still runs ([[file:../decisions.org::#d119][D119]], [[file:../decisions.org::#d129][D129]]).
 
-*The LiveView test case pins a known version by default*, with an explicit opt-out for tests that need the real windows ([[file:../decisions.org::#d126][D126]]). This absorbs the backlog item "LiveView test case should pin ~:routine_windows~ by default"; its mechanism is a version insert in the shared setup rather than a ~put_env~. The ~docs/learnings.org~ [2026-07-17] entry is revised to point at the mechanism by the story that lands it, not before.
+*The LiveView test case pins a known version by default*, with an explicit opt-out for tests that need the real windows ([[file:../decisions.org::#d126][D126]]). This absorbs the backlog item "LiveView test case should pin ~:routine_windows~ by default"; its mechanism is a version insert in the shared setup rather than a ~put_env~: morning open all day and evening never, identical on all seven weekdays, effective an hour back, opted out with ~@tag :real_schedule~. The pin's insert is the transaction's first statement, with ~R~ / ~E~ as version 0's constants rather than read, and async modules skip it — SQLite refuses a read-then-write upgrade at once while another connection writes ([[file:../decisions.org::#d129][D129]]). The ~docs/learnings.org~ [2026-07-17] entry is revised to point at the mechanism by the story that lands it, not before.
 
 ** Testing
 
@@ -212,7 +212,7 @@ Unit and LiveView layers both, per the MVP design's §11 test map.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion)
+Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion; D128–D129 at implementation)
 
 * Advisories
 
@@ -222,3 +222,15 @@ Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at 
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-10-04 Sun 23:18] ~Schedules~ is no longer dependency-free (D128)
+
+/Sections affected: Key Behaviors — Modules and boundaries/
+
+This document said "~Schedules~ depends on nothing", and listed its functions as ~versions/0~, ~current/0~, ~change_version/1~, ~change/1~ and ~subscribe/0~. It now also has ~day_entry/1~, which calls the pure ~Routines~. A cleanup that moves resolution back into each LiveView to restore the old "depends on nothing" line looks tidy. Don't do it: the kiosk's load, its boundary arm and the Today screen would each repeat the two-step resolution, free to drift apart on which instant they resolve. Rationale: [[file:../decisions.org::#d128][D128]].
+
+** [2026-10-04 Sun 23:18] Test pins are no longer "effective one second before now" (D129)
+
+/Sections affected: Key Behaviors — Dev scenarios and test infrastructure/
+
+This document, and [[file:../decisions.org::#d126][D126]], said test helpers insert a version effective one second before now. That still reads as the obvious choice. It collides: ~effective_at~ is unique to the second, so a default pin and a test's own pin in the same second fail the insert. The default pin now sits an hour back and helpers stamp one second after the latest version. Also do not "simplify" the pin to read ~R~ / ~E~ from version 0, or to run for async modules: both reintroduce "Database busy" under SQLite. Rationale: [[file:../decisions.org::#d129][D129]].

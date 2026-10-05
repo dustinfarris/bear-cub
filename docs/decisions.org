@@ -512,3 +512,17 @@ With timings in the DB, ~Application.put_env~ no longer reaches them. ~Scenarios
 :END:
 
 The human asked whether a broader refactor onto Commanded made sense alongside the routine schedule, and ruled it out of this initiative after the design was worked through. Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (its in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections — a reversal of D10. The event-sourced part this PRD needs is already present at the right size: ~completions~ is effectively an append-only fact log, and ~schedule_versions~ ([[#d120][D120]]) is an append-only log of rule changes; derive-on-read over the two gives routine-schedule/SC-1 with no framework. Commanded would earn its cost if domain-wide auditability, replay, or projections are ever wanted, and that case is captured as its own backlog entry. → routine-schedule/Out of Scope for This Design.
+
+* D128 (2026-10-04) — ~Schedules.day_entry/1~ resolves the day entry for an instant, so ~Schedules~ depends on the pure ~Routines~
+:PROPERTIES:
+:CUSTOM_ID: d128
+:END:
+
+The kiosk resolves "the day entry governing now" at every load and every boundary arm, and the admin Today screen at every load. ~Schedules.day_entry/1~ does it once: ~Routines.in_force/2~ over ~versions/0~, then ~Routines.day/2~ for the local date. That gives ~Schedules~ one dependency, on ~Routines~, which stays pure and DB-free, so persistence still sits on one side and resolution on the other. Rejected — each caller composing ~Routines.in_force(Schedules.versions(), now)~ itself: three call sites in two LiveViews repeating the same two-step, with nothing stopping one from resolving the version at a different instant than another. Amends the dependency line of the design written alongside [[#d120][D120]] ("~Schedules~ depends on nothing"). → routine-schedule/Key Behaviors (modules and boundaries).
+
+* D129 (2026-10-04) — Test schedule pins: an hour back by default, helpers one second after the latest version, the pin's insert first
+:PROPERTIES:
+:CUSTOM_ID: d129
+:END:
+
+Amends [[#d126][D126]]'s "a version one second before now", which does not survive contact with ~effective_at~'s per-second uniqueness: a default pin and a test's own insert in the same second collide. ~BearCub.ScheduleHelpers.pin_default_schedule/0~, run from ~BearCubWeb.ConnCase~'s setup, inserts morning open all day and evening never, identical on all seven weekdays, effective an hour back. ~put_windows/2~, ~morning_active/0~ and ~evening_active/0~ stamp one second after the latest version, so any number of pins in a test stay ordered and in force. The opt-out is ~@tag :real_schedule~. Two SQLite constraints shape the pin. Its insert is the test transaction's first statement, with ~R~ and ~E~ written as version 0's constants rather than read, because a transaction that reads and then writes is refused at once with "Database busy" while another connection holds the write lock. Async ConnCase modules skip the pin for the same contention, and none of them mounts a view. Rejected — leaving the pin at now − 1 s and having helpers pick now: the collision lands on whichever test inserts in the pin's second. Rejected — reading version 0 for ~R~ and ~E~: the read-then-write upgrade is what failed. → routine-schedule/Key Behaviors (dev scenarios and test infrastructure).
