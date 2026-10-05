@@ -1,6 +1,6 @@
 Bear Cub is a self-hosted family chore + calendar dashboard: a fridge-mounted tablet kiosk (Fully Kiosk Browser, Android WebView) where two kids tap through daily routines, plus a phone-first parent admin UI reached over Tailscale. Phoenix LiveView + SQLite, deployed as a NixOS module on a home server.
 
-Active initiative: docs/2026-10-04-routine-schedule/
+Active initiative: none
 
 ## Repo conventions (pre-kit project, adopted mid-way through the MVP initiative)
 
@@ -8,12 +8,12 @@ Active initiative: docs/2026-10-04-routine-schedule/
 - Early work predates the kit: no stories exist for it; git history is its record.
 - Stories are batch-scoped: /workflow-kit:user-stories is always invoked with an explicit batch scope and only excerpts the DESIGN sections that batch implements. ("Phase N" is at most a decorative label an initiative puts on a batch heading — never a repo-level concept.)
 - Gate close (`/workflow-kit:phase-close`) is judged on a **local kiosk review** [2026-09-06]: the dev server, a kiosk state staged with `BearCub.Dev.Scenarios` (`dev/`, dev/test only — run it from `iex -S mix phx.server` or Tidewave so it acts inside the server VM), viewed in Chrome or Safari at **1280 × 800 CSS px** (the Lenovo IdeaTab's viewport; its 2560 × 1600 panel is 2× DPR). Screenshots at that size are the gate evidence. The former PRD §7 on-device gate (Fully Kiosk rendering, 5-chore no-scroll, sleep/wake reconnect) is now a **post-deploy verification** with an Android-only checklist — font coverage for any non-emoji glyph, large box-shadow rendering, touch targets, sleep/wake reconnect — still manual, never CI'd, but no longer what a batch waits on: gating on the deployed kiosk meant deploying to find out. Delivered PRDs do not bind ops process; the human ruled this on 2026-09-06.
-- Testing per DESIGN §11: LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
+- Testing per MVP DESIGN §11 (`docs/2026-07-09-mvp/DESIGN.org`): LiveView integration tests are part of story ACs wherever a flow is touched, regardless of the mvp DoD.
 - Brainstorm session outputs belong in docs/superpowers/specs/; initiative directories (docs/YYYY-MM-DD-<slug>/) contain only chain documents (PRD, DESIGN, PLAN, stories/) plus SKETCH.org — the scratch file the PRD conversation parks design material in, kit-authored, committed with the PRD lock, never cited by a chain document.
 
 ## Weight class
 
-personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the DESIGN §11 testing expectations in Repo conventions below.
+personal-mvp. Personal family software with a real correctness bar: the mvp DoD applies, plus the MVP DESIGN §11 testing expectations in Repo conventions below.
 
 Verify command: `mix precommit`
 
@@ -23,7 +23,7 @@ If the Chrome MCP extension is not connected, the gate review runs through the P
 
 ## Authoritative docs
 
-The live chain is the active initiative (see the `Active initiative:` line above) — resolve the current PRD/DESIGN from there, not from a hardcoded path.
+The live chain is the active initiative (see the `Active initiative:` line above; `none` means no chain is open) — resolve the current PRD/DESIGN from there, not from a hardcoded path.
 
 Repo-level, cumulative across initiatives (not scoped to any one chain):
 
@@ -44,6 +44,10 @@ Closed / historical — record for each initiative's era, superseded wherever a 
 - `docs/2026-07-15-gamification-points/DESIGN.org` — Points derivation, fail-on-inspection, `* Decision Log` (D-entries D39–D55)
 - `docs/2026-07-25-rewards-redemption/PRD.org` — Rewards / Redemption requirements, success criteria
 - `docs/2026-07-25-rewards-redemption/DESIGN.org` — Rewards/redemptions schema, kiosk shop, approval queue, `* Decision Log` (D-entries D57–D77)
+- `docs/2026-09-04-chore-lifecycle/` — Date-bounded roster (`active_from`/`archived_on`), closes D72 roster drift; decisions in `docs/decisions.org`
+- `docs/2026-09-05-good-standing/` — Good-standing band and ring; decisions in `docs/decisions.org`
+- `docs/2026-09-20-effort-multiplier/` — Counted chores (base + rate × count, frozen at creation); decisions in `docs/decisions.org`
+- `docs/2026-10-04-routine-schedule/` — Append-only `schedule_versions`, each points term priced by the version in force at its instant, admin Schedule page; decisions in `docs/decisions.org`
 
 When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 
@@ -72,13 +76,13 @@ An implementation session refuses to start work over a dirty working tree; unexp
 ## Implementation conventions
 
 - Scaffold new resources with `mix phx.gen.live` / `mix phx.gen.context`, then reshape toward the design — don't hand-roll contexts, migrations, or PubSub wiring the generators provide.
-- TDD red-green-refactor at both unit and LiveView layers (see design §11 for the test map).
+- TDD red-green-refactor at both unit and LiveView layers (see MVP DESIGN §11 for the test map).
 
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 - **Consult Tidewave early and often**: with `mix phx.server` running in dev, Tidewave's MCP tools (`/tidewave/mcp`) give live introspection of this running app — schema, routes, runtime state, logs, docs. Reach for it before guessing at schema/route/behavior, and while iterating to check a change against the live app rather than re-deriving from source alone.
-- **Stage kiosk states, don't hand-poke the dev database**: `BearCub.Dev.Scenarios` (`dev/bear_cub/dev/scenarios.ex`) holds one named scenario per reviewable kiosk state (`early_bird/1`, `midway/2` for a half-filled stake bar with sunk done rows, `reset/1`, `open/1` to force a routine window all day, `cutoff/1` to move the early bird cutoff so live taps count as early, `restore/0` to bring back the schedule from before the first of those two, `slow_weekend/0` for a valid custom weekend to review the admin Schedule page). `open/1` and `cutoff/1` write a real schedule version in force now and broadcast `:schedule_changed`, so they reach an already-open kiosk with no restart. `open/1` writes a zero-length window the Schedule page refuses to save back, so raise `R` for review with a version insert through `project_eval`, not from the page. Add a scenario when a feature adds a state worth looking at; run them through Tidewave `project_eval` so re-render broadcasts land in the running server. A server started before `dev/` joined `elixirc_paths` has no `Scenarios` module at all; `Code.require_file("dev/bear_cub/dev/scenarios.ex")` in `project_eval` loads it without a restart.
+- **Stage kiosk states, don't hand-poke the dev database**: `BearCub.Dev.Scenarios` (`dev/bear_cub/dev/scenarios.ex`) holds one named scenario per reviewable kiosk state (`early_bird/1`, `midway/2` for a half-filled stake bar with sunk done rows, `effort/1` for done mornings each holding one counted extra (one untouched, one completed at x8), `reset/1`, `open/1` to force a routine window all day, `cutoff/1` to move the early bird cutoff so live taps count as early, `restore/0` to bring back the schedule from before the first of those two, `slow_weekend/0` for a valid custom weekend to review the admin Schedule page). `open/1` and `cutoff/1` write a real schedule version in force now and broadcast `:schedule_changed`, so they reach an already-open kiosk with no restart. `open/1` writes a zero-length window the Schedule page refuses to save back, so raise `R` for review with a version insert through `project_eval`, not from the page. Add a scenario when a feature adds a state worth looking at; run them through Tidewave `project_eval` so re-render broadcasts land in the running server. A server started before `dev/` joined `elixirc_paths` has no `Scenarios` module at all; `Code.require_file("dev/bear_cub/dev/scenarios.ex")` in `project_eval` loads it without a restart.
 
 Phoenix, Elixir, Ecto, HEEx, LiveView, JS/CSS, and UI guidelines live in `.claude/rules/phoenix.md`, loaded on demand when a matching source, test, template, or asset file is read — not on every turn.
