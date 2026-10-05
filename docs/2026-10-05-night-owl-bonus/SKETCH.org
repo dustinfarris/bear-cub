@@ -1,0 +1,8 @@
+#+title: SKETCH — Night Owl bonus
+#+date: 2026-10-05
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Kiosk may need to show how close the kid is to the cutoff (a countdown or a visible target time) so the badge is something to chase, not just a surprise
+- Cutoffs and bonus amount to live in the schedule the way the Early Bird's do today (versioned schedule data, edited on the admin Schedule page), but cutoff becomes per kid per weekday
+- Night Owl badge on the kiosk modelled on the EARLY pill (D104), forfeited on a fail like the Early Bird

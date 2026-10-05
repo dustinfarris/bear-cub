@@ -1,0 +1,33 @@
+#+title: PRD — Night Owl bonus
+#+date: 2026-10-05
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The kids finish the evening routine, but only after a parent prompts them, and the prompting is the pain. Nothing rewards starting it unprompted: the evening bonus pays the same whether the routine is done at 6:30 PM or at bedtime. The Early Bird gives mornings a reason to move early; evenings have none. Each kid's bedtime differs, and varies by day of the week (a late practice should not block the reward), so a single family-wide time cannot be fair.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. Each kid has their own Night Owl cutoff for each day of the week, so a late-practice night can carry a later cutoff for that kid without touching the other.
+2. A kid who finishes the evening routine before their cutoff for that day earns a bonus, one configurable amount for the whole family; finishing at or after the cutoff earns none, and the bonus is forfeited if that evening's routine is failed.
+3. When a kid has earned the Night Owl, the kiosk shows a Night Owl badge, the evening counterpart of the Early Bird's, and the badge goes when the bonus is forfeited.
+4. Changing a cutoff or the bonus amount never changes points already earned: each Night Owl is judged by the rules in force when it was earned, as the Early Bird is.
+5. The parents set every cutoff and the bonus amount from the admin UI, with no config edit or deploy.
+
+* Out of Scope
+
+- A one-off cutoff for a single night, separate from the weekly pattern.
+- Showing the kid a countdown or target time before they finish; the parents tell the kids about the Night Owl themselves.
+- Any penalty for a late finish: it simply earns no bonus.
+- Streaks, leaderboards, or comparison between siblings.
+- Notifying parents when a Night Owl is earned.
+- Per-kid Early Bird cutoffs; the morning stays as it is.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
