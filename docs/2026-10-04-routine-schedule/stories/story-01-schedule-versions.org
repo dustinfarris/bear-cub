@@ -86,26 +86,86 @@ As a parent, I need the routine timing and bonus amounts kept as a history of sc
 
 * Acceptance Criteria
 
-** [ ] A freshly migrated database holds exactly one schedule, version 0, in force from the epoch. On every day of the week it has a morning of 05:00–17:00, an evening of 17:00–23:00 and an early bird cutoff of 07:45, with a routine bonus of 5 and an early bird bonus of 2. It loads through the schema with those values intact. (SC-5)
-** [ ] Saving a schedule records a new version in force from the moment of the save. Every earlier version stays exactly as it was, and no path exists to edit or delete a version. (SC-1, SC-3)
-** [ ] Each day of the week can carry its own morning window, evening window and early bird cutoff, different from every other day's. (SC-2)
-** [ ] A save is refused, with the error attached to the offending day and field, when a window's start is not strictly before its end, when the morning ends after the evening starts, or when the cutoff is not strictly inside the morning window. (SC-2)
-** [ ] A save is refused when either bonus is negative, or when the schedule lacks exactly one entry for each of the seven weekdays. (SC-2, SC-3)
-** [ ] Saving a schedule identical to the one in force records nothing and notifies no one. (SC-3)
-** [ ] A successful save notifies subscribers that the schedule changed. (SC-3)
-** [ ] A second save in the same second as the previous one is refused rather than overwriting it. (SC-1)
-** [ ] For any instant, the schedule in force is the version with the latest effective time at or before that instant: a version applies from exactly its effective instant, not one second earlier. Resolving against no versions at all raises rather than falling back to a default. (SC-1, SC-4)
-** [ ] The day's timings resolved for a date come from the entry for that date's weekday. (SC-2, SC-4)
-** [ ] CLAUDE.md's "Routines are app constants" invariant now says that routines are constants, their timings and bonuses are append-only data in ~schedule_versions~, and each points term is priced by the version in force at its instant. (SC-3)
+** [X] A freshly migrated database holds exactly one schedule, version 0, in force from the epoch. On every day of the week it has a morning of 05:00–17:00, an evening of 17:00–23:00 and an early bird cutoff of 07:45, with a routine bonus of 5 and an early bird bonus of 2. It loads through the schema with those values intact. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Verified by story-verifier. Migration ~priv/repo/migrations/20261005052847_create_schedule_versions.exs~ seeds version 0 via ~insert_all~ with literal JSON at the epoch, R = 5, E = 2, 05:00–17:00 / 17:00–23:00 / 07:45 on all seven days. Tests ~is the only version after migration, in force from the epoch~ and ~round-trips through the schema with production's values on all seven days~ pass (~mix precommit~, 756 passed).
+:END:
+** [X] Saving a schedule records a new version in force from the moment of the save. Every earlier version stays exactly as it was, and no path exists to edit or delete a version. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~Schedules.change/2~ only calls ~Repo.insert~; the context exports no update or delete function. Tests ~inserts a new version effective at the given now, leaving earlier ones alone~ (asserts ~versions() == before ++ [v]~) and ~the context exposes no update or delete path~ pass.
+:END:
+** [X] Each day of the week can carry its own morning window, evening window and early bird cutoff, different from every other day's. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Tests ~each day can carry its own timings (SC-2)~ and ~seven distinct days persist per weekday and reload intact (SC-2)~ pass; days are an ~embeds_many~ of ~DayEntry~, reloaded through ~Schedules.current/0~.
+:END:
+** [X] A save is refused, with the error attached to the offending day and field, when a window's start is not strictly before its end, when the morning ends after the evening starts, or when the cutoff is not strictly inside the morning window. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~DayEntry.changeset/2~ attaches errors to ~:morning_end~ / ~:evening_end~ (start not before end), ~:evening_start~ (morning ends after evening starts) and ~:early_bird_cutoff~ (not strictly inside the morning). The ~validation (SC-2, SC-3)~ tests assert the failing day's weekday and field, covering both cutoff boundaries and the allowed touching case.
+:END:
+** [X] A save is refused when either bonus is negative, or when the schedule lacks exactly one entry for each of the seven weekdays. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Tests ~negative bonuses are refused; zero is allowed~ and ~days must be exactly one entry per weekday 1-7~ (6, 8, duplicate and weekday-0 cases) pass; ~ScheduleVersion.changeset/2~ uses ~validate_number~ and ~validate_weekdays~.
+:END:
+** [X] Saving a schedule identical to the one in force records nothing and notifies no one. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~Schedules.change/2~ compares bonuses and weekday-sorted days against ~current/0~ and returns ~{:ok, current}~ without insert or broadcast. Test ~a save identical to the one in force records nothing and broadcasts nothing~ asserts one version remains and ~refute_receive :schedule_changed~.
+:END:
+** [X] A successful save notifies subscribers that the schedule changed. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~broadcast_change/1~ sends ~:schedule_changed~ on the ~"schedules"~ topic after a successful insert. Tests ~broadcasts :schedule_changed on a successful save~ and ~does not broadcast a refused save~ pass.
+:END:
+** [X] A second save in the same second as the previous one is refused rather than overwriting it. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Unique index on ~effective_at~ plus ~unique_constraint/2~ in ~ScheduleVersion.effective_at/2~. Test ~a second save in the same second is refused as a changeset error~ gets ~{:error, cs}~ with ~errors_on(cs).effective_at~ and keeps the first save.
+:END:
+** [X] For any instant, the schedule in force is the version with the latest effective time at or before that instant: a version applies from exactly its effective instant, not one second earlier. Resolving against no versions at all raises rather than falling back to a default. (SC-1, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~Routines.in_force/2~ takes the max ~effective_at~ at or before the instant and raises ~ArgumentError~ when none qualifies. Tests in ~test/bear_cub/routines_test.exs~ cover exactly at the effective instant, one second before, unordered input, a local datetime, an empty list, and all versions later.
+:END:
+** [X] The day's timings resolved for a date come from the entry for that date's weekday. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~Routines.day/2~ finds the entry by ~Date.day_of_week~. Test ~returns the entry for the date's ISO weekday~ passes with shuffled days across Mon, Fri, Sat, Sun.
+:END:
+** [X] CLAUDE.md's "Routines are app constants" invariant now says that routines are constants, their timings and bonuses are append-only data in ~schedule_versions~, and each points term is priced by the version in force at its instant. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~CLAUDE.md~ first Design-invariants bullet now reads that timings and bonuses are append-only data in ~schedule_versions~ (~BearCub.Schedules~) and each points term is priced by the version in force at its instant, citing (D8, D120); D120 anchor confirmed in ~docs/decisions.org~.
+:END:
 
 # GAP: The excerpt's seed section says the five ~BEAR_CUB_*~ routine variables "and their ~runtime.exs~ parsing and checks are deleted in the same change" as the migration. This story lands the table additively and leaves the config in place, because config is still read by ~BearCub.Chores~, ~kiosk_components.ex~, ~KioskLive~, ~Admin.TodayLive~ and ~BearCub.Dev.Scenarios~. Deleting it here would mean rewiring all of them in this story. The deletion is placed in Story 04, which removes the last reader; the batch ships as one deploy, so production never runs with both. Human to confirm that reading of "the same change", or rule that the deletion must land with this migration.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  All eleven Acceptance Criteria verified met by the story-verifier pass. The ~# GAP:~ about deleting the ~BEAR_CUB_*~ config in this change remains an open human ruling and was not counted as a removal.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Tests for every criterion live in ~test/bear_cub/schedules_test.exs~ and the ~in_force/2~ / ~day/2~ blocks of ~test/bear_cub/routines_test.exs~, written red first (compile failure on missing modules) and passing in the full run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  Verifier found no style breaches: ~Schedules~ depends on nothing in the app, ~Routines~ stays DB-free, docs wrap at 80, ~mix format~ clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:34] \\
+  ~mix precommit~ exited 0 with 756 passed, run by the story-verifier on the final code.
+:END:
 
 * Technical Notes
 
