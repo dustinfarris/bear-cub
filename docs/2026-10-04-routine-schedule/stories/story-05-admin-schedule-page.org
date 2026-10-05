@@ -43,23 +43,79 @@ As a parent, I need a Schedule page in the phone admin where I can set the routi
 
 * Acceptance Criteria
 
-** [ ] The admin navigation has a Schedule entry beside Chores, Kids, Calendars and Rewards, leading to the Schedule page. (SC-3)
-** [ ] The page shows, top to bottom: the routine bonus and the early bird bonus (the latter hinted "0 turns it off"), then seven day cards from Monday to Sunday. Each card has a morning start and end, an evening start and end, and an early bird cutoff as time inputs, all prefilled from the schedule in force. (SC-2, SC-3)
-** [ ] The page is usable on a phone. (SC-3)
-** [ ] Saving changed values records a new schedule in effect at once and shows "Saved — in effect now". (SC-3)
-** [ ] An invalid save shows each error on the specific day card and field it concerns, and records nothing. (SC-2)
-** [ ] A day card whose timings differ from Monday's carries a quiet "custom" marker. (SC-2)
-** [ ] Each day card's "Copy to" (weekdays, weekend, all days) overwrites the other cards' fields in the unsaved form only, and nothing is recorded until Save. (SC-2)
-** [ ] Saving with no changes records nothing. (SC-3)
-** [ ] A save that collides in the same second with another phone's save tells the parent to try again, rather than failing silently. (SC-3)
+** [X] The admin navigation has a Schedule entry beside Chores, Kids, Calendars and Rewards, leading to the Schedule page. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Verified by story-verifier. ~layouts.ex~ adds a sixth ~admin_tab~ (~/admin/schedule~, Schedule) and ~router.ex~ adds ~live "/schedule", ScheduleLive~. Test: ~ScheduleLiveTest~ "the bottom tab bar has a Schedule entry beside the others, active on the page". The 1280 × 800 screenshot shows the single-row tab bar with Schedule active.
+:END:
+** [X] The page shows, top to bottom: the routine bonus and the early bird bonus (the latter hinted "0 turns it off"), then seven day cards from Monday to Sunday. Each card has a morning start and end, an evening start and end, and an early bird cutoff as time inputs, all prefilled from the schedule in force. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Test "shows both bonuses, then seven day cards Monday to Sunday, prefilled" asserts the bonus values, the "0 turns it off" hint, card order 1 to 7 with day names, five ~type=time~ inputs per card, and Monday prefilled to 05:00. Prefill is ~params_for/1~ over ~Schedules.current/0~ in ~schedule_live.ex~.
+:END:
+** [X] The page is usable on a phone. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Uses the existing admin shell (~Layouts.admin~, ~max-w-md px-4~). Viewed at 390 px: =story-05-schedule-error-390.png= shows a day card with nothing clipped. No automated test covers this; the evidence is the screenshot and the shared layout classes.
+:END:
+** [X] Saving changed values records a new schedule in effect at once and shows "Saved — in effect now". (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Tests "changed values record a new version in force now and say so", "a save broadcasts :schedule_changed so an open kiosk follows" and "a day's edited time is what gets recorded for that weekday only".
+:END:
+** [X] An invalid save shows each error on the specific day card and field it concerns, and records nothing. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Test "an error lands on the specific card and field, and records nothing" (error in ~#day-card-3 [data-field='early_bird_cutoff']~, neighbouring cards clean, version count unchanged). Also "validate shows the error while typing" and "a negative bonus is refused on the bonus field". Seen by hand at 390 px on Monday's cutoff.
+:END:
+** [X] A day card whose timings differ from Monday's carries a quiet "custom" marker. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Tests "a card differing from Monday carries it, updating as the form is edited" and "the page marks a saved varying weekend on load"; ~custom?/2~ compares the card's five times with Monday's in the current form state. Seen at 1280 × 800 in =story-05-schedule-weekend-custom-1280.png= on Saturday and Sunday.
+:END:
+** [X] Each day card's "Copy to" (weekdays, weekend, all days) overwrites the other cards' fields in the unsaved form only, and nothing is recorded until Save. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Four ~copy to~ tests (weekend, weekdays, all days, and "nothing is recorded until Save, and Save then records the copy"), each asserting the version count is unchanged after the click. The ~copy~ handler rewrites params and calls ~change_version/1~ only, never ~Schedules.change/1~.
+:END:
+** [X] Saving with no changes records nothing. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Test "saving with no changes records nothing": version count unchanged and ~refute_received :schedule_changed~. The page flashes "No changes to save" (not specified by the story; asserted only by behaviour, not text).
+:END:
+** [X] A save that collides in the same second with another phone's save tells the parent to try again, rather than failing silently. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Test "a same-second collision says to try again and records nothing more": asserts "try again" shown, no saved flash, version count unchanged. Rendered by the ~#schedule-collision~ paragraph from the ~effective_at~ error.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  All nine acceptance criteria are met by the second story-verifier pass; none deferred or removed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  New ~schedule_live_test.exs~ (17 tests) and two additions to ~scenarios_test.exs~; the targeted run passed 24 and the full suite 801.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Verifier confirmed ~to_form~, ~<.input>~, ~inputs_for~, unique DOM ids, 80-column moduledocs, and hand-shaping per D125; ~mix precommit~ (format check included) exits 0. One accepted deviation: ~wait_for_second_start/0~ in the collision test uses ~Process.sleep/1~, against the rules file's guidance, because D119 stamps the real clock and the test needs to start inside a fresh wall-clock second.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  ~mix precommit > out.txt 2>&1; echo EXIT=$?~ run by the verifier on the final code printed EXIT=0 and 801 passed.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:58] \\
+  Viewed at 1280 × 800 after staging with ~BearCub.Dev.Scenarios.slow_weekend/0~: =story-05-schedule-page-1280.png= (bonuses, Monday and Tuesday cards, six-tab nav) and =story-05-schedule-weekend-custom-1280.png= (Saturday and Sunday with the custom marker, Copy to rows, Save). Phone width and a hand-triggered validation error: =story-05-schedule-error-390.png=. The first verifier pass rated this item not met for lack of a screenshot showing the marker; the weekend capture closed it and a full second pass followed.
+:END:
 
 * Technical Notes
 
@@ -72,3 +128,5 @@ As a parent, I need a Schedule page in the phone admin where I can set the routi
 - "Usable on a phone" is the repo's existing admin standard (the phone-first admin reached over Tailscale). Hold it to the existing admin pages' layout conventions; this story sets no new breakpoint.
 - The local review viewport is the kiosk's. Check the page at a phone width as well during the review, but the screenshot at the declared viewport is the DoD evidence.
 - Visual review: add a small ~BearCub.Dev.Scenarios~ function that writes a version in force now whose weekend timings differ from Monday's, so ~/admin/schedule~ loads with the "custom" marker showing (CLAUDE.md: add a scenario when a feature adds a state worth looking at). Pair it with ~Scenarios.restore/0~ from Story 03. Trigger one validation error by hand on the staged page.
+- Deferred discovery: ~mix precommit~ output carries ~[error] Task ... cannot find mock/stub BearCub.Notifications~ traces, from fire-and-forget ~BearCub.Notifications.push/1~ tasks calling ~Req.Test~ with no stub in some tests. Test noise only; no failure, outside this story's files.
+- Deferred discovery: the dev Tailwind watcher was not running and the cached ~_build/tailwind-macos-arm64-4.3.0~ had an invalid code signature, so macOS killed it (exit 137) and the served CSS went stale. Re-signed locally with ~codesign --force --sign -~; a new Tailwind class in dev needs the watcher or ~mix tailwind bear_cub~.
