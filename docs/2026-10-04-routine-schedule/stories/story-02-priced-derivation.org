@@ -90,23 +90,79 @@ As a kid, I need the points I earned on a routine to stay exactly what they were
 
 * Acceptance Criteria
 
-** [ ] A routine day earned under one routine bonus keeps that bonus in the kid's total and shop balance after the bonus is raised later the same day. (SC-1)
-** [ ] Changing either bonus or any cutoff leaves every kid's total and shop balance unchanged for points already earned. (SC-1)
-** [ ] A routine day's earn is priced by the schedule in force at the last live tap on that day's roster. (SC-4)
-** [ ] The early bird is judged against the cutoff for the routine day's own weekday and paid at the early bird bonus of the same schedule, the one in force at that last live tap. A cutoff changed on one weekday changes no other weekday's verdict. (SC-2, SC-4)
-** [ ] No early bird is paid on a morning priced under a schedule whose early bird bonus is 0. (SC-4)
-** [ ] A failed routine day costs the routine bonus in force at its first fail. (SC-1, SC-4)
-** [ ] An earned day failed after the routine bonus changed and then redone nets zero. Failed and not redone, it nets minus the bonus in force when the fail happened. (SC-1, SC-4)
-** [ ] An undo and redo after a schedule change re-earns at the new routine bonus and is re-judged against the new cutoff. Nothing earned before the redo moves. (SC-1, SC-4)
-** [ ] A kid's total is the same figure computed one kid at a time or for the whole roster at once, over a history that combines all of the above: a bonus change between earn and fail, between earn and redo, a single-weekday cutoff change, an early bird bonus of 0, and a bonus raised after an earn. (SC-1)
-** [ ] With only version 0 present, a fixture history's totals equal a figure computed by hand at a routine bonus of 5, an early bird bonus of 2 and a 07:45 cutoff, so history from before launch scores exactly as it did. (SC-5)
+** [X] A routine day earned under one routine bonus keeps that bonus in the kid's total and shop balance after the bonus is raised later the same day. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified by the final story-verifier pass. ~test/bear_cub/chores_test.exs~ pricing test "R raised later the same day leaves the earned morning's total unchanged (SC-1)" asserts 7 where pricing at the current version would give 11, through ~assert_both~ (~Chores.earnings/2~ and ~earnings_by_kid/1~) and ~routine_day_contribution/3~. The shop balance is ~Points.balance~ over ~Chores.earnings~, so it is covered through the earnings figure; no test asserts a balance directly.
+:END:
+** [X] Changing either bonus or any cutoff leaves every kid's total and shop balance unchanged for points already earned. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: the same-day tests for a raised ~routine_bonus~, a changed ~early_bird_bonus~ and a changed cutoff each leave the earned total at 7 on both routes, and the kid1 case in the agreement fixture holds at 7 after later raises. Totals are asserted via ~earnings~, not ~Points.balance~ directly.
+:END:
+** [X] A routine day's earn is priced by the schedule in force at the last live tap on that day's roster. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "the earn is priced at the last live tap: a tap after R changed earns the new R (SC-4)" asserts 11. ~contribution/4~ in ~lib/bear_cub/chores.ex~ reads ~routine_bonus~ from ~Routines.in_force(versions, last_completed_at)~.
+:END:
+** [X] The early bird is judged against the cutoff for the routine day's own weekday and paid at the early bird bonus of the same schedule, the one in force at that last live tap. A cutoff changed on one weekday changes no other weekday's verdict. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "the early bird uses the cutoff and bonus of the version in force at the last tap (SC-4)" asserts 5, and "a cutoff changed on one weekday changes no other weekday's verdict (SC-2)" asserts Friday 7 and Saturday 5. ~resolve/4~ takes the cutoff from ~Routines.day(earn, local_date)~ and the bonus from the same version.
+:END:
+** [X] No early bird is paid on a morning priced under a schedule whose early bird bonus is 0. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "no early bird is paid under a version whose early bird bonus is 0 (SC-4)" asserts 5 on both routes; E = 0 is also exercised in the agreement fixture.
+:END:
+** [X] A failed routine day costs the routine bonus in force at its first fail. (SC-1, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "a fail before R changed costs the old R even when the day is never redone" asserts -5 and "the first fail prices the penalty: a later second fail does not move it" asserts -5. ~first_failed_at~ is ~MIN(failed_at)~ in both the per-kid and grouped routes.
+:END:
+** [X] An earned day failed after the routine bonus changed and then redone nets zero. Failed and not redone, it nets minus the bonus in force when the fail happened. (SC-1, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "a fail costs the R in force at the first fail; redone, the day nets zero (SC-1, SC-4)" asserts -9 not redone and 0 redone, on both routes.
+:END:
+** [X] An undo and redo after a schedule change re-earns at the new routine bonus and is re-judged against the new cutoff. Nothing earned before the redo moves. (SC-1, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "undo and redo after a schedule change re-earns at the new R and cutoff (SC-4)" asserts 7 before the redo, still 7 after the schedule change, and 9 after the redo (new R, late for the new cutoff).
+:END:
+** [X] A kid's total is the same figure computed one kid at a time or for the whole roster at once, over a history that combines all of the above: a bonus change between earn and fail, between earn and redo, a single-weekday cutoff change, an early bird bonus of 0, and a bonus raised after an earn. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "per-kid and grouped routes agree over a history combining every case" uses four kids over versions v0-v4 and asserts hand-derived figures 7, -9, 12 and 21 on both routes. kid1 is R raised after an earn, kid2 R changed between earn and fail, kid3 R changed between earn and redo, kid4 a Friday-only cutoff change (E 3), and E = 0 is in v3/v4. kid1, kid2 and kid4 differ from pricing at the current version (12, -12, 24); kid3's 12 coincides with it but still discriminates against pricing at the earliest tap (9). A first draft placed kid4's taps after v3/v4 took over, which the red run caught and the fixture was corrected.
+:END:
+** [X] With only version 0 present, a fixture history's totals equal a figure computed by hand at a routine bonus of 5, an early bird bonus of 2 and a 07:45 cutoff, so history from before launch scores exactly as it did. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Verified: "with only version 0, a fixture history equals the hand-computed figure (SC-5)" asserts 7 + 5 - 5 = 7 at R 5 / E 2 / 07:45 on both routes: an early day (07:44), a day at exactly 07:45 (not early), and a failed unredone day.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  All ten acceptance criteria are met (see their entries); no removal or deferral was needed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  Pricing tests exist for every acceptance criterion in ~test/bear_cub/chores_test.exs~ and pass: 770 tests in the final ~mix precommit~ run. Each was watched failing before ~chores.ex~ changed.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  The verifier read the diff against CLAUDE.md and found no breaches; formatting is clean (~mix format~ is part of ~mix precommit~).
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 22:58] \\
+  ~mix precommit~ run by the verifier on the final code exited 0 with 770 passed. The Notifications mock/stub error lines are known, pre-existing noise.
+:END:
 
 * Technical Notes
 
@@ -118,3 +174,7 @@ As a kid, I need the points I earned on a routine to stay exactly what they were
 - The agreement test is the one with teeth (excerpt). Carry forward the effort-multiplier Story 02 near-miss recorded in its PLAN LOGBOOK: a fixture whose terms cancel proves nothing. Assert each route against a hand-derived figure, and confirm that figure differs from what pricing against the current version alone would give. Otherwise a route resolving every term at "now" passes.
 - ~early_bird?~ currently converts ~last_completed_at~ from UTC to local in Elixir (D100). Keep that shift; only the cutoff's source changes, to the in-force version's day entry for ~local_date~'s weekday.
 - ~Chores.standing/2~ ignores ~first_failed_at~ (excerpt). Check that adding the key to the status map breaks no pattern match there.
+- Deferred discovery: the Technical Note's premise that the four domain test files pin ~:routine_bonus~, ~:early_bird_cutoff~ and ~:early_bird_bonus~ with ~Application.put_env~ was false for this repo: those files pin only ~:routine_windows~ (Story 03's idiom conversion). Nothing was converted here. Version 0 equals the config defaults, so the existing ~Routines.bonus()~ assertions still hold.
+- Deferred discovery: ~test/bear_cub_web/live/kiosk_live_test.exs:1060~ pins ~:early_bird_cutoff~ to 00:00 so "nothing is ever early". That pin is now a silent no-op, and the tests complete chores at the real clock, so before 07:45 local the badge assertions can show +R+E. A latent time-of-day flake, to be converted to a version insert in Story 03 or 04 (D119).
+- Deferred discovery: ~BearCub.Dev.Scenarios.cutoff/1~ and ~ensure_config/2~'s ~:early_bird_cutoff~ write config that ~Chores~ no longer reads, so ~cutoff/1~ no longer stages an early bird. Already scheduled for Story 03's scenario rewrite; ~test/bear_cub/dev/scenarios_test.exs:24~ saves and restores the same dead key.
+- Deferred discovery: ~Chores.early_bird?/2~ now calls ~Schedules.versions/0~ per call; the kiosk should pass the history down (Story 04's helper).
