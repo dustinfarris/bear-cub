@@ -1165,12 +1165,22 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#early-bird-badge-#{kid.id}")
     end
 
-    defp minutes_ago(n), do: DateTime.add(LocalTime.now(), -n * 60, :second)
+    # Up to `n` minutes back, never across local midnight: a staged tap must
+    # land on today's routine-day whatever hour the suite runs, so in the
+    # first minutes after midnight the offsets shrink in proportion, keeping
+    # their order.
+    defp minutes_ago(n) do
+      now = LocalTime.now()
+      since_midnight = DateTime.diff(now, today_at(~T[00:00:00]))
+      DateTime.add(now, -min(n * 60, div(n * since_midnight, 11)), :second)
+    end
 
     # SC-1, SC-3, SC-4: incurred figures are priced, the stake is live (D123).
     test "an earned badge keeps its priced R after R is raised, while the chip follows the new R",
          %{conn: conn, kid: kid} do
       morning_active()
+      # before 07:45 the earn would also be early and the badge read +R+E
+      BearCub.ScheduleHelpers.put_cutoff(~T[00:00:00])
       done = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
       {:ok, _} = Chores.complete_chore(done, minutes_ago(10), "kiosk")
       BearCub.ScheduleHelpers.put_bonuses(8, 2, minutes_ago(5))
