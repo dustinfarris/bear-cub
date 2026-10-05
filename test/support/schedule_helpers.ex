@@ -19,7 +19,7 @@ defmodule BearCub.ScheduleHelpers do
   alias BearCub.Repo
   alias BearCub.Routines
   alias BearCub.Schedules
-  alias BearCub.Schedules.{DayEntry, ScheduleVersion}
+  alias BearCub.Schedules.{DayEntry, NightOwlCutoff, ScheduleVersion}
 
   @all_day {~T[00:00:00], ~T[23:59:59]}
   @never {~T[23:59:59], ~T[23:59:59]}
@@ -96,6 +96,34 @@ defmodule BearCub.ScheduleHelpers do
       e,
       day.early_bird_cutoff,
       current
+    )
+  end
+
+  @doc """
+  Inserts a version with Night Owl bonus `n` and, on every weekday, the
+  given `[{kid_id, %Time{}}]` cutoffs, windows and R and E copied from the
+  current version, effective `at` (default: a second after the latest
+  version). Does not broadcast.
+  """
+  def put_night_owl(cutoffs, n, at \\ nil) when is_list(cutoffs) do
+    current = Schedules.current()
+    day = hd(current.days)
+    entries = for {kid_id, time} <- cutoffs, do: %NightOwlCutoff{kid_id: kid_id, cutoff: time}
+
+    carry = %{
+      current
+      | night_owl_bonus: n,
+        days: Enum.map(current.days, &%{&1 | night_owl_cutoffs: entries})
+    }
+
+    insert_version(
+      {day.morning_start, day.morning_end},
+      {day.evening_start, day.evening_end},
+      if(at, do: DateTime.shift_zone!(at, "Etc/UTC"), else: next_instant(current)),
+      current.routine_bonus,
+      current.early_bird_bonus,
+      day.early_bird_cutoff,
+      carry
     )
   end
 

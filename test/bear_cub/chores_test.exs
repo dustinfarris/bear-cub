@@ -2307,7 +2307,7 @@ defmodule BearCub.ChoresTest do
       version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9, early_bird_bonus: 6})
 
       assert Chores.routine_day_pricing(kid, "morning", @friday) ==
-               %{r: 5, e: 2, early?: true, penalty: 0}
+               %{r: 5, e: 2, early?: true, n: 0, night_owl?: false, penalty: 0}
     end
 
     test "routine_day_pricing/3 prices the penalty at the first fail, not the latest R (SC-1)" do
@@ -2328,7 +2328,7 @@ defmodule BearCub.ChoresTest do
       tap(a, @friday, ~T[07:00:00])
 
       assert Chores.routine_day_pricing(kid, "morning", @friday) ==
-               %{r: 0, e: 0, early?: false, penalty: 0}
+               %{r: 0, e: 0, early?: false, n: 0, night_owl?: false, penalty: 0}
     end
 
     test "routine_day_pricing/4 takes the history and agrees with the convenience arity" do
@@ -2426,6 +2426,217 @@ defmodule BearCub.ChoresTest do
       fail_completion(c3, ~U[2026-07-03 18:00:00Z])
 
       assert_both(kid, ~D[2026-07-31], 7 + 5 - 5)
+    end
+  end
+
+  describe "the Night Owl across derivation routes (Story 02, D121, D133, D134, D135)" do
+    import BearCub.ChoresFixtures
+    import BearCub.ScheduleHelpers, only: [put_night_owl: 3]
+    import BearCub.SchedulesFixtures
+
+    # 2026-07-10 is a Friday. Version 0 has N 0 and no cutoffs.
+    @friday ~D[2026-07-10]
+
+    defp evening(kid) do
+      {chore_fixture(kid, %{name: "A", routine: "evening"}),
+       chore_fixture(kid, %{name: "B", routine: "evening"})}
+    end
+
+    # Both chores done by `last`; returns the first completion.
+    defp finish_evening(kid, date, last) do
+      {a, b} = evening(kid)
+      ca = tap(a, date, ~T[18:00:00])
+      tap(b, date, last)
+      {ca, a, b}
+    end
+
+    defp night_version(local, cutoffs, n) do
+      days =
+        for weekday <- 1..7 do
+          day_attrs(weekday, %{
+            night_owl_cutoffs: for({kid, time} <- cutoffs, do: %{kid_id: kid.id, cutoff: time})
+          })
+        end
+
+      local
+      |> DateTime.shift_zone!("Etc/UTC")
+      |> version_fixture(%{night_owl_bonus: n, days: days})
+    end
+
+    setup do
+      kid = kid_fixture()
+      night_version(la(@friday, ~T[00:00:00]), [{kid, ~T[20:00:00]}], 4)
+      %{kid: kid}
+    end
+
+    test "a timely evening earns R plus N, and the pricing reports it", %{kid: kid} do
+      finish_evening(kid, @friday, ~T[19:30:00])
+
+      assert_both(kid, @friday, 9)
+
+      assert Chores.routine_day_pricing(kid, "evening", @friday) ==
+               %{r: 5, e: 0, early?: false, n: 4, night_owl?: true, penalty: 0}
+    end
+
+    test "a finish exactly at the cutoff, or after it, earns no Night Owl", %{kid: kid} do
+      finish_evening(kid, @friday, ~T[20:00:00])
+      assert_both(kid, @friday, 5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(kid, "evening", @friday)
+
+      other = kid_fixture(%{name: "Late", position: 2})
+      night_version(la(@friday, ~T[00:00:01]), [{kid, ~T[20:00:00]}, {other, ~T[20:00:00]}], 4)
+      finish_evening(other, @friday, ~T[20:00:01])
+      assert_both(other, @friday, 5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(other, "evening", @friday)
+    end
+
+    test "a kid with no cutoff entry earns no Night Owl" do
+      loner = kid_fixture(%{name: "Loner", position: 2})
+      finish_evening(loner, @friday, ~T[18:30:00])
+
+      assert_both(loner, @friday, 5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(loner, "evening", @friday)
+    end
+
+    test "N = 0 means off, whatever the clock", %{kid: kid} do
+      night_version(la(@friday, ~T[01:00:00]), [{kid, ~T[20:00:00]}], 0)
+      finish_evening(kid, @friday, ~T[19:00:00])
+
+      assert_both(kid, @friday, 5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(kid, "evening", @friday)
+    end
+
+    test "a fail forfeits it, and so does a fail then redo", %{kid: kid} do
+      {ca, a, _b} = finish_evening(kid, @friday, ~T[19:05:00])
+      fail_completion(ca, DateTime.shift_zone!(la(@friday, ~T[19:10:00]), "Etc/UTC"))
+      assert_both(kid, @friday, -5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(kid, "evening", @friday)
+
+      tap(a, @friday, ~T[19:30:00])
+      assert_both(kid, @friday, 0)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(kid, "evening", @friday)
+    end
+
+    test "an undo and redo past the cutoff loses it", %{kid: kid} do
+      {_ca, _a, b} = finish_evening(kid, @friday, ~T[19:05:00])
+      assert_both(kid, @friday, 9)
+
+      {:ok, _} = Chores.undo_chore(b, la(@friday, ~T[19:10:00]))
+      tap(b, @friday, ~T[20:30:00])
+      assert_both(kid, @friday, 5)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(kid, "evening", @friday)
+    end
+
+    test "each kid is judged against their own cutoff", %{kid: kid} do
+      strict = kid_fixture(%{name: "Strict", position: 2})
+      night_version(la(@friday, ~T[00:00:01]), [{kid, ~T[20:00:00]}, {strict, ~T[19:00:00]}], 4)
+
+      finish_evening(kid, @friday, ~T[19:30:00])
+      finish_evening(strict, @friday, ~T[19:30:00])
+
+      assert_both(kid, @friday, 9)
+      assert_both(strict, @friday, 5)
+      assert %{n: 4, night_owl?: true} = Chores.routine_day_pricing(kid, "evening", @friday)
+      assert %{n: 0, night_owl?: false} = Chores.routine_day_pricing(strict, "evening", @friday)
+    end
+
+    test "N raised after an earn leaves the earned evening unchanged (SC-4)", %{kid: kid} do
+      finish_evening(kid, @friday, ~T[19:30:00])
+      night_version(la(@friday, ~T[21:00:00]), [{kid, ~T[20:00:00]}], 10)
+
+      # Pricing at the current N would give 15.
+      assert_both(kid, @friday, 9)
+      assert %{n: 4, night_owl?: true} = Chores.routine_day_pricing(kid, "evening", @friday)
+    end
+
+    test "a cutoff moved between evenings: each is judged by its own (SC-4)", %{kid: kid} do
+      saturday = ~D[2026-07-11]
+      sunday = ~D[2026-07-12]
+      night_version(la(saturday, ~T[23:00:00]), [{kid, ~T[18:00:00]}], 4)
+
+      {a, b} = evening(kid)
+
+      for date <- [@friday, sunday] do
+        tap(a, date, ~T[18:00:00])
+        tap(b, date, ~T[19:30:00])
+      end
+
+      # Friday under the 20:00 cutoff: 9. Sunday under 18:00: 5.
+      assert_both(kid, sunday, 14)
+    end
+
+    test "put_night_owl/3 stages a version the pricing reads", %{kid: kid} do
+      put_night_owl([{kid.id, ~T[21:00:00]}], 7, la(@friday, ~T[01:00:00]))
+      finish_evening(kid, @friday, ~T[20:30:00])
+
+      assert_both(kid, @friday, 12)
+    end
+
+    test "the morning's figures are unchanged", %{kid: kid} do
+      a = chore_fixture(kid, %{name: "A", routine: "morning"})
+      tap(a, @friday, ~T[07:00:00])
+
+      assert Chores.routine_day_pricing(kid, "morning", @friday) ==
+               %{r: 5, e: 2, early?: true, n: 0, night_owl?: false, penalty: 0}
+
+      assert_both(kid, @friday, 7)
+    end
+
+    test "per-kid and grouped routes agree over a history combining every case" do
+      [a, b, c, d, e, f, g, h] =
+        for n <- 1..8, do: kid_fixture(%{name: "Owl #{n}", position: n + 10})
+
+      timed =
+        [{a, ~T[20:00:00]}, {b, ~T[19:00:00]}] ++ for(k <- [d, e, f, g, h], do: {k, ~T[20:00:00]})
+
+      moved = [{a, ~T[18:00:00]} | tl(timed)]
+
+      # vA: N 4, from Mon 07-13. vB: A's cutoff moves to 18:00, from Wed
+      # 07-15. vC: N 10, from Mon 07-20 noon. vD: N 0, from Sat 07-25.
+      night_version(la(~D[2026-07-13], ~T[00:00:00]), timed, 4)
+      night_version(la(~D[2026-07-15], ~T[00:00:00]), moved, 4)
+      night_version(la(~D[2026-07-20], ~T[12:00:00]), moved, 10)
+      night_version(la(~D[2026-07-25], ~T[00:00:00]), moved, 0)
+
+      # a: before 20:00 under vA twice (9 + 9), then after the moved 18:00 (5).
+      {a1, a2} = evening(a)
+
+      for {date, time} <- [
+            {~D[2026-07-13], ~T[19:30:00]},
+            {~D[2026-07-14], ~T[19:30:00]},
+            {~D[2026-07-16], ~T[19:30:00]}
+          ] do
+        tap(a1, date, ~T[18:00:00])
+        tap(a2, date, time)
+      end
+
+      # b: finishes after their own 19:00 cutoff, though before a's 20:00: 5.
+      finish_evening(b, ~D[2026-07-13], ~T[19:30:00])
+      # c: no cutoff entry: 5.
+      finish_evening(c, ~D[2026-07-13], ~T[18:30:00])
+      # d: earned at N 4 on 07-18, N raised to 10 afterwards: 9.
+      finish_evening(d, ~D[2026-07-18], ~T[19:00:00])
+      # e: timely, but N is 0: 5.
+      finish_evening(e, ~D[2026-07-26], ~T[19:00:00])
+      # f: failed, never redone: -5.
+      {cf, _, _} = finish_evening(f, ~D[2026-07-14], ~T[19:05:00])
+      fail_completion(cf, DateTime.shift_zone!(la(~D[2026-07-14], ~T[19:10:00]), "Etc/UTC"))
+      # g: failed then redone, still timely: 5 - 5 = 0.
+      {cg, ga, _} = finish_evening(g, ~D[2026-07-14], ~T[19:05:00])
+      fail_completion(cg, DateTime.shift_zone!(la(~D[2026-07-14], ~T[19:10:00]), "Etc/UTC"))
+      tap(ga, ~D[2026-07-14], ~T[19:30:00])
+      # h: exactly at the cutoff: 5.
+      finish_evening(h, ~D[2026-07-13], ~T[20:00:00])
+
+      as_of = ~D[2026-07-31]
+      assert_both(a, as_of, 23)
+      assert_both(b, as_of, 5)
+      assert_both(c, as_of, 5)
+      assert_both(d, as_of, 9)
+      assert_both(e, as_of, 5)
+      assert_both(f, as_of, -5)
+      assert_both(g, as_of, 0)
+      assert_both(h, as_of, 5)
     end
   end
 end
