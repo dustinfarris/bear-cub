@@ -26,3 +26,17 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - Two unrecorded divergences surfaced at the gate rather than in a per-story pass, both already flagged in Plan LOGBOOK notes as "for the gate": the env-var deletion's timing (Stories 01 and 04) and the shop closing on a schedule save (Story 03).
 
 ** Retro
+
+Rulings recorded 2026-10-05. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** The Plan LOGBOOK was consulted
+
+0.8.8 narrowed the Plan LOGBOOK on evidence that no implementation session read it. This batch is the counterexample the narrowed form was meant to produce: Story 04 resolved Story 03's note (5) and Story 02's Deferred list by name, and the gate found both unrecorded divergences through the "for the gate" notes in Stories 01, 03 and 04. Five entries, every one a clarification, a deferral or a carry-forward; none a status restatement.
+
+Ruling: evidence, not a change. The narrowed Plan LOGBOOK stays. Lands here and as a dated addendum at the end of the kit's ~docs/2026-10-04-closeout-cost-design.org~, answering the three checks it asked this retro to run (one dispatch per clean story: not met on 02 and 03, reason unrecorded; close-out under 7 minutes: met, 4.2 average against 7; no tick without a pass: met). An addendum is written only when a design explicitly asked a later retro for one; the design docs are not a second Plan LOGBOOK.
+
+*** The dev server was not running
+
+Stories 03 and 04 each stalled on Tidewave because ~mix phx.server~ had not been started, and Story 05's Deferred carries a dead Tailwind watcher (invalid code signature, re-signed with ~codesign~) as if it were product work. Tidewave's ~project_eval~ reloads code before every eval, so a running server is current for ~lib/~ and ~dev/~; the failure is remembering to run it, plus the gaps the reloader cannot close: ~mix.exs~, ~config/~, and a migration added mid-batch. bear-cub also takes the default port 4000, which every other Phoenix project on the machine takes too.
+
+Ruling: the server is a session precondition the repo provides, not a thing to remember, and it has its own port. The shape is settled: a session-start mechanism probes bear-cub's port, starts ~mix phx.server~ detached when nothing answers, waits for the probe, and says when ~mix.exs~ or ~config/~ is newer than the running server; dev migrates on boot; no per-session tear-down, a by-hand stop instead; the MCP side goes through ~mix tidewave.proxy~ (dep bump), which carries the port per call and registers whether or not the app is up. The exact implementation is open: where the hook lives (bear-cub's ~.claude/settings.json~, a kit hook gated on a CLAUDE.md line, or dotfiles), whether the proxy compiles the project on start, and whether it registers per project or once at user level. Lands as a kit backlog item carrying those questions. Separately and now: Deferred is for product discoveries only, so the Tailwind entry moves to ~docs/learnings.org~ as a dev-environment entry.
