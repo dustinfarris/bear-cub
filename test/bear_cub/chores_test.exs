@@ -1164,7 +1164,8 @@ defmodule BearCub.ChoresTest do
                  empty?: false,
                  complete?: true,
                  failed?: false,
-                 last_completed_at: ~U[2026-09-05 01:01:00Z]
+                 last_completed_at: ~U[2026-09-05 01:01:00Z],
+                 first_failed_at: nil
                }
     end
 
@@ -1172,7 +1173,13 @@ defmodule BearCub.ChoresTest do
       kid = kid_fixture()
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: true, complete?: true, failed?: false, last_completed_at: nil}
+               %{
+                 empty?: true,
+                 complete?: true,
+                 failed?: false,
+                 last_completed_at: nil,
+                 first_failed_at: nil
+               }
     end
 
     test "a non-empty roster left partly undone is not complete" do
@@ -1186,7 +1193,8 @@ defmodule BearCub.ChoresTest do
                  empty?: false,
                  complete?: false,
                  failed?: false,
-                 last_completed_at: ~U[2026-09-05 01:00:00Z]
+                 last_completed_at: ~U[2026-09-05 01:00:00Z],
+                 first_failed_at: nil
                }
     end
 
@@ -1197,7 +1205,13 @@ defmodule BearCub.ChoresTest do
       fail_completion(ca, ~U[2026-09-04 23:00:00Z])
 
       assert Chores.routine_day_status(kid, "evening", ~D[2026-09-04]) ==
-               %{empty?: false, complete?: false, failed?: true, last_completed_at: nil}
+               %{
+                 empty?: false,
+                 complete?: false,
+                 failed?: true,
+                 last_completed_at: nil,
+                 first_failed_at: ~U[2026-09-04 23:00:00Z]
+               }
     end
   end
 
@@ -1771,7 +1785,7 @@ defmodule BearCub.ChoresTest do
       assert few_days_query_count == many_days_query_count
     end
 
-    test "a whole-render read is two queries: one extras leg, one routine leg" do
+    test "a whole-render read is three queries: the versions, one extras leg, one routine leg" do
       kid = kid_fixture()
       chore = chore_fixture(kid, %{name: "A", routine: "morning"})
       {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[07:00:00]), "kiosk")
@@ -1779,7 +1793,7 @@ defmodule BearCub.ChoresTest do
       # The date-bounded roster count is nested inside the routine leg as a
       # subquery (D81), not fetched per routine-day — asserting only that the
       # count is *constant* would not notice it splitting into two statements.
-      assert count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end) == 2
+      assert count_queries(fn -> Chores.earnings_by_kid(~D[2026-07-10]) end) == 3
     end
 
     test "the query count does not grow with the number of kids (SC-5, D81)" do
@@ -2099,6 +2113,282 @@ defmodule BearCub.ChoresTest do
 
       {:error, _} = Chores.create_chore(kid, %{}, la(~D[2026-07-10], ~T[08:00:00]))
       refute_receive :chores_changed, 50
+    end
+  end
+
+  describe "pricing: each term at the instant it came into being (D121, D122)" do
+    import BearCub.ChoresFixtures
+    import BearCub.SchedulesFixtures
+
+    # Chore-level fixtures use fixed instants; version 0 (R 5, E 2, cutoff
+    # 07:45 every day) is the migration's, effective 1970. 2026-07-10 is a
+    # Friday (ISO weekday 5), 2026-07-11 a Saturday.
+    @friday ~D[2026-07-10]
+    @saturday ~D[2026-07-11]
+
+    # Versions are stamped in UTC; the fixtures speak local wall-clock.
+    defp version_at(%DateTime{} = local, overrides) do
+      local |> DateTime.shift_zone!("Etc/UTC") |> version_fixture(overrides)
+    end
+
+    defp two_morning(kid) do
+      {chore_fixture(kid, %{name: "A", routine: "morning"}),
+       chore_fixture(kid, %{name: "B", routine: "morning"})}
+    end
+
+    defp tap(chore, date, time) do
+      {:ok, completion} = Chores.complete_chore(chore, la(date, time), "kiosk")
+      completion
+    end
+
+    defp finish(kid, date, a_time, b_time) do
+      {a, b} = two_morning(kid)
+      {tap(a, date, a_time), tap(b, date, b_time)}
+    end
+
+    # Asserts the per-kid and grouped routes agree on `expected` — the one
+    # assertion that catches the two routes resolving a term at different
+    # instants.
+    defp assert_both(kid, date, expected) do
+      assert Chores.earnings(kid, date) == expected
+      assert Chores.earnings_by_kid(date)[kid.id] == expected
+    end
+
+    test "R raised later the same day leaves the earned morning's total unchanged (SC-1)" do
+      kid = kid_fixture()
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+
+      # Pricing against the current version alone would give 9 + 2 = 11.
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9})
+
+      assert_both(kid, @friday, 7)
+      assert Chores.routine_day_contribution(kid, "morning", @friday) == 7
+    end
+
+    test "early bird bonus changed later the same day leaves the earned morning unchanged" do
+      kid = kid_fixture()
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+      version_at(la(@friday, ~T[10:00:00]), %{early_bird_bonus: 6})
+
+      assert_both(kid, @friday, 7)
+    end
+
+    test "a cutoff changed later the same day does not re-judge the earned morning (SC-1)" do
+      kid = kid_fixture()
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+
+      version_at(
+        la(@friday, ~T[10:00:00]),
+        attrs_with_day(5, %{early_bird_cutoff: ~T[06:00:00]})
+      )
+
+      assert_both(kid, @friday, 7)
+    end
+
+    test "the earn is priced at the last live tap: a tap after R changed earns the new R (SC-4)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      tap(a, @friday, ~T[07:00:00])
+      version_at(la(@friday, ~T[07:15:00]), %{routine_bonus: 9})
+      tap(b, @friday, ~T[07:30:00])
+
+      # Last tap 07:30 is under R 9, and early (cutoff 07:45): 9 + 2.
+      assert_both(kid, @friday, 11)
+    end
+
+    test "the early bird uses the cutoff and bonus of the version in force at the last tap (SC-4)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      tap(a, @friday, ~T[07:00:00])
+
+      version_at(
+        la(@friday, ~T[07:15:00]),
+        attrs_with_day(5, %{early_bird_cutoff: ~T[07:20:00]}, %{early_bird_bonus: 4})
+      )
+
+      tap(b, @friday, ~T[07:30:00])
+
+      # 07:30 is late under the 07:20 cutoff, though early under version 0's.
+      assert_both(kid, @friday, 5)
+    end
+
+    test "a cutoff changed on one weekday changes no other weekday's verdict (SC-2)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+
+      version_fixture(
+        ~U[2026-07-01 00:00:00Z],
+        attrs_with_day(5, %{early_bird_cutoff: ~T[08:30:00]})
+      )
+
+      for date <- [@friday, @saturday] do
+        tap(a, date, ~T[07:50:00])
+        tap(b, date, ~T[08:00:00])
+      end
+
+      # Friday 08:00 < 08:30 is early; Saturday keeps 07:45 and is not.
+      assert Chores.routine_day_contribution(kid, "morning", @friday) == 7
+      assert Chores.routine_day_contribution(kid, "morning", @saturday) == 5
+      assert_both(kid, @saturday, 12)
+    end
+
+    test "no early bird is paid under a version whose early bird bonus is 0 (SC-4)" do
+      kid = kid_fixture()
+      version_fixture(~U[2026-07-01 00:00:00Z], %{early_bird_bonus: 0})
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+
+      assert_both(kid, @friday, 5)
+    end
+
+    test "a fail costs the R in force at the first fail; redone, the day nets zero (SC-1, SC-4)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      ca = tap(a, @friday, ~T[08:00:00])
+      tap(b, @friday, ~T[08:10:00])
+      assert_both(kid, @friday, 5)
+
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9})
+      fail_completion(ca, DateTime.shift_zone!(la(@friday, ~T[11:00:00]), "Etc/UTC"))
+
+      # Not redone: the day nets -R at the price in force at the fail.
+      assert_both(kid, @friday, -9)
+
+      # Redone: the redo is the new last tap, priced at 9; the fail costs 9.
+      tap(a, @friday, ~T[12:00:00])
+      assert_both(kid, @friday, 0)
+    end
+
+    test "a fail before R changed costs the old R even when the day is never redone" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      ca = tap(a, @friday, ~T[08:00:00])
+      tap(b, @friday, ~T[08:10:00])
+      fail_completion(ca, DateTime.shift_zone!(la(@friday, ~T[09:00:00]), "Etc/UTC"))
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9})
+
+      assert_both(kid, @friday, -5)
+    end
+
+    test "the first fail prices the penalty: a later second fail does not move it" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      ca = tap(a, @friday, ~T[08:00:00])
+      cb = tap(b, @friday, ~T[08:10:00])
+      fail_completion(ca, DateTime.shift_zone!(la(@friday, ~T[09:00:00]), "Etc/UTC"))
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9})
+      fail_completion(cb, DateTime.shift_zone!(la(@friday, ~T[11:00:00]), "Etc/UTC"))
+
+      assert_both(kid, @friday, -5)
+    end
+
+    test "undo and redo after a schedule change re-earns at the new R and cutoff (SC-4)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      tap(a, @friday, ~T[07:00:00])
+      tap(b, @friday, ~T[07:30:00])
+      assert_both(kid, @friday, 7)
+
+      version_at(
+        la(@friday, ~T[07:40:00]),
+        attrs_with_day(5, %{early_bird_cutoff: ~T[07:35:00]}, %{routine_bonus: 9})
+      )
+
+      assert_both(kid, @friday, 7)
+
+      {:ok, _} = Chores.undo_chore(b, la(@friday, ~T[07:50:00]))
+      tap(b, @friday, ~T[07:55:00])
+
+      # Redo at 07:55 is under R 9 and late for the new 07:35 cutoff.
+      assert_both(kid, @friday, 9)
+    end
+
+    test "routine_day_status/3 carries the earliest fail instant, nil when never failed" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      ca = tap(a, @friday, ~T[08:00:00])
+      cb = tap(b, @friday, ~T[08:10:00])
+
+      assert Chores.routine_day_status(kid, "morning", @friday).first_failed_at == nil
+
+      later = ~U[2026-07-10 18:00:00Z]
+      earlier = ~U[2026-07-10 17:00:00Z]
+      fail_completion(cb, later)
+      fail_completion(ca, earlier)
+
+      assert Chores.routine_day_status(kid, "morning", @friday).first_failed_at == earlier
+    end
+
+    test "per-kid and grouped routes agree over a history combining every case" do
+      [kid1, kid2, kid3, kid4] = for n <- 1..4, do: kid_fixture(%{name: "Kid #{n}", position: n})
+      monday = ~D[2026-07-20]
+
+      # v1: R 9 from Fri 07-10 10:00. v2: E 3 and a Friday-only cutoff of
+      # 08:30 from Fri 20:00. v3: E 0 from Mon 07-20 00:00. v4: R 12 from Mon 07:20.
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9})
+
+      version_at(
+        la(@friday, ~T[20:00:00]),
+        attrs_with_day(5, %{early_bird_cutoff: ~T[08:30:00]}, %{
+          routine_bonus: 9,
+          early_bird_bonus: 3
+        })
+      )
+
+      v3 =
+        attrs_with_day(5, %{early_bird_cutoff: ~T[08:30:00]}, %{
+          routine_bonus: 9,
+          early_bird_bonus: 0
+        })
+
+      version_at(la(monday, ~T[00:00:00]), v3)
+      version_at(la(monday, ~T[07:20:00]), %{v3 | routine_bonus: 12})
+
+      # kid1: earned under v0 (5 + 2); R raised afterwards.
+      finish(kid1, ~D[2026-07-09], ~T[07:00:00], ~T[07:30:00])
+
+      # kid2: earned under v0, failed under v1 and never redone: -9.
+      {a2, b2} = two_morning(kid2)
+      c2 = tap(a2, @friday, ~T[08:00:00])
+      tap(b2, @friday, ~T[08:05:00])
+      fail_completion(c2, DateTime.shift_zone!(la(@friday, ~T[11:00:00]), "Etc/UTC"))
+
+      # kid3: earned under v3 (R 9, E 0), undone, redone after R went to 12: 12.
+      {a3, b3} = two_morning(kid3)
+      tap(a3, monday, ~T[07:00:00])
+      tap(b3, monday, ~T[07:10:00])
+      {:ok, _} = Chores.undo_chore(b3, la(monday, ~T[07:25:00]))
+      tap(b3, monday, ~T[07:30:00])
+
+      # kid4: 08:00 / 08:10 under v2 on a Friday (cutoff 08:30: early, 9 + 3)
+      # and on a Saturday (cutoff 07:45: not early, 9) = 21. Pricing every
+      # term at v4 would give 24.
+      {a4, b4} = two_morning(kid4)
+
+      for date <- [~D[2026-07-17], ~D[2026-07-18]] do
+        tap(a4, date, ~T[08:00:00])
+        tap(b4, date, ~T[08:10:00])
+      end
+
+      as_of = ~D[2026-07-31]
+      assert_both(kid1, as_of, 7)
+      assert_both(kid2, as_of, -9)
+      assert_both(kid3, as_of, 12)
+      assert_both(kid4, as_of, 21)
+    end
+
+    test "with only version 0, a fixture history equals the hand-computed figure (SC-5)" do
+      kid = kid_fixture()
+      # Day 1: early (07:44) -> 5 + 2. Day 2: 07:45 sharp -> 5. Day 3: failed, unredone -> -5.
+      {a, b} = two_morning(kid)
+      tap(a, ~D[2026-07-01], ~T[07:00:00])
+      tap(b, ~D[2026-07-01], ~T[07:44:00])
+      tap(a, ~D[2026-07-02], ~T[07:00:00])
+      tap(b, ~D[2026-07-02], ~T[07:45:00])
+      c3 = tap(a, ~D[2026-07-03], ~T[07:00:00])
+      tap(b, ~D[2026-07-03], ~T[07:10:00])
+      fail_completion(c3, ~U[2026-07-03 18:00:00Z])
+
+      assert_both(kid, ~D[2026-07-31], 7 + 5 - 5)
     end
   end
 end
