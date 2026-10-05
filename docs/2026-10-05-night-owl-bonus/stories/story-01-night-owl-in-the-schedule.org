@@ -62,20 +62,64 @@ As a parent, I need each weekday of the schedule to hold a Night Owl cutoff for 
 
 * Acceptance Criteria
 
-** [ ] A schedule holds, on each weekday, at most one Night Owl cutoff per kid, and one Night Owl bonus for the whole family. (SC-1, SC-2)
-** [ ] A schedule may leave a kid without a cutoff on a day, and still saves. A cutoff submitted blank is dropped, not refused, so that kid has no cutoff that day. (SC-1)
-** [ ] A cutoff that does not fall strictly inside that day's evening window is refused, including one exactly at the evening's start or end. The error "must fall inside the evening window" sits on that kid's cutoff for that day. (SC-1)
-** [ ] A day carrying two cutoffs for the same kid is refused. (SC-1)
-** [ ] A missing Night Owl bonus, or one below 0, is refused. A bonus of 0 is accepted. (SC-2, SC-5)
-** [ ] Every schedule saved before this feature loads unchanged, with a Night Owl bonus of 0 and no cutoffs on any day, so no past figure can move. (SC-4)
-** [ ] A save that changes only the Night Owl bonus, or only one kid's cutoff on one day, records a new schedule. A save whose bonus and cutoffs match the schedule in force records nothing and broadcasts nothing, whatever order the cutoffs arrive in. (SC-4, SC-5)
+** [X] A schedule holds, on each weekday, at most one Night Owl cutoff per kid, and one Night Owl bonus for the whole family. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~embeds_many :night_owl_cutoffs~ on ~BearCub.Schedules.DayEntry~, ~night_owl_bonus~ on ~ScheduleVersion~; test "a day holds one cutoff per kid and the version one bonus" in ~test/bear_cub/schedules_test.exs~; ~mix precommit~ exit 0, 814 passed.
+:END:
+** [X] A schedule may leave a kid without a cutoff on a day, and still saves. A cutoff submitted blank is dropped, not refused, so that kid has no cutoff that day. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~NightOwlCutoff.changeset/2~ sets action :ignore on a blank cutoff; test "a kid may have no cutoff on a day, and a blank cutoff is dropped" and a day with no entries saves.
+:END:
+** [X] A cutoff that does not fall strictly inside that day's evening window is refused, including one exactly at the evening's start or end. The error "must fall inside the evening window" sits on that kid's cutoff for that day. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~check_inside/3~ in ~day_entry.ex~ uses strict comparisons against the evening window and errors on the nested ~:cutoff~; test "a cutoff must fall strictly inside that day's evening window, on that kid's field" covers 17:00 and 23:00 exactly plus outside; a malformed time is refused rather than crashing (test "a malformed cutoff is refused on that kid's field, not a crash").
+:END:
+** [X] A day carrying two cutoffs for the same kid is refused. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~check_unseen/3~ errors the second entry's ~:kid_id~; test "two cutoffs for one kid on a day are refused"; same kid on different days accepted.
+:END:
+** [X] A missing Night Owl bonus, or one below 0, is refused. A bonus of 0 is accepted. (SC-2, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~validate_required~ and ~validate_number >= 0~ in ~schedule_version.ex~; test "the bonus is required and non-negative; zero is accepted" covers nil, -1 and 0.
+:END:
+** [X] Every schedule saved before this feature loads unchanged, with a Night Owl bonus of 0 and no cutoffs on any day, so no past figure can move. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  Migration ~20261005211207_add_night_owl_bonus_to_schedule_versions.exs~ adds only ~night_owl_bonus~ (NOT NULL DEFAULT 0); test "a version stored in the pre-migration shape loads with no cutoffs and N = 0" inserts raw SQL without the key.
+:END:
+** [X] A save that changes only the Night Owl bonus, or only one kid's cutoff on one day, records a new schedule. A save whose bonus and cutoffs match the schedule in force records nothing and broadcasts nothing, whatever order the cutoffs arrive in. (SC-4, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~same_schedule?/2~ compares the bonus and cutoffs sorted by ~kid_id~; tests for N-only change, one-cutoff change, and reordered no-op with ~refute_receive :schedule_changed~.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  All seven acceptance criteria verified met by the story-verifier on the final pass; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  Schedule tests added in ~test/bear_cub/schedules_test.exs~ (including the helper-carry test), written red first; full suite 814 passed.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  Verifier checked added moduledocs and comments at 80 columns after a rewrap; ~mix format~ clean.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:17] \\
+  ~mix precommit~ run by the verifier on the final code: exit=0, 814 passed.
+:END:
 
 * Technical Notes
 

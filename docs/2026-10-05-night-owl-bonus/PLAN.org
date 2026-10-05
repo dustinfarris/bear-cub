@@ -15,7 +15,11 @@ Design: [[file:DESIGN.org]]
 # on Story 01 and could move earlier. It is last so that a save has a visible effect on an open
 # kiosk.
 
-** TODO [[file:stories/story-01-night-owl-in-the-schedule.org][Story 01 — Night Owl cutoffs and bonus in the schedule version]]
+** DONE [[file:stories/story-01-night-owl-in-the-schedule.org][Story 01 — Night Owl cutoffs and bonus in the schedule version]]
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:18] \\
+  Clarifications the DESIGN leaves open, for Stories 02–04. Cutoff entries are a new embed, ~BearCub.Schedules.NightOwlCutoff~ (~kid_id~, ~cutoff~). Only a cutoff that is blank (nil with no cast error) is dropped, through ~action: :ignore~. A malformed time is not blank: it keeps its cast error on that entry's ~:cutoff~, and the window check skips it, so Story 04's form shows "is invalid" there rather than dropping the entry. A duplicate ~kid_id~ errors on the second entry's ~:kid_id~ ("already has a cutoff on this day"); the per-kid form cannot produce one. In ~test/support/schedule_helpers.ex~, ~put_windows/2~, ~put_cutoff/1~ and ~put_bonuses/3~ carry ~night_owl_bonus~ and each weekday's cutoffs forward from the current version through an optional ~carry~ argument to ~insert_version~. ~pin_default_schedule/0~ still writes ~N = 0~ with no cutoffs. Stories 02 and 03 can stage a Night Owl version with ~Schedules.change/2~ or a struct insert, then restage windows or bonuses without losing it.
+:END:
 ** TODO [[file:stories/story-02-night-owl-pricing.org][Story 02 — Pricing the Night Owl on both derivation routes]]
 ** TODO [[file:stories/story-03-kiosk-night-owl-pill.org][Story 03 — The Night Owl badge and pill on the kiosk]]
 ** TODO [[file:stories/story-04-admin-night-owl-schedule.org][Story 04 — Night Owl cutoffs and bonus on the admin Schedule page]]
