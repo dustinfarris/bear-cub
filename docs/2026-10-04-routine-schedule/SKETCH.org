@@ -1,0 +1,8 @@
+#+title: SKETCH — Routine schedule
+#+date: 2026-10-04
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Shapes named in the backlog entry: a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), or a per-completion snapshot of values in force at tap time (denormalizes onto the row and misses ~R~, a routine-day fact, not a row fact).
+- Bonus amounts (routine bonus ~R~, early bird bonus ~E~) need not vary per weekday, but if storing them per weekday alongside the timings is simpler, that is fine.
+- Current ~config/runtime.exs~ values (windows, cutoff, ~R~, ~E~) become the starting values and the values in force for all history before launch.

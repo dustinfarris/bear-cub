@@ -1,0 +1,30 @@
+#+title: PRD — Routine schedule
+#+date: 2026-10-04
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+Routine timing (the morning and evening windows, the early bird cutoff) and the bonus amounts (routine bonus, early bird bonus) live in server config, and every past day's points are re-derived against whatever that config says now. A parent therefore cannot retune the rules — a later cutoff for summer, a different weekend rhythm, a bigger bonus — without both a deploy and silently changing points the kids already earned, which the kids would see as totals and shop balances moving under them. A single schedule for every day also fits neither weekends, which start later, nor the school days that run on their own rhythm.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. Points the kids have already earned never change when a parent changes the routine timing or a bonus amount: totals and shop balances stay put.
+2. A parent can set the routine windows and the early bird cutoff separately for each day of the week.
+3. A parent can change the routine timing, the routine bonus, and the early bird bonus from the phone admin with no deploy, and each change takes effect immediately.
+4. On any day, the kiosk opens routines and scores taps according to the timing and bonus amounts in force at that moment for that weekday.
+5. Shipping this changes no existing kid's total: history from before launch scores exactly as it did.
+
+* Out of Scope
+
+- Scheduling a change to take effect on a future date.
+- A day with no morning or no evening routine.
+- Backdated corrections, or any re-scoring of past days.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
