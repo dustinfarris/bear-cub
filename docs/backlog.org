@@ -31,7 +31,7 @@ On ~:edit~, ~BearCubWeb.Admin.ChoreLive.Form~ renders the counted chore's Points
 
 Found [2026-09-26 Sat 23:21] by the design audit at the effort-multiplier Batch 1 gate. The human ruled it a backlog item, not a batch story.
 
-* TODO Kiosk: a confirmed counted extra jumps to the top of the extras group while the list stays scrolled down
+* TODO [#B] Kiosk: a confirmed counted extra jumps to the top of the extras group while the list stays scrolled down :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-26 Sat 23:21]
 :END:
@@ -117,21 +117,21 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 ~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
-* Wall-clock-derived date argument in ~today_live_test.exs~ (rewards/redemption Story 01)
+* TODO [#C] Wall-clock-derived date argument in ~today_live_test.exs~ (rewards/redemption Story 01) :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]
 :END:
 A pre-existing test in ~test/bear_cub_web/live/admin/today_live_test.exs~ (/"a fail live-updates the kiosk: the chore reverts and the points badge drops"/) passes ~DateTime.to_date(LocalTime.now())~ as its local date rather than a fixed value — Story 01 only swapped the module name reference on that line, without changing the wall-clock read. Not a ~docs/learnings.org~ [2026-07-17] violation — the test does pin ~:routine_windows~, which is what that learning requires — but the date argument itself still tracks whichever local date the run happens to land on. A test-hygiene seed: apply the [2026-07-17] discipline to the date argument the learning didn't originally reach.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
-* No automated guard on the ~Chores~ ⇏ ~Rewards~ dependency direction (rewards/redemption Story 01)
+* TODO [#C] No automated guard on the ~Chores~ ⇏ ~Rewards~ dependency direction (rewards/redemption Story 01) :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]
 :END:
 CLAUDE.md treats ~Chores~ ⇏ ~Rewards~ as a design invariant alongside the older ~Chores~ ⇏ ~Calendars~ one, and D57 rests on it: the moment ~Chores~ imports ~Rewards~, a rewards failure can reach the chore path. Today it holds by convention and by ~grep~ at review time only — nothing fails automatically if a future session wires the two together. A durable guard (a boundary test, or a compile-time check over the module's references) needs its own ruling on instrument and placement, and it applies equally to the older ~Calendars~ invariant, not just this one.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
-* ~mix ecto.reset~ seeds the test database when run under ~MIX_ENV=test~ :oneshot:
+* TODO [#C] ~mix ecto.reset~ seeds the test database when run under ~MIX_ENV=test~ :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]
 :END:
@@ -189,52 +189,6 @@ Retriage [2026-09-06 Sun]: rewards/redemption shipped without claiming this — 
 :CREATED:  [2026-07-12 Sun 23:06]
 :END:
 Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
-* Test-teardown Exqlite disconnect log noise — act only if log-clean output becomes a goal
-Merged [2026-07-14 Tue] from extras stories 01 and 06 (both 2026-07-12) —
-same class of non-fatal sandbox-connection race, two known triggers:
-- The scratch ~BearCub.MigrationTestRepo~ pool
-  (~test/support/migration_test_repo.ex~), started per-test via
-  ~start_supervised!~ with the default (non-Sandbox) pool, shutting down at
-  test-process exit.
-- The admin→kiosk cross-process PubSub test in ~today_live_test.exs~ (two
-  independent ~live/2~ processes), where the second LiveView process
-  outlives the first.
-Occasionally logs a =Exqlite.Connection ... disconnected:
-(DBConnection.ConnectionError)= line during teardown; no test failures,
-never affects ~mix precommit~'s exit code.
-
-Also observed from the gamification-points initiative (Story 10, PLAN.org
-Deferred, 2026-07-17) — same class, no new trigger; folded in here rather
-than duplicated (a rough capture of this had briefly existed as its own
-backlog entry — merged in during the 2026-07-18 post-retro sweep).
-
-Retro ruling ([2026-07-18]): removing ~BearCub.MigrationTestRepo~ (see the
-dedicated backlog item above) retires the first of the two triggers above,
-leaving only the ~today_live_test.exs~ cross-process PubSub trigger.
-
-Update [2026-07-24 Fri]: ~BearCub.MigrationTestRepo~ removed — first
-trigger retired. The remaining ~today_live_test.exs~ trigger still fires
-(two disconnect lines observed in the same ~mix precommit~ run); no test
-failures, entry stands as act-only-if-log-clean-becomes-a-goal.
-
-* From the extras initiative (docs/2026-07-11-extras/), story 03, 2026-07-12
-~ChoreLive.Index~'s three list sections (Morning/Evening/Extras)
-(~lib/bear_cub_web/live/admin/chore_live/index.ex~) render plain ~:for~ lists
-rather than LiveView streams, per CLAUDE.md's "always use streams"
-guideline. Pre-existing pattern — Morning/Evening already did this before
-Story 03; Extras just mirrors it. Consistent with the rest of the
-admin/kiosk codebase at family-scale list sizes (single-digit item counts).
-Act only if that scale assumption changes.
-
-Also observed from the rewards/redemption initiative (Story 05,
-2026-07-25) — ~KioskLive~'s reward list, and the sibling chore/extras/events
-lists it's modeled after (~lib/bear_cub_web/live/kiosk_live.ex~), render the
-same way. Same class, a different LiveView; not introduced by Story 05,
-which only carried the existing pattern forward. Folded in here rather
-than duplicated, per the same discipline the Exqlite teardown-noise entry
-above already follows.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 05 discovery).
 * TODO [#C] Recurring-extra "off" exit — retiring naturally after completion history — has no test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 10:00]
