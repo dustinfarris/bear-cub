@@ -19,10 +19,31 @@
 
 Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
 
+- Note taken on [2026-10-04 Sun] \\
+  Corrected table from workflow-kit 0.8.4, which matches sessions on the full story stem instead of the story number. The table above stands as written at the gate; this one is the batch's record.
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 7 | 8 | 3 | 6 | 2(0.0m) | 88.5k | 164 | 274 | also read story-02, story-03, story-04, story-05, story-06 |
+| story-02 | 3 | 6 | 9 | 7 | 2(0.0m) | 53.4k | 12 | 87 |  |
+| story-03 | 10 | 9 | 3 | 5 | 2(0.0m) | 103.2k | 52 | 144 | also read story-01, story-04, story-05, story-06 |
+| story-04 | 13 | 12 | 142 | 20 | 2(0.0m) | 572.4k | 656 | 749 | also read story-04, story-05, story-07, story-08 |
+| story-05 | 10 | 11 | 6 | 12 | 2(0.0m) | 153.7k | 75 | 135 | also read story-04, story-06 |
+| story-06 | 10 | 9 | 3 | 11 | 2(0.0m) | 114.5k | 32 | 99 | also read story-04, story-05, story-06 |
+| story-07 | 3 | 4 | 7 | 11 | 1(0.0m) | 65.5k | 8 | 52 |  |
+| story-08 | 17 | 3 | 4 | 11 | 2(0.0m) | 87.0k | 154 | 155 |  |
+| story-09 | 1 | 14 | 39 | 12 | 1(0.0m) | 166.3k | 11 | 40 |  |
+| total | 75 | 75 | 215 | 95 | 16(0.0m) | 1404.4k | 1164 | 1735 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
 ** Observations
 
-- Rows story-01 through story-05 are inflated. The script matched sessions by story filename, so each row also counts the same-numbered stories of the ~chore-lifecycle~ (2026-09-05) and ~good-standing~ (2026-09-06) initiatives. Only the 2026-09-20/21 sessions in those rows belong to this batch. The story-01 and story-02 verifier counts (8 each) and the re-verify loops in their timelines come from the earlier initiatives.
-- The story-04 row also absorbs the Claude Design adoption work that followed it: the research, ~/design-sync~ setup and login, two design rounds and the D115–D117 update-design runs, from 2026-09-21 to 09-27. That is most of its 179 update-design minutes and 752.6k output tokens.
+- The gate's table matched sessions by story number, so rows story-01 through story-05 also counted the same-numbered stories of the ~chore-lifecycle~ (2026-09-05) and ~good-standing~ (2026-09-06) initiatives; the story-01 and story-02 verifier counts of 8 and the re-verify loops in their timelines were theirs. The corrected table removes them: 16 verifier dispatches, not 40, and 1.4M output tokens, not 2.4M.
+- Verifier minutes read ~0.0m~ in both tables. The verifiers are foreground dispatches that return as a tool result, and the script only timed background agents by their notification — the one ~done~ line in the whole timeline is the Claude Design research agent. Fixed in the kit after the corrected run; the dispatch timestamps put the AC pass at 3–5 minutes and the DoD pass at 2–5 on the stories that ran both.
+- The story-04 row also absorbs the Claude Design adoption work that followed it: the research, ~/design-sync~ setup and login, two design rounds and the D115–D117 update-design runs, from 2026-09-21 to 09-27. That is most of its 142 corrected update-design minutes and 572.4k output tokens; the batch's other eight stories together spent 73 update-design minutes.
+- The story-09 row also absorbs the gate: the session ran on from Story 09's commit into ~/workflow-kit:phase-close~ (23:11–00:15), including the design-audit subagent, the retroactive update-design that minted D119, and the deploy. Most of its 39 update-design minutes and 166.3k output tokens are gate work.
+- Across the seven stories not carrying the design detour or the gate (01–03, 05–08): 61 active minutes of implementation, 49 of close-out, 34 of update-design. The two passes after the code cost about 1.4× the code.
 - Human questions raised in this batch's own sessions: story-04's close-out asked about AC-10 (a scenario cannot stage the panel open), which became D114. The design rounds that became D116 and D117 asked about entry into the chain and the three rulings.
 - Three stories were inserted mid-batch. Story 07 and Story 08 each followed a Claude Design round. Story 09 followed a gate attempt that found Story 08's scroll hook never loaded and its panel ground flooding during the confirm beat, while ~mix precommit~ was green.
 - Story 08 and Story 09 each had the human ask for a dev server on a spare port to look at the extras outside the evening routine. In Story 09 the human's requested manual check at 1280 × 800 found the panel still 20 px short, and a fix followed within the same session.
@@ -31,3 +52,41 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - At the gate itself, 16 tests failed only because the run fell inside the 23:00–05:00 Good Night gap. Every story's green run had happened earlier in the day.
 
 ** Retro
+
+Rulings recorded 2026-10-04. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** Looks were deferred to the gate, and every look produced a story
+
+Stories 04, 05 and 08 each wrote some version of "this AC leans on the local gate rather than a test", so the first time anyone looked at the count panel at 1280 × 800 was the gate, and the three mid-batch insertions all came from someone looking: Story 07 and 08 from design rounds and tablet use, Story 09 from the gate's own walk, which found a hook that never loaded and a panel flooding during the confirm beat while ~mix precommit~ was green.
+
+Ruling: a story that touches kiosk visuals carries a DoD item — viewed at 1280 × 800 through a ~Scenarios~ stage before closeout. The gate remains the final check, not the first look. Lands in the user-stories skill's DoD template (kit), gated on the repo's local-review convention rather than on weight class.
+
+*** Green tests, wrong code
+
+Story 09 exists because Story 08's tests checked the hook attribute's presence rather than its value, and checked the panel ground before the confirm beat rather than during it. Both asserted structure where the AC described behavior.
+
+Ruling: lesson. An AC that says "the panel scrolls into view" is proved by the hook resolving, not by ~phx-hook~ being present; an AC about a transient state is proved inside that state. Lands in ~docs/learnings.org~ as a test-shape entry.
+
+*** The Good Night gap, third time
+
+16 tests failed at the 23:13 gate run because none pinned ~:routine_windows~. The 2026-07-17 learning already says tests must pin the local datetime, and it already revises a 2026-07-10 entry. A learning recorded twice and recurring is asking for a mechanism.
+
+Ruling: build it. The LiveView test case setup pins routine windows by default, and a test that needs the real windows opts out explicitly. Lands in ~docs/backlog.org~ as a test-infrastructure item; the learnings entry is revised to point at the mechanism once it exists.
+
+*** Verifier drift on small stories
+
+Story 07's LOGBOOK records its DoD ticked on fresh runs without the second subagent pass, and Stories 07 and 09 dispatched one verifier each, for ACs only. Small stories are where ceremony quietly thins.
+
+Ruling: drift, not an allowance. story-closeout ticks DoD only after its own verifier run, regardless of story size. Lands in the kit as a story-closeout change with a CHANGELOG entry.
+
+*** The Claude Design detour
+
+The adoption work — research, ~/design-sync~ setup, two design rounds, D115–D117 — ran inside the open batch and is most of story-04's 179 update-design minutes and 752.6k output tokens. It also produced the panel that shipped, and two of the three insertions.
+
+Ruling: worth it, not mid-batch. Design rounds happen between batches or before user-stories, where the resulting stories can be planned instead of inserted. Lands in the kit as a note on where design iteration sits in the pipeline; no new ceremony.
+
+*** Metrics the table cannot support
+
+Rows 01–05 fold in same-numbered stories from the chore-lifecycle and good-standing initiatives because ~story-metrics.py~ matches sessions on ~story-NN~ alone, and verifier minutes read ~0.0m~ on every clean row (06–09), so either short dispatches are not timed or the measurement is broken. The total row describes three initiatives and a tooling detour, not this batch.
+
+Ruling: fix the script to match on the full story stem, which is unique per initiative, and make verifier minutes fall back to wall time when a completion carries no duration; then re-run from the repo root and record the corrected table as a note beneath the gate's, per the retro.org mutability rule. Landed in the kit as 0.8.4; the corrected table is in Metrics above, and the verifier-timing fix came after that run, so its minutes are known only from the timeline.

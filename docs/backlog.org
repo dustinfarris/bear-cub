@@ -5,6 +5,17 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO [#B] LiveView test case should pin ~:routine_windows~ by default, with an explicit opt-out for tests that need the real windows :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:30]
+:END:
+
+Pin ~:routine_windows~ in the LiveView test case's shared setup so every LiveView test runs under a known window by default, and make a test that needs the real windows opt out explicitly, so that leaving the pin off is a deliberate act rather than the thing you get by forgetting. Tests today pin it per describe block through the ~morning_active~ / ~evening_active~ / ~put_windows~ idiom, so any test that does not remember inherits whichever routine, or the 23:00–05:00 Good Night gap, the wall clock lands in. That is the recurring failure behind the [2026-07-17] entry in ~docs/learnings.org~, which itself revised an earlier 2026-07-10 entry: the Batch 1 gate record in docs/2026-09-20-effort-multiplier/PLAN.org (its LOGBOOK, check (1)) shows the third occurrence, 16 of 730 tests failing at the 23:13 run, none of which pinned the windows, every story's green run having happened earlier in the day. The ruling is to build the mechanism rather than record the lesson a third time. The pin still reads the real clock (~LocalTime.now()~ is never mocked); it only fixes which window that clock falls into, per the [2026-07-17] entry.
+
+The 2026-07-17 learnings entry is to be revised to point at the mechanism once it exists, not before; revising it now would describe a default that is not there.
+
+Ruled [2026-10-04 Sun] at the effort-multiplier Batch 1 retro ("The Good Night gap, third time").
+
 * TODO [#B] Admin chore form: moving a counted extra into a routine fails the save with no visible error :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-26 Sat 23:21]

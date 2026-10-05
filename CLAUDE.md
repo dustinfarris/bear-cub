@@ -17,6 +17,8 @@ personal-mvp. Personal family software with a real correctness bar: the mvp DoD 
 
 Verify command: `mix precommit`
 
+Local review: 1280 × 800 CSS px via `BearCub.Dev.Scenarios`
+
 ## Authoritative docs
 
 The live chain is the active initiative (see the `Active initiative:` line above) — resolve the current PRD/DESIGN from there, not from a hardcoded path.
