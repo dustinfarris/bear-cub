@@ -56,21 +56,69 @@ As a kid, I need the kiosk to show a Night Owl badge when I finish my evening ro
 
 * Acceptance Criteria
 
-** [ ] On an evening where a kid earned the Night Owl, the moon's completion badge shows the routine bonus plus the Night Owl bonus as one number. A white =NIGHT OWL= pill in the kid's own color sits under the moon, centered over it. (SC-3)
-** [ ] When that evening is failed, the badge and the pill both go. (SC-2, SC-3)
-** [ ] A kid who finished the evening without earning the Night Owl (at or after their cutoff, with no cutoff, or under a bonus of 0) gets no pill, and the moon's badge shows the routine bonus only. (SC-2, SC-3)
-** [ ] While the evening is unfinished, the stake chip shows the routine bonus only. Nothing on the kiosk hints at the Night Owl bonus or a cutoff before the finish. (SC-3)
-** [ ] A schedule change reaching an open kiosk applies the new cutoff or bonus from the next tap, with no reload by hand. (SC-5)
-** [ ] ~docs/design-language.org~ carries a Night Owl ruling built on the Early Bird pill's. It is the evening counterpart under the moon and the second word on the kids' banner, accepted knowingly. Badge and pill are one signal, and a fail removes both. (SC-3)
-** [ ] A dev scenario stages a schedule in which live evening taps on the kiosk earn the Night Owl. The existing restore brings back the real schedule, and the scenario is listed in CLAUDE.md. (SC-3)
+** [X] On an evening where a kid earned the Night Owl, the moon's completion badge shows the routine bonus plus the Night Owl bonus as one number. A white =NIGHT OWL= pill in the kid's own color sits under the moon, centered over it. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  Verified by the story-verifier pass. ~KioskLiveTest~ "a timely evening shows one combined +R+N badge on the moon and a NIGHT OWL pill" and ~KioskComponentsTest~ "a Night Owl evening folds N into the badge and adds the NIGHT OWL pill" pass in ~mix precommit~ (837 passed). ~KioskComponents.banner/1~ renders ~+{r + e + n}~ and the ~routine_pill~ centered with ~left-1/2 -translate-x-1/2~ in the kid's color. The 1280 × 800 screenshot shows Kid A at =+8= with the pill under the moon.
+:END:
+** [X] When that evening is failed, the badge and the pill both go. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~KioskLiveTest~ "a fail removes badge and pill together" passes. ~night_owl?~ is false on a failed day (~routine_day_pricing~ returns ~night_owl?: false~) and the badge carries ~:if={not @failed?}~.
+:END:
+** [X] A kid who finished the evening without earning the Night Owl (at or after their cutoff, with no cutoff, or under a bonus of 0) gets no pill, and the moon's badge shows the routine bonus only. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  Three ~KioskLiveTest~ cases pass: "no pill, and R only, at a bonus of 0", "... for a kid without a cutoff", and "... when the finish lands at or after the cutoff" (a midnight cutoff inserted as a struct).
+:END:
+** [X] While the evening is unfinished, the stake chip shows the routine bonus only. Nothing on the kiosk hints at the Night Owl bonus or a cutoff before the finish. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~KioskLiveTest~ "the stake chip shows R only while the evening is unfinished, with no hint of N" passes, and the page text has no =NIGHT OWL=. ~r~ stays ~version.routine_bonus~ until complete. The screenshot shows Kid B's chip at =+5= with no pill.
+:END:
+** [X] A schedule change reaching an open kiosk applies the new cutoff or bonus from the next tap, with no reload by hand. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~KioskLiveTest~ "a schedule change reaches an open kiosk and applies from the next tap, with no reload" passes: a version saved and broadcast to an open view prices the next tap's finish with the new cutoff. The assertion reads a fresh mount, since a finish delays the reveal.
+:END:
+** [X] ~docs/design-language.org~ carries a Night Owl ruling built on the Early Bird pill's. It is the evening counterpart under the moon and the second word on the kids' banner, accepted knowingly. Badge and pill are one signal, and a fail removes both. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~docs/design-language.org~ gains a "Night Owl [2026-10-05]" ruling after the Early bird entry: evening counterpart under the moon, second word on the kids' banner accepted knowingly, badge and pill one signal, a fail removes both. It cites D136 and D104.
+:END:
+** [X] A dev scenario stages a schedule in which live evening taps on the kiosk earn the Night Owl. The existing restore brings back the real schedule, and the scenario is listed in CLAUDE.md. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~Scenarios.night_owl/1~ in ~dev/bear_cub/dev/scenarios.ex~ passes three ~ScenariosTest~ cases: sets N and cutoffs after now, defaults N to 3, and survives ~open(:evening)~ written after it with ~restore/0~ undoing it. ~write_copy~ now carries ~night_owl_bonus~. Listed in CLAUDE.md's scenario list.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  Verifier pass found all seven acceptance criteria met; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  New tests: seven kiosk LiveView, one banner component, three scenario. All pass in the 837-test ~mix precommit~ run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  Verifier found no CLAUDE.md breaches: ~mix format --check-formatted~ and warnings-as-errors compile pass inside ~mix precommit~, the pill is a generalised private component rather than a copy, and comments wrap at 80.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~mix precommit~ run by the verifier: =Result: 837 passed=, no failures or warnings.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:33] \\
+  ~docs/2026-10-05-night-owl-bonus/story-03-night-owl-1280x800.png~, 1280 × 800 CSS px via Playwright, staged with ~open(:evening)~ and ~night_owl(3)~ through Tidewave ~project_eval~. Kid A earned (=+8= and pill), Kid B unfinished (=+5= chip). A late finisher could not be staged because the scenario's cutoffs are always ahead of now; that case is covered by LiveView tests. The Schedule-page screenshot belongs to another story. ~restore/0~ and ~reset/1~ were run afterwards.
+:END:
 
 * Technical Notes
 
