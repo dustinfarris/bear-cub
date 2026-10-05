@@ -4,6 +4,7 @@
 # Real kid names are entered through admin and never belong here — this
 # is a public repo.
 
+alias BearCub.Chores
 alias BearCub.Chores.{Chore, Kid}
 alias BearCub.LocalTime
 alias BearCub.Repo
@@ -31,17 +32,15 @@ demo_chores = %{
   ]
 }
 
-today = DateTime.to_date(LocalTime.now())
+local_now = LocalTime.now()
 
 if Repo.aggregate(Chore, :count) == 0 do
   for kid <- Repo.all(Kid),
       {routine, chores} <- demo_chores,
-      {{name, icon}, position} <- Enum.with_index(chores) do
-    # position and active_from are programmatic (never cast) — seeds set
-    # them on the struct, exactly as the context does on create. This
-    # script is an edge, so reading the clock here is fine (D86)
-    %Chore{kid_id: kid.id, position: position, active_from: today}
-    |> Chore.changeset(%{name: name, icon: icon, routine: routine})
-    |> Repo.insert!()
+      {name, icon} <- chores do
+    # create_chore/3 derives position and active_from (D86); this script
+    # is an edge, so reading the clock here is fine
+    {:ok, _chore} =
+      Chores.create_chore(kid, %{name: name, icon: icon, routine: routine}, local_now)
   end
 end
