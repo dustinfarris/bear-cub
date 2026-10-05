@@ -1,0 +1,123 @@
+#+title: Story 02 — Pricing the Night Owl on both derivation routes
+#+date: 2026-10-05
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Key Behaviors / The Night Owl term, ~N = 0~ means off, and One place, both routes; §Data Model / A kid without a cutoff; the D39/D40, D72/D89/D122, D100, D121 and D123/D130 bullets of §Overview's canon list; and the pricing and ~routine_day_pricing~ bullets of §Key Behaviors / Testing.
+
+From §Overview, canon this builds on (verbatim):
+
+#+begin_quote
+- *D39 / D40 — the routine-day contribution.* ~+R~ when a non-empty roster is fully live, ~−R~ once when any completion that day failed.
+- *[[file:../decisions.org::#d72][D72]] / [[file:../decisions.org::#d89][D89]] / [[file:../decisions.org::#d122][D122]] — two derivation routes, one pricing function.* ~earnings/2~ (per kid) and ~earnings_by_kid/1~ (grouped) must agree pointwise; SQL gathers per-routine-day facts and the private ~contribution/4~ in ~BearCub.Chores~ is the single place they become points, via ~resolve/4~.
+- *[[file:../decisions.org::#d100][D100]] — the early bird.* ~+E~ on a morning that is earned, unfailed, and whose /last live/ completion (~last_completed_at~) landed strictly before the cutoff in local wall-clock time; the UTC→local shift happens in Elixir (~DateTime.shift_zone!/2~) because SQLite has no timezone tables. An undo-and-redo after the cutoff loses it.
+- *[[file:../decisions.org::#d121][D121]] — each term is priced at its own instant.* ~+R~ and ~+E~ at ~last_completed_at~, ~−R~ at ~first_failed_at~, each against the version in force then (~Routines.in_force/2~), with the weekday taken from the routine-day's ~local_date~. The early bird's verdict and amount come from the same version.
+- *[[file:../decisions.org::#d123][D123]] / [[file:../decisions.org::#d130][D130]] — kiosk figures.* Incurred figures (the completion badge, the penalty) are priced via ~Chores.routine_day_pricing/4~; the stake chip is live while the routine is unfinished and shows the priced ~r~ once paid.
+#+end_quote
+
+From §Data Model (verbatim):
+
+#+begin_quote
+  ** A kid without a cutoff
+
+A kid absent from a day's ~night_owl_cutoffs~ in the version in force has no Night Owl that day — the verdict is false ([[file:../decisions.org::#d135][D135]]). This covers a kid added after the last save and every version written before this feature. Kids are never deleted through the app, so a dangling ~kid_id~ in a version is not a live case; one would simply never be looked up.
+#+end_quote
+
+From §Key Behaviors (verbatim):
+
+#+begin_quote
+  ** The Night Owl term (SC-2, SC-4)
+
+~+N~ is priced exactly as ~+E~ is ([[file:../decisions.org::#d121][D121]], [[file:../decisions.org::#d133][D133]]): at the evening routine-day's ~last_completed_at~, against the version in force at that instant. Verdict and amount come from that one version — the kid's cutoff from ~Routines.day(earn, local_date).night_owl_cutoffs~ and ~earn.night_owl_bonus~.
+
+The verdict ~night_owl?~ is true when all hold:
+
+1. the routine is ~"evening"~;
+2. the routine-day is earned (complete, non-empty roster — D92);
+3. it is not failed (~failed?~ false for the day — so a fail forfeits it, and a fail-then-redo still forfeits it);
+4. the earn version's ~night_owl_bonus > 0~ ([[file:../decisions.org::#d134][D134]]);
+5. the kid has a cutoff entry for ~local_date~'s weekday in that version ([[file:../decisions.org::#d135][D135]]);
+6. ~last_completed_at~, shifted to local wall-clock time, is strictly before the cutoff — a finish /at/ the cutoff earns nothing (SC-2).
+
+Consequences:
+
+- An undo-and-redo after the cutoff loses the Night Owl: only live rows count toward ~last_completed_at~.
+- A cutoff edit mid-evening applies to any evening whose last live tap lands after the edit; an evening already finished keeps its verdict and amount (SC-4).
+- ~N~ raised after an earn leaves that earn's ~+N~ untouched; an undo-and-redo after the raise re-earns at the new ~N~ and is re-judged against the new cutoff — the same as ~R~ and ~E~ today.
+- The evening window never spans midnight (existing ~DayEntry~ rule), so an evening's ~local_date~ and its cutoff's weekday are always the same day.
+- DST: cutoffs are wall-clock; the shift into ~BearCub.LocalTime.timezone()~ is the one the Early Bird already uses.
+- Archiving a chore can move ~last_completed_at~ to an earlier tap ([[file:../decisions.org::#d81][D81]]), re-judging the Night Owl against that tap. Accepted as for ~+E~: the trigger is an archive, not a schedule edit.
+
+  ** ~N = 0~ means off
+
+The Night Owl verdict itself requires ~N > 0~ (condition 4 above). With ~N = 0~ there is no pill, no badge addition and no ledger term — "0 turns it off" is true in the domain, not just in the template, so the ledger, the badge and the pill cannot disagree ([[file:../decisions.org::#d134][D134]]).
+
+This deliberately differs from the Early Bird, whose verdict ignores ~E~ (the =EARLY= pill still shows at ~E = 0~). The PRD keeps the morning as it is, so the Early Bird is not changed here; the inconsistency is a backlog entry.
+
+  ** One place, both routes
+
+- The facts map gains ~kid_id~, and it is built in *two* places, both of which must set it: the per-kid route's private ~facts/1~ (whose input, the ~routine_day_status/3~ map, carries no kid — ~kid_id~ comes from the ~%Kid{}~ argument of each caller), and the grouped route's inline facts map in ~routine_days_by_kid/2~ (from ~row.kid_id~, already selected). Setting it in only one leaves the other route finding no cutoff for any kid — the drift the D72 agreement test exists to catch.
+- ~resolve/4~ returns the Night Owl verdict beside the early bird's; ~contribution/4~ stays the single place facts become points and adds ~earn.night_owl_bonus~ when ~night_owl?~.
+- The private ~early_bird?/5~ comparison generalises to one ~before_cutoff?(last_at, cutoff)~ predicate (shift to local, compare strictly). The morning feeds it the family cutoff, the evening the kid's — the two bonuses cannot drift on the comparison rule or its DST handling ([[file:../decisions.org::#d133][D133]]).
+- ~routine_day_pricing/3,4~ returns ~%{r, e, early?, n, night_owl?, penalty}~; ~n~ is ~0~ unless ~night_owl?~.
+- ~Chores.early_bird?/2,3~ keeps its behaviour; its body and ~routine_day_pricing/4~ both destructure ~resolve/4~'s result, which gains the Night Owl verdict, so both follow the new shape. No public ~night_owl?~ wrapper is added unless a caller needs one; the kiosk reads ~routine_day_pricing~.
+
+#+begin_src elixir
+# Illustrative shape, not a signature contract: one function, both
+# routes, each term at its own instant (D121), both timeliness bonuses
+# through one comparison (D133).
+defp contribution(versions, routine, local_date, facts) do
+  {earn, fail, early?, night_owl?} = resolve(versions, routine, local_date, facts)
+
+  if(facts.earned?, do: earn.routine_bonus, else: 0) +
+    if(facts.failed?, do: -fail.routine_bonus, else: 0) +
+    if(early?, do: earn.early_bird_bonus, else: 0) +
+    if(night_owl?, do: earn.night_owl_bonus, else: 0)
+end
+#+end_src
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+Unit and LiveView layers both, per the MVP design's §11 test map. Fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]] (real clock, version pins, no clock mocking).
+
+- *Pricing — the [[file:../decisions.org::#d72][D72]] pointwise-agreement test*, extended over a fixture with: two kids with different cutoffs on the same evening, one before and one after; one kid's cutoff changed between two evenings; ~N~ raised after an earn, that earn's total unchanged (SC-4); a kid with no cutoff entry; ~N = 0~ with a timely finish (no term); a fail, and a fail-then-redo (no term); a finish exactly at the cutoff (no term). *This remains the most important test in the set*: it is the only thing that catches the two routes judging the Night Owl differently.
+- *~routine_day_pricing~:* ~n~ / ~night_owl?~ for each case above.
+#+end_quote
+
+* User Story
+
+As a kid, I need finishing my evening routine before my own cutoff, without failing it, to earn the Night Owl bonus on top of the routine bonus, so that starting the evening routine without being prompted pays off. As a parent, I need each Night Owl judged by the rules in force when it was earned, so that changing a cutoff or the bonus never moves points already earned.
+
+* Acceptance Criteria
+
+** [ ] A kid whose evening routine is complete and not failed, with its last live tap strictly before their cutoff for that weekday, earns the routine bonus plus the Night Owl bonus. (SC-2)
+** [ ] A finish exactly at the cutoff, or after it, earns no Night Owl. (SC-2)
+** [ ] A failed evening earns no Night Owl, and still earns none if it is redone afterwards. (SC-2)
+** [ ] An undo and redo that moves the evening's last live tap past the cutoff loses the Night Owl. (SC-2)
+** [ ] Two kids finishing the same evening are each judged against their own cutoff: one before theirs earns it, one after theirs does not. (SC-1, SC-2)
+** [ ] A kid with no cutoff for that weekday in the schedule in force earns no Night Owl. (SC-1, SC-2)
+** [ ] Under a schedule whose Night Owl bonus is 0, a timely finish earns no Night Owl. (SC-2)
+** [ ] The Night Owl is judged against the kid's cutoff, and paid at the bonus, of the schedule in force at the evening's last live tap. Raising the bonus or moving a cutoff afterwards leaves that evening's points unchanged. When a kid's cutoff changes between two evenings, each evening is judged by its own. (SC-4)
+** [ ] A kid's total is the same figure computed one kid at a time or for the whole roster at once. The history behind that check combines every case above: two kids with different cutoffs on one evening, a cutoff changed between evenings, the bonus raised after an earn, a kid with no cutoff, a bonus of 0, a fail, a fail then redo, and a finish exactly at the cutoff. (SC-2, SC-4)
+** [ ] The pricing the kiosk reads for an evening reports the Night Owl amount and whether it was earned. In every case above that earns no Night Owl, it reports 0 and not earned. (SC-3)
+** [ ] Every morning's figures, early bird included, are unchanged by this story. (SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 01 because the verdict reads ~night_owl_bonus~ and each day's ~night_owl_cutoffs~ from the version in force.
+- All of this lives in ~lib/bear_cub/chores.ex~. The per-kid ~facts/1~ builds facts from the ~routine_day_status/3~ map, which carries no kid. So ~kid_id~ comes from the ~%Kid{}~ argument of each of its callers. The grouped route's inline facts map in ~routine_days_by_kid/2~ takes it from ~row.kid_id~. Set it in both places; the agreement test exists to catch a route that has none.
+- The private ~early_bird?/5~ becomes the shared ~before_cutoff?/2~, which shifts to local time and compares strictly. Keep the Early Bird's own conditions (morning, earned, unfailed) in ~resolve/4~ or a thin wrapper. The last AC guards the morning: the existing early-bird tests must pass unchanged.
+- Extend the existing D72 pointwise-agreement test in ~test/bear_cub/chores_test.exs~ (~assert_both~), rather than writing a parallel one. DESIGN calls it the most important test in the set. Hand-derive each kid's figure, and make sure it differs from pricing at the current version. The routine-schedule story kept a fixture only when it discriminated in this way.
+- Fixed instants throughout the domain tests. A finish "exactly at the cutoff" is a ~last_completed_at~ that shifts to exactly the cutoff's local wall-clock time.
+- The test helpers need a way to write a Night Owl version: per-kid cutoffs on a given weekday, plus ~N~. Add one beside ~put_bonuses/3~ in ~test/support/schedule_helpers.ex~, effective ~at~ a chosen instant. Story 01 made the existing helpers carry ~N~ and the cutoffs forward.
+- ~routine_day_pricing/3,4~ gains ~n~ and ~night_owl?~. Destructuring ~resolve/4~'s result in ~early_bird?/2,3~ and ~routine_day_pricing/4~ is all that changes those callers. No public ~night_owl?~ wrapper (DESIGN: One place, both routes).

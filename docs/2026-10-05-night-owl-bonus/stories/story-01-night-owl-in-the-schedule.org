@@ -1,0 +1,89 @@
+#+title: Story 01 — Night Owl cutoffs and bonus in the schedule version
+#+date: 2026-10-05
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model (whole), the D8/D120 and D10 bullets of §Overview's canon list, and the ~DayEntry~ / ~ScheduleVersion~ bullet of §Key Behaviors / Testing.
+
+From §Overview, canon this builds on (verbatim):
+
+#+begin_quote
+- *D8 / [[file:../decisions.org::#d120][D120]] — routines are app constants; their timings and bonuses are append-only data.* ~schedule_versions~ rows are only ever inserted; each save writes a whole version (both bonuses, seven ~DayEntry~ embeds) effective at the save instant. This design adds a third bonus and a per-kid embed to that same row.
+- *D10 — day state is derived, never stored.* Kept. No Night Owl flag or figure is stored.
+#+end_quote
+
+From §Data Model (verbatim):
+
+#+begin_quote
+  ** Cutoffs embedded per day, per kid
+
+~DayEntry~ gains ~embeds_many :night_owl_cutoffs~, each entry ~{kid_id :integer, cutoff :time}~. ~ScheduleVersion~ gains ~night_owl_bonus~ (~N~) ([[file:../decisions.org::#d132][D132]]).
+
+| where               | field               | type                    | notes                                      |
+|---------------------+---------------------+-------------------------+--------------------------------------------|
+| ~schedule_versions~ | ~night_owl_bonus~   | integer, ≥ 0, default 0 | ~N~; ~0~ turns the Night Owl off           |
+| ~DayEntry~ (JSON)   | ~night_owl_cutoffs~ | ~embeds_many~           | ~[%{kid_id, cutoff}]~, at most one per kid |
+
+Per day entry because a late practice is a property of a day (SC-1's example), the cutoff is validated against that day's evening window which lives in the same embed, the admin layout is one card per day entry, and the existing ~copy_day~ in ~ScheduleLive~ copies a whole day, so "Copy to" carries cutoffs with no new branch.
+
+  ** Validation
+
+On each ~DayEntry~:
+
+- every ~cutoff~ falls strictly inside that day's evening window (~evening_start < cutoff < evening_end~); the error lands on that kid's field: "must fall inside the evening window";
+- each ~kid_id~ appears at most once per day.
+
+On ~ScheduleVersion~: ~night_owl_bonus~ is required, an integer ≥ 0.
+
+No rule requires every kid to have an entry: the domain tolerates a missing kid (below). The /form/ renders one field per current kid, and a cutoff submitted blank is no entry: the changeset drops it rather than rejecting it (Screens / Interfaces).
+
+  ** A kid without a cutoff
+
+A kid absent from a day's ~night_owl_cutoffs~ in the version in force has no Night Owl that day — the verdict is false ([[file:../decisions.org::#d135][D135]]). This covers a kid added after the last save and every version written before this feature. Kids are never deleted through the app, so a dangling ~kid_id~ in a version is not a live case; one would simply never be looked up.
+
+  ** Migration: history is untouched (SC-4)
+
+One migration adds ~night_owl_bonus integer NOT NULL DEFAULT 0~ to ~schedule_versions~ and nothing else. The schema field also declares ~default: 0~: the LiveView test pin and the dev scenarios insert ~%ScheduleVersion{}~ structs with ~Repo.insert!~ past the changeset, and a nil field would be sent as an explicit NULL against the NOT NULL column. The ~days~ JSON is not rewritten: a missing ~night_owl_cutoffs~ key loads through the embed as ~[]~. Every existing version therefore prices with ~N = 0~ and no cutoffs — no historical figure moves. The feature is dormant until a parent sets ~N~ and saves. A test loads a version stored in the pre-migration shape (no key in ~days~) and asserts it round-trips with empty cutoff lists and ~N = 0~.
+
+  ** No-op saves
+
+The no-op comparison in ~Schedules.change/2~ also compares ~night_owl_bonus~ and, per day, the cutoff lists sorted by ~kid_id~, so an untouched form still writes no version and broadcasts nothing ([[file:../decisions.org::#d125][D125]]).
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *~DayEntry~ / ~ScheduleVersion~:* cutoff strictly inside the evening window, at each edge (rejected), outside; duplicate ~kid_id~ in one day; ~N~ required and ≥ 0; a version stored in the pre-migration shape round-trips with ~[]~ cutoffs and ~N = 0~; a no-op save compares cutoffs and ~N~.
+#+end_quote
+
+* User Story
+
+As a parent, I need each weekday of the schedule to hold a Night Owl cutoff for each kid, and the schedule to hold one Night Owl bonus for the family, so that a late-practice night can carry a later cutoff for one kid, and so that every evening is later judged by the cutoffs and bonus in force when it was finished.
+
+* Acceptance Criteria
+
+** [ ] A schedule holds, on each weekday, at most one Night Owl cutoff per kid, and one Night Owl bonus for the whole family. (SC-1, SC-2)
+** [ ] A schedule may leave a kid without a cutoff on a day, and still saves. A cutoff submitted blank is dropped, not refused, so that kid has no cutoff that day. (SC-1)
+** [ ] A cutoff that does not fall strictly inside that day's evening window is refused, including one exactly at the evening's start or end. The error "must fall inside the evening window" sits on that kid's cutoff for that day. (SC-1)
+** [ ] A day carrying two cutoffs for the same kid is refused. (SC-1)
+** [ ] A missing Night Owl bonus, or one below 0, is refused. A bonus of 0 is accepted. (SC-2, SC-5)
+** [ ] Every schedule saved before this feature loads unchanged, with a Night Owl bonus of 0 and no cutoffs on any day, so no past figure can move. (SC-4)
+** [ ] A save that changes only the Night Owl bonus, or only one kid's cutoff on one day, records a new schedule. A save whose bonus and cutoffs match the schedule in force records nothing and broadcasts nothing, whatever order the cutoffs arrive in. (SC-4, SC-5)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- No story dependency: this extends the routine-schedule initiative's ~BearCub.Schedules~, ~ScheduleVersion~ and ~DayEntry~ (shipped). Nothing reads the new fields yet; Stories 02–04 do.
+- One migration, generated with ~mix ecto.gen.migration~: ~night_owl_bonus integer NOT NULL DEFAULT 0~ on ~schedule_versions~, and nothing else. The ~days~ JSON is not rewritten.
+- The schema field declares ~default: 0~ as well as the migration. The LiveView test pin and the dev scenarios insert ~%ScheduleVersion{}~ structs with ~Repo.insert!~, which skips the changeset. Without the schema default they would send NULL into the NOT NULL column.
+- The pre-migration round-trip test writes a ~days~ value with no ~night_owl_cutoffs~ key straight into the table, for example with a raw SQL insert through ~Repo.query!/2~. It then loads that version through ~Schedules~. A struct insert would not test this, because it writes the key.
+- The no-op comparison lives in ~same_schedule?/2~ in ~lib/bear_cub/schedules.ex~. It gains ~night_owl_bonus~, and per day the cutoff lists sorted by ~kid_id~ (DESIGN: No-op saves).
+- The existing version writers drop the new fields, and nothing would fail. ~insert_version/6~ in ~test/support/schedule_helpers.ex~ rebuilds every ~DayEntry~ from scratch and passes ~R~ and ~E~ by name. So ~put_windows/2~, ~put_cutoff/1~ and ~put_bonuses/3~ after a Night Owl version would quietly reset ~N~ to 0 and drop every cutoff. Carry ~night_owl_bonus~ and each day's ~night_owl_cutoffs~ forward from the current version in these helpers in this story. Stories 02 and 03 stage Night Owl evenings and then call them. The dev-scenario half of the same trap is in Story 03.
+- The cutoff-window check runs in ~DayEntry~'s changeset, beside the existing early bird cutoff check, and puts its error on the nested cutoff entry's ~:cutoff~ field. Story 04 renders it from there with ~inputs_for~.

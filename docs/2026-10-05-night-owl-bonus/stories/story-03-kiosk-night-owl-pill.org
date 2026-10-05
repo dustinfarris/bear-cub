@@ -1,0 +1,84 @@
+#+title: Story 03 — The Night Owl badge and pill on the kiosk
+#+date: 2026-10-05
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — the Night Owl badge and pill, the D123/D130 and D104 bullets of §Overview's canon list, §Key Behaviors / Dev scenario, the LiveView-kiosk bullet and verification line of §Key Behaviors / Testing, and the design-language and CLAUDE.md bullets of §Key Behaviors / Documents this initiative updates.
+
+From §Overview, canon this builds on (verbatim):
+
+#+begin_quote
+- *[[file:../decisions.org::#d123][D123]] / [[file:../decisions.org::#d130][D130]] — kiosk figures.* Incurred figures (the completion badge, the penalty) are priced via ~Chores.routine_day_pricing/4~; the stake chip is live while the routine is unfinished and shows the priced ~r~ once paid.
+- *[[file:../decisions.org::#d104][D104]] — the EARLY pill.* On an early morning the sun's badge carries ~R + E~ as one number and a white =EARLY= pill in the kid's own color sits under the sun; badge and pill are one signal and a fail removes both. The first word on the kids' banner, accepted knowingly. [[file:../decisions.org::#d103][D103]]'s rule stands: any glyph outside the emoji set ships as inline SVG.
+#+end_quote
+
+From §Screens / Interfaces (verbatim):
+
+#+begin_quote
+  ** Kiosk — the Night Owl badge and pill (SC-3)
+
+- On a Night Owl evening the moon's completion badge reads ~r + n~ as one number, and a white =NIGHT OWL= pill in the kid's own color sits under the moon, centered over it — the evening mirror of [[file:../decisions.org::#d104][D104]] ([[file:../decisions.org::#d136][D136]]). The pill is the =EARLY= pill's markup in ~KioskComponents.banner/1~ generalised to take its label; same ~font-reward~ type, same offsets inside the ~py-5~ banner, wider for the longer word.
+- Badge and pill are one signal. A fail removes both — ~routine_day_pricing~ already returns ~n: 0, night_owl?: false~ for a failed day, and the badge is hidden on ~failed?~ as today.
+- ~KioskLive.build_column~ sets ~night_owl? = reveal? and auto == :evening and pricing.night_owl?~ beside the existing ~early_bird?~ line, and passes ~n~ to the banner; the no-pricing fallback map gains ~n: 0, night_owl?: false~.
+- *The stake chip is unchanged:* live ~R~ while the evening is unfinished, the priced ~r~ once paid ([[file:../decisions.org::#d130][D130]]). No target time, no countdown, no hint of ~N~ before the finish (PRD out of scope).
+- A schedule save already reloads the kiosk (~:schedule_changed~), so a new cutoff or ~N~ applies from the next tap.
+- No new glyph: the pill is Nunito text, already self-hosted. The post-deploy check is only that the wider pill sits inside the banner at the tablet's viewport.
+
+~docs/design-language.org~ gains a "Night Owl" ruling built on D104 — the evening counterpart under the moon, the second word on the kids' banner, accepted knowingly; badge and pill one signal; a fail removes both. Written by the story that lands the pill.
+#+end_quote
+
+From §Key Behaviors / Dev scenario (verbatim):
+
+#+begin_quote
+~BearCub.Dev.Scenarios.night_owl/1~ writes a version in force now, copied from current, with ~N~ set (to the argument, or 3 when current ~N~ is 0) and every kid's cutoff for today's weekday moved an offset after now, so live evening taps on the kiosk count as Night Owl — the evening mirror of ~cutoff/1~. It shares the existing ~:persistent_term~ stash, so ~restore/0~ undoes it. Reviewed together with ~open(:evening)~. Added to the CLAUDE.md scenario list by the story that lands it.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+Unit and LiveView layers both, per the MVP design's §11 test map. Fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]] (real clock, version pins, no clock mocking).
+
+- *LiveView, kiosk:* a Night Owl evening shows the moon badge at ~R + N~ and the =NIGHT OWL= pill; a fail removes both; no pill at ~N = 0~ or for a kid without a cutoff; the stake chip shows ~R~ only.
+
+  *Verification beyond ~mix precommit~:* the local kiosk review at 1280 × 800 via ~BearCub.Dev.Scenarios~ is the gate — screenshots of a Night Owl evening (one kid earned, one not) and of the Schedule page with a custom practice night.
+#+end_quote
+
+From §Key Behaviors / Documents this initiative updates (verbatim):
+
+#+begin_quote
+- *~docs/design-language.org~*, by the story that lands the pill: the Night Owl ruling ([[file:../decisions.org::#d136][D136]]).
+- *CLAUDE.md*, by the story that lands the scenario: ~night_owl/1~ joins the scenario list.
+#+end_quote
+
+* User Story
+
+As a kid, I need the kiosk to show a Night Owl badge when I finish my evening routine in time, and to take it away if the evening is failed, so that I can see I earned it, just as I see the Early Bird in the morning.
+
+* Acceptance Criteria
+
+** [ ] On an evening where a kid earned the Night Owl, the moon's completion badge shows the routine bonus plus the Night Owl bonus as one number. A white =NIGHT OWL= pill in the kid's own color sits under the moon, centered over it. (SC-3)
+** [ ] When that evening is failed, the badge and the pill both go. (SC-2, SC-3)
+** [ ] A kid who finished the evening without earning the Night Owl (at or after their cutoff, with no cutoff, or under a bonus of 0) gets no pill, and the moon's badge shows the routine bonus only. (SC-2, SC-3)
+** [ ] While the evening is unfinished, the stake chip shows the routine bonus only. Nothing on the kiosk hints at the Night Owl bonus or a cutoff before the finish. (SC-3)
+** [ ] A schedule change reaching an open kiosk applies the new cutoff or bonus from the next tap, with no reload by hand. (SC-5)
+** [ ] ~docs/design-language.org~ carries a Night Owl ruling built on the Early Bird pill's. It is the evening counterpart under the moon and the second word on the kids' banner, accepted knowingly. Badge and pill are one signal, and a fail removes both. (SC-3)
+** [ ] A dev scenario stages a schedule in which live evening taps on the kiosk earn the Night Owl. The existing restore brings back the real schedule, and the scenario is listed in CLAUDE.md. (SC-3)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 02 because the badge and pill read ~n~ and ~night_owl?~ from ~Chores.routine_day_pricing/4~. It depends on Story 01 for the version fields that the scenario writes.
+- Read ~docs/design-language.org~ before touching the banner (CLAUDE.md). The =EARLY= pill's markup is in ~KioskComponents.banner/1~ (~lib/bear_cub_web/components/kiosk_components.ex~, near the "Early bird pill (D100, D104)" comment). Generalise it to take a label rather than copying it. ~KioskLive.build_column~ (~lib/bear_cub_web/live/kiosk_live.ex~) sets ~night_owl?~ beside the ~early_bird?~ line and adds ~n: 0, night_owl?: false~ to the no-pricing fallback map.
+- Kiosk LiveView tests run at the real clock with version pins (D119). Read the [2026-07-17] entry in ~docs/learnings.org~ first: the routine-schedule gate went red at 00:06 on date/cutoff flakes. For "never a Night Owl", mirror ~put_cutoff(~T[00:00:00])~: a midnight cutoff inserted as a struct (the helpers bypass Story 01's window check) is beaten by no tap. For "timely", the cutoff must land after any tap the test can make whatever the time of day, and the taps must stay on today's date.
+- The scenario: ~night_owl/1~ in ~dev/bear_cub/dev/scenarios.ex~, the evening mirror of ~cutoff/1~, reviewed together with ~open(:evening)~. Its trap: ~write_copy/2~ builds the new ~%ScheduleVersion{}~ by naming ~routine_bonus~ and ~early_bird_bonus~, so it drops ~night_owl_bonus~ and every later scenario write resets ~N~ to 0. The day entries survive, because they are mapped through ~fun~. Make ~write_copy/2~ carry ~night_owl_bonus~. Otherwise ~night_owl/1~ followed by ~open(:evening)~ silently turns the Night Owl off. Cover the order "night_owl, then open(:evening)" in ~test/bear_cub/dev/scenarios_test.exs~.
+- Add ~night_owl/1~ to the scenario list in CLAUDE.md's Project guidelines.
+- Gate screenshot to prepare (DESIGN verification line): a Night Owl evening with one kid earned and one not. Stage it with ~open(:evening)~ and ~night_owl/1~, then tap one kid through and leave the other unfinished, or finish the other after moving that kid's cutoff. Run ~Scenarios.restore/0~ afterwards.
+- The post-deploy check (tablet, not gate): the wider pill sits inside the banner at the tablet's viewport. No new glyph, so no font-coverage check.

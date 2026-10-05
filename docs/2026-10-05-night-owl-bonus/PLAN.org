@@ -1,0 +1,25 @@
+#+title: PLAN — night-owl-bonus
+#+date: 2026-10-05
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1 — Night Owl bonus
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+# Order: the data layer first, additive and read by nothing, with the test helpers taught to carry
+# the new fields. Then pricing on both derivation routes, which the D72 agreement test guards.
+# Then the kiosk badge and pill with the dev scenario that stages them. The admin page depends only
+# on Story 01 and could move earlier. It is last so that a save has a visible effect on an open
+# kiosk.
+
+** TODO [[file:stories/story-01-night-owl-in-the-schedule.org][Story 01 — Night Owl cutoffs and bonus in the schedule version]]
+** TODO [[file:stories/story-02-night-owl-pricing.org][Story 02 — Pricing the Night Owl on both derivation routes]]
+** TODO [[file:stories/story-03-kiosk-night-owl-pill.org][Story 03 — The Night Owl badge and pill on the kiosk]]
+** TODO [[file:stories/story-04-admin-night-owl-schedule.org][Story 04 — Night Owl cutoffs and bonus on the admin Schedule page]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

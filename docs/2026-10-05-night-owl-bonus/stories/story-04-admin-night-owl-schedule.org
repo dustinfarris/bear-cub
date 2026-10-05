@@ -1,0 +1,87 @@
+#+title: Story 04 — Night Owl cutoffs and bonus on the admin Schedule page
+#+date: 2026-10-05
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Admin — Schedule page, the D125 and D128 bullets of §Overview's canon list, §Data Model / Validation and No-op saves, and the LiveView-admin bullet and verification line of §Key Behaviors / Testing.
+
+From §Overview, canon this builds on (verbatim):
+
+#+begin_quote
+- *[[file:../decisions.org::#d125][D125]] — the Schedule page.* One form, insert-only saves, per-card "Copy to" (weekdays / weekend / all) in the unsaved form only, a save with no changes writes nothing.
+- *[[file:../decisions.org::#d128][D128]] — ~Schedules~ depends only on the pure ~Routines~.* ~Chores~ depends on ~Schedules~, so ~Schedules~ may never depend on ~Chores~.
+#+end_quote
+
+From §Screens / Interfaces (verbatim):
+
+#+begin_quote
+  ** Admin — Schedule page (SC-1, SC-5)
+
+- The *Bonuses* row gains "Night owl bonus" (~N~) beside ~R~ and ~E~, hint "0 turns it off".
+- *Each day card* gains a "Night owl" group under the early bird cutoff: one native ~type="time"~ input per kid, in kid ~position~ order, labelled with a dot in the kid's color and the kid's name.
+- The *"custom" marker* counts cutoff differences from Monday; *"Copy to"* carries cutoffs with the rest of the day.
+- *Errors* render on the specific kid's field in the specific day card.
+- *No prefill* ([[file:../decisions.org::#d137][D137]]): ~ScheduleLive~ loads ~Chores.list_kids/0~ only to render a time input per kid, in position order, blank when that kid has no saved cutoff for the day. A blank field saves as no entry for that kid that day. The group's label reads "blank = no Night Owl", because a native time input shows no placeholder. ~Schedules~ never queries kids, keeping its [[file:../decisions.org::#d128][D128]] dependency line. A kid added later, and every schedule saved before this feature, shows blank fields and earns nothing until a parent fills them in.
+#+end_quote
+
+From §Data Model (verbatim):
+
+#+begin_quote
+  ** Validation
+
+On each ~DayEntry~:
+
+- every ~cutoff~ falls strictly inside that day's evening window (~evening_start < cutoff < evening_end~); the error lands on that kid's field: "must fall inside the evening window";
+- each ~kid_id~ appears at most once per day.
+
+On ~ScheduleVersion~: ~night_owl_bonus~ is required, an integer ≥ 0.
+
+No rule requires every kid to have an entry: the domain tolerates a missing kid (below). The /form/ renders one field per current kid, and a cutoff submitted blank is no entry: the changeset drops it rather than rejecting it (Screens / Interfaces).
+
+  ** No-op saves
+
+The no-op comparison in ~Schedules.change/2~ also compares ~night_owl_bonus~ and, per day, the cutoff lists sorted by ~kid_id~, so an untouched form still writes no version and broadcasts nothing ([[file:../decisions.org::#d125][D125]]).
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+Unit and LiveView layers both, per the MVP design's §11 test map. Fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]] (real clock, version pins, no clock mocking).
+
+- *LiveView, admin:* a save writes per-kid cutoffs and ~N~; a bad cutoff's error lands on that kid's field in that card; "Copy to" carries cutoffs; a no-op save writes nothing; a blank cutoff saves as no entry for that kid; a kid with no saved cutoff shows a blank field; an untouched form saves nothing.
+
+  *Verification beyond ~mix precommit~:* the local kiosk review at 1280 × 800 via ~BearCub.Dev.Scenarios~ is the gate — screenshots of a Night Owl evening (one kid earned, one not) and of the Schedule page with a custom practice night.
+#+end_quote
+
+* User Story
+
+As a parent, I need to set the Night Owl bonus and every kid's cutoff for every day of the week from the Schedule page on my phone, so that I can give a late-practice night a later cutoff, or turn the Night Owl off, with no config edit or deploy.
+
+* Acceptance Criteria
+
+** [ ] The Bonuses row shows a Night owl bonus beside the routine bonus and the early bird bonus, hinted "0 turns it off". Saving a new amount records it in effect at once. (SC-2, SC-5)
+** [ ] Each day card has a Night owl group under the early bird cutoff. It holds one time input per kid, in the kids' display order, each labelled with a dot in the kid's color and the kid's name. (SC-1, SC-5)
+** [ ] Saving records each kid's cutoff for each day, in effect at once, so one kid's cutoff can differ on one day without touching the other kid's. (SC-1, SC-5)
+** [ ] A kid with no saved cutoff for a day shows a blank field, and the group's label says a blank means no Night Owl. Leaving a field blank and saving records no cutoff for that kid that day. (SC-1, SC-5)
+** [ ] A cutoff outside the evening window shows its error on that kid's field in that day card, and nothing is recorded. (SC-1, SC-5)
+** [ ] A day card whose cutoffs differ from Monday's carries the "custom" marker. (SC-1)
+** [ ] A day card's "Copy to" carries its cutoffs to the other cards, along with the rest of the day, in the unsaved form only. (SC-1, SC-5)
+** [ ] Saving an untouched form records nothing. (SC-5)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 01 because the form edits ~night_owl_bonus~ and ~night_owl_cutoffs~ through ~Schedules.change_version/1~ and saves through ~Schedules.change/2~. It is ordered after Stories 02–03 so that a save has a visible effect on an open kiosk, but it needs no code from them.
+- ~ScheduleLive~ loads ~Chores.list_kids/0~, ordered by ~position~ and then ~id~, only to render the fields. ~Schedules~ must never call ~Chores~ (D128: ~Chores~ depends on ~Schedules~). Blank time inputs arrive as empty strings; Story 01's changeset drops those entries, so the page does no filtering of its own. An untouched form therefore compares equal to the version in force and saves nothing, including the first load after deploy, when no version has cutoffs.
+- Read Story 05's notes in the routine-schedule PLAN before starting. ~ScheduleLive~ keeps the unsaved form as a ~:params~ assign, normalises times to =HH:MM=, detects a no-op save by comparing the returned ~id~, and its test file inserts a valid fixture version in setup. The ~night_owl_cutoffs~ group is a nested ~inputs_for~ inside each day card's ~inputs_for~, so the per-kid error lands on the right card and field. The kid's name and color dot come from the loaded kids, matched by ~kid_id~. Add a hidden ~kid_id~ input per entry.
+- ~custom?/2~ and ~copy_day~ already work at whole-day granularity. Extend ~custom?/2~ to compare cutoffs, sorted by ~kid_id~. ~copy_day~ should need no new branch (DESIGN). Verify that with a test rather than assuming it.
+- Visual review: the gate wants the Schedule page showing a custom practice night. Stage it by saving a later cutoff for one kid on one weekday on the page itself, or with a version insert through ~project_eval~. ~Scenarios.slow_weekend/0~ alone shows no cutoffs that differ. The kiosk viewport is the declared one; check a phone width during the review as well, since each card grows by a row per kid.
+- "Usable on a phone" stays the existing admin standard (routine-schedule Story 05); this story sets no new breakpoint.
