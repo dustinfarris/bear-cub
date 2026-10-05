@@ -123,17 +123,24 @@ not a theoretical instant-edge race, but a deterministic failure for the
 close-outs (docs/2026-07-15-gamification-points/stories/story-06-kiosk-failed-marking.org,
 story-07-collapse-delay.org, both confirmed via a ~git stash~ baseline
 at the same wall-clock time) before being repaired in commit =4fc7247=.
-Fix: pin ~:routine_windows~ via the ~morning_active~/~evening_active~/
-~put_windows~ helper idiom already used by several ~kiosk_live_test.exs~
-describe blocks — save the original value, register ~on_exit~ to
-restore it, then force whichever window(s) the test needs active for
-its whole duration. This still calls the real clock
-(~LocalTime.now()~, never mocked); it only widens or narrows which
-window that real clock falls into. A genuine instant-of-the-edge race
-(helper evaluates a hair before 05:00/17:00/23:00, mount lands a hair
-after) remains theoretically possible even with pinning applied
-everywhere — if that ever actually fires, rerun; still don't reach for
-clock mocking.
+Fix, now a mechanism rather than a habit: routine timings live in
+~schedule_versions~ (D120), so a test pins them by inserting a version,
+and ~BearCubWeb.ConnCase~'s shared setup does it by default
+(~BearCub.ScheduleHelpers.pin_default_schedule/0~: morning open all day,
+evening never, identical on all seven weekdays). A test that needs the
+migration's real windows opts out with ~@tag :real_schedule~; one that
+needs the evening or a gap calls ~evening_active/0~ or
+~put_windows/2~ from the same module. This still calls the real clock
+(~LocalTime.now()~, never mocked); it only fixes which window that real
+clock falls into. A genuine instant-of-the-edge race (helper evaluates a
+hair before 05:00/17:00/23:00, mount lands a hair after) remains
+theoretically possible — if that ever actually fires, rerun; still don't
+reach for clock mocking. Two SQLite traps in the pin: ~effective_at~ is
+unique to the second, so helpers stamp one second after the latest
+version and the pin sits an hour back; and the pin's insert must be the
+test transaction's first statement, because a read-then-write upgrade
+fails at once with "Database busy" while another connection holds the
+write lock (async modules skip the pin for the same reason).
 
 * [2026-07-10 Fri] Ops: reach the server over Tailscale, not the LAN IP
 From the dev machine the box's LAN IP times out on ssh; the Tailscale

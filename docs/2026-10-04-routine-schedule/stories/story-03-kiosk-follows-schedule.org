@@ -70,23 +70,79 @@ As a parent, I need the kiosk to open and close routines by the schedule I set f
 
 * Acceptance Criteria
 
-** [ ] The kiosk shows the routine whose window is open now, by today's weekday entry in the schedule in force. Outside both windows it shows the routine that opens next, as today. (SC-2, SC-4)
-** [ ] Saving a window change while a kiosk is open flips that kiosk's routine at once, with no reload, when the new windows put now in the other routine. (SC-3, SC-4)
-** [ ] After any number of schedule saves while a kiosk is open, it still re-renders exactly once at each routine boundary, because exactly one boundary timer is armed. (SC-3)
-** [ ] At midnight the new weekday's timings take over with no reload. Given a Saturday entry that differs from Friday's, the next boundary after Friday's last edge is midnight, and from then on Saturday's windows govern. (SC-2, SC-4)
-** [ ] Window edges that fall in a DST gap or fold still resolve to a real instant, so the boundary timer always fires. (SC-2, SC-4)
-** [ ] The admin Today screen shows its active routine from today's weekday entry in the schedule in force, and re-renders when a schedule is saved. (SC-3, SC-4)
-** [ ] ~Scenarios.open/1~ and ~Scenarios.cutoff/1~ stage their state by writing a schedule version in force now, which reaches an already-open kiosk without a restart. ~Scenarios.restore/0~ brings back the schedule that was in force before the first scenario write. (SC-3, SC-4)
-** [ ] Every LiveView test runs under a known schedule by default, with an explicit opt-out for a test that needs the real windows. The suite's result does not depend on the time of day or the weekday it runs. (SC-4)
-** [ ] The ~docs/learnings.org~ [2026-07-17] entry points at the default schedule pin as the mechanism. (SC-4)
+** [X] The kiosk shows the routine whose window is open now, by today's weekday entry in the schedule in force. Outside both windows it shows the routine that opens next, as today. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  Verifier pass 2: ~kiosk_live.ex:412~ calls ~Routines.current(local_now, Schedules.day_entry(local_now))~; ~Schedules.day_entry/1~ resolves ~Routines.in_force~ then ~Routines.day~. Tests: ~routines_test.exs~ ~current/2~ (incl. upcoming outside both windows) and ~kiosk_live_test.exs~ "the kiosk follows today's weekday entry, not another day's". ~mix precommit~ green (778 tests).
+:END:
+** [X] Saving a window change while a kiosk is open flips that kiosk's routine at once, with no reload, when the new windows put now in the other routine. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~kiosk_live.ex~ ~handle_info(:schedule_changed, …)~ reloads. Test ~kiosk_live_test.exs~ "saving a schedule that puts now in the other routine flips the open kiosk at once" drives the real ~Schedules.change/1~ broadcast. Local review: ~Scenarios.open(:morning)~ flipped an open kiosk from the night screen to the morning columns with no reload (screenshots 1 and 2).
+:END:
+** [X] After any number of schedule saves while a kiosk is open, it still re-renders exactly once at each routine boundary, because exactly one boundary timer is armed. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~schedule_boundary/2~ stores the ref in ~:boundary_timer~ and cancels it before every arm (mount, ~:boundary~, ~:schedule_changed~). Tests "after repeated saves exactly one boundary timer is armed" (earlier refs ~Process.read_timer == false~, latest an integer) and "a :boundary re-arms by cancelling the stored timer".
+:END:
+** [X] At midnight the new weekday's timings take over with no reload. Given a Saturday entry that differs from Friday's, the next boundary after Friday's last edge is midnight, and from then on Saturday's windows govern. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~routines_test.exs~ "Friday's last edge → midnight, from which Saturday's own entry governs" asserts the next boundary after Friday 23:30 is Saturday 00:00 and that Saturday's entry then governs ~current/2~ and ~next_boundary/2~. Every ~:boundary~ re-resolves via ~Schedules.day_entry(now)~, nothing cached from mount. Limitation: no LiveView test crosses midnight (real clock, D119); the end-to-end handoff rests on the pure test plus code inspection.
+:END:
+** [X] Window edges that fall in a DST gap or fold still resolve to a real instant, so the boundary timer always fires. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~routines_test.exs~ "a window edge in the spring-forward gap resolves just after it" and "…fall-back fold resolves to the first occurrence", both against a day entry; ~local_datetime/3~ is unchanged.
+:END:
+** [X] The admin Today screen shows its active routine from today's weekday entry in the schedule in force, and re-renders when a schedule is saved. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~today_live.ex~ subscribes via ~Schedules.subscribe()~, handles ~:schedule_changed~, and resolves via ~Schedules.day_entry~. Test ~today_live_test.exs~ "saving a schedule re-renders the active routine by today's weekday entry" (section order flips live).
+:END:
+** [X] ~Scenarios.open/1~ and ~Scenarios.cutoff/1~ stage their state by writing a schedule version in force now, which reaches an already-open kiosk without a restart. ~Scenarios.restore/0~ brings back the schedule that was in force before the first scenario write. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~scenarios_test.exs~ covers ~open/1~ (incl. back-to-back same-second calls), ~cutoff/1~ (only the cutoff moves) and ~restore/0~ (original timings back, stash cleared), each asserting the ~:schedule_changed~ broadcast. Live: against a running dev server ~open(:morning)~ reached an open kiosk with no reload and ~restore()~ returned it to the night screen.
+:END:
+** [X] Every LiveView test runs under a known schedule by default, with an explicit opt-out for a test that needs the real windows. The suite's result does not depend on the time of day or the weekday it runs. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~BearCubWeb.ConnCase~ setup calls ~BearCub.ScheduleHelpers.pin_default_schedule/0~ (morning all day, evening never, identical on all seven weekdays, an hour back); opt-out ~@tag :real_schedule~. Suite green at ~23:14 local, inside the Good Night gap that broke the old suite, across several full runs. Note: async modules skip the pin (SQLite write contention); only the two error-controller tests are async.
+:END:
+** [X] The ~docs/learnings.org~ [2026-07-17] entry points at the default schedule pin as the mechanism. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  The existing entry was revised in place (~git diff docs/learnings.org~): it now names ~pin_default_schedule/0~ in ~ConnCase~'s shared setup and ~@tag :real_schedule~, plus the two SQLite traps.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  Verifier pass 2 found all nine ACs met; none removed or deferred. AC4's midnight is verified at the pure level (see its entry).
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  Tests added or converted for every AC (routines, schedules, scenarios, kiosk and Today LiveViews); ~mix precommit~ shows 778 passed.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  Verifier pass 2: no compile warnings (~MIX_ENV=test mix compile --force~), format check clean, moduledocs wrapped at 80, stale ~:routine_windows~ moduledoc text fixed; CLAUDE.md scenarios bullet updated.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  ~mix precommit~ (compile --warnings-as-errors, deps.unlock --unused, format --check-formatted, test) exit 0, 778 tests, run by the verifier on the final code.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:16] \\
+  Staged with ~BearCub.Dev.Scenarios.open(:morning)~ / ~restore()~ against a live dev server, viewed at 1280 × 800 with no reload: night screen, flipped morning columns, back to night. Screenshots: ~.playwright-mcp/1-before-night.png~, ~2-after-open-morning-no-reload.png~, ~3-after-restore-night.png~ (git-ignored).
+:END:
 
 * Technical Notes
 
