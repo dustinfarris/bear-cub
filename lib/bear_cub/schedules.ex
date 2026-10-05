@@ -3,8 +3,9 @@ defmodule BearCub.Schedules do
   The routine schedule as an append-only history (D120): each save inserts
   a full `ScheduleVersion` in force from the moment of the save, and no
   version is ever updated or deleted, so a later change can never re-price
-  what was already earned. Depends on nothing else in the app; resolving
-  which version applies at an instant is the pure `BearCub.Routines`.
+  what was already earned. Depends on nothing else in the app but the
+  pure `BearCub.Routines`, which resolves which version applies at an
+  instant.
 
   The "now" a save is stamped with is taken here, at the context boundary,
   like every other write's timestamp.
@@ -13,6 +14,7 @@ defmodule BearCub.Schedules do
   import Ecto.Query, warn: false
 
   alias BearCub.Repo
+  alias BearCub.Routines
   alias BearCub.Schedules.ScheduleVersion
 
   @topic "schedules"
@@ -30,6 +32,18 @@ defmodule BearCub.Schedules do
   @doc "The latest version. Raises when the table is empty — a broken migration."
   def current do
     Repo.one!(from v in ScheduleVersion, order_by: [desc: v.effective_at], limit: 1)
+  end
+
+  @doc """
+  The day entry governing `local_now`: the version in force at that
+  instant, then its entry for the local date's weekday. Every `:boundary`
+  re-resolves through here, so a new weekday's timings take over at
+  midnight with no special case.
+  """
+  def day_entry(%DateTime{} = local_now) do
+    versions()
+    |> Routines.in_force(local_now)
+    |> Routines.day(DateTime.to_date(local_now))
   end
 
   @doc """

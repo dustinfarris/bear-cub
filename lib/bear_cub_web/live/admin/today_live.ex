@@ -6,12 +6,14 @@ defmodule BearCubWeb.Admin.TodayLive do
   alias BearCub.Points
   alias BearCub.Rewards
   alias BearCub.Routines
+  alias BearCub.Schedules
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Chores.subscribe()
       Rewards.subscribe()
+      Schedules.subscribe()
     end
 
     socket = load(socket, LocalTime.now())
@@ -137,8 +139,12 @@ defmodule BearCubWeb.Admin.TodayLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
+  def handle_info(:schedule_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
   defp load(socket, local_now) do
-    {_state, active} = Routines.current(local_now)
+    {_state, active} = Routines.current(local_now, Schedules.day_entry(local_now))
     today = DateTime.to_date(local_now)
 
     # done today? — derived, never stored (design §2)

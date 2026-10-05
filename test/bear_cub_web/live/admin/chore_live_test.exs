@@ -6,12 +6,11 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
   alias BearCub.Chores
   alias BearCub.LocalTime
-  alias BearCub.Routines
 
   # Same convention as the kiosk tests: expected outcomes are computed
   # from the real clock with the app's own pure functions — no mocking.
   defp auto_routine do
-    {_state, auto} = Routines.current(LocalTime.now())
+    {_state, auto} = BearCub.ScheduleHelpers.current_routine()
     auto
   end
 
@@ -19,12 +18,6 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
   # regardless of when the suite runs, mirroring the kiosk tests' helper
   # of the same name (tests must pin the local datetime, never inherit the
   # real one — see docs/learnings.org).
-  defp morning_active do
-    Application.put_env(:bear_cub, :routine_windows,
-      morning: {~T[00:00:00], ~T[23:59:59]},
-      evening: {~T[23:59:59], ~T[23:59:59]}
-    )
-  end
 
   defp ordered_ids(html, selector) do
     html
@@ -68,8 +61,6 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
 
     test "▼ swaps the chore with the one below; the kiosk re-orders live",
          %{conn: conn, kid_a: kid_a} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       routine = Atom.to_string(auto_routine())

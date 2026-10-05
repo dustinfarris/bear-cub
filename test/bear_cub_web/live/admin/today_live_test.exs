@@ -15,7 +15,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
   # No clock mocking: the expected active routine comes from the same
   # pure functions the view uses (accepted rare window-edge flake).
   defp active_routine do
-    {_state, active} = Routines.current(LocalTime.now())
+    {_state, active} = BearCub.ScheduleHelpers.current_routine()
     active
   end
 
@@ -25,12 +25,7 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
   # (tests must pin the local datetime, never inherit the real one — see
   # docs/learnings.org). Mirrors the kiosk tests' morning_active/0.
   defp pin_active_routine(active) do
-    inactive = Routines.other(active)
-
-    Application.put_env(:bear_cub, :routine_windows, [
-      {active, {~T[00:00:00], ~T[23:59:59]}},
-      {inactive, {~T[23:59:59], ~T[23:59:59]}}
-    ])
+    if active == :morning, do: morning_active(), else: evening_active()
   end
 
   setup do
@@ -90,10 +85,39 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
            ]
   end
 
+  test "saving a schedule re-renders the active routine by today's weekday entry",
+       %{conn: conn, kid_a: kid_a} = ctx do
+    import BearCub.SchedulesFixtures
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+    assert has_element?(view, "#today-chore-#{ctx.a_active.id}")
+
+    # evening open from 00:00:02 on: any real "now" is in the evening
+    evening_now = %{
+      morning_start: ~T[00:00:00],
+      morning_end: ~T[00:00:02],
+      evening_start: ~T[00:00:02],
+      evening_end: ~T[23:59:59],
+      early_bird_cutoff: ~T[00:00:01]
+    }
+
+    attrs = valid_attrs(%{days: Enum.map(1..7, &day_attrs(&1, evening_now))})
+    {:ok, _} = BearCub.Schedules.change(attrs)
+
+    sections =
+      render(view)
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#today-kid-#{kid_a.id} [id^='section-']")
+      |> LazyHTML.attribute("id")
+
+    assert sections == [
+             "section-#{kid_a.id}-#{ctx.inactive}",
+             "section-#{kid_a.id}-#{ctx.active}"
+           ]
+  end
+
   test "tapping a chore completes it on the kid's behalf; the kiosk follows",
        %{conn: conn} = ctx do
-    original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-    on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
     pin_active_routine(ctx.active)
 
     {:ok, kiosk, _} = live(Phoenix.ConnTest.build_conn(), ~p"/")
@@ -145,8 +169,6 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
     alias BearCub.Rewards
 
     setup %{active: active} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       pin_active_routine(active)
       :ok
     end
@@ -439,8 +461,6 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
 
     test "a fail live-updates the kiosk: the chore reverts and the points badge drops",
          %{conn: conn} = ctx do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       pin_active_routine(ctx.active)
 
       {:ok, _} = Chores.complete_chore(ctx.a_active, LocalTime.now(), "kiosk")
@@ -743,21 +763,10 @@ defmodule BearCubWeb.Admin.TodayLiveTest do
 
     # Pins morning active all day, deterministically — extras only reveal
     # in the kiosk band while the morning window is active (D33).
-    defp morning_active do
-      original = Application.fetch_env!(:bear_cub, :routine_windows)
-
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[00:00:00], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
-
-      original
-    end
 
     test "an on-behalf extra toggle broadcasts on the chores topic so a live kiosk re-renders",
          %{conn: conn} do
-      original_windows = morning_active()
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
+      morning_active()
 
       kid = kid_fixture(%{name: "Kid C", color: "#a855f7", position: 2})
       morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})

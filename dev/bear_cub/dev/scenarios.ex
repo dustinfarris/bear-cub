@@ -11,16 +11,19 @@ defmodule BearCub.Dev.Scenarios do
   row deletion acceptable: it is a sandbox wipe, not domain behavior
   (completion rows are never deleted in the domain, D10).
 
-  Every scenario runs inside the server's own VM so its config overrides
-  take effect without a restart and its broadcasts re-render open
-  kiosks. Use it from `iex -S mix phx.server`, or from Tidewave's
-  `project_eval`:
+  Every scenario runs inside the server's own VM so its broadcasts
+  re-render open kiosks. `open/1` and `cutoff/1` stage by writing a real
+  schedule version in force now (D126) and broadcasting `:schedule_changed`,
+  so they reach an open kiosk like a parent's save; `restore/0` puts the
+  schedule from before the first scenario write back. Use it from
+  `iex -S mix phx.server`, or from Tidewave's `project_eval`:
 
       BearCub.Dev.Scenarios.early_bird()
       BearCub.Dev.Scenarios.midway()         # stake bar half filled, done rows sunk
       BearCub.Dev.Scenarios.effort()         # a counted extra ready to tap, another done at x8
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
       BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
+      BearCub.Dev.Scenarios.restore()        # the schedule from before open/cutoff
       BearCub.Dev.Scenarios.reset()
 
   Placeholder kids and demo chores are seeded first if the database is
@@ -36,19 +39,18 @@ defmodule BearCub.Dev.Scenarios do
   alias BearCub.Chores.Completion
   alias BearCub.LocalTime
   alias BearCub.Repo
+  alias BearCub.Schedules
+  alias BearCub.Schedules.ScheduleVersion
+
+  @stash {__MODULE__, :displaced}
 
   @doc """
   One kid finished the whole morning early (07:10), the other late
   (08:30): the sun with a `+R` badge on the late kid, the sun with a
   combined `+R+E` badge and the EARLY pill on the early kid (D100, D104).
   Returns `%{early: kid, late: kid}`.
-  Also makes sure the early bird config keys exist, for a dev server
-  started before they were added to `config/runtime.exs`.
   """
   def early_bird(%DateTime{} = local_now \\ LocalTime.now()) do
-    ensure_config(:early_bird_cutoff, ~T[07:45:00])
-    ensure_config(:early_bird_bonus, 2)
-
     [early, late | _] = reset(local_now)
     today = DateTime.to_date(local_now)
     tz = local_now.time_zone
@@ -131,18 +133,94 @@ defmodule BearCub.Dev.Scenarios do
   end
 
   @doc """
-  Forces `routine` active all day in the running VM, so a morning state
-  can be reviewed in the evening and vice versa. Config only — restart
-  the server to get the real windows back.
+  Forces `routine` active all day, so a morning state can be reviewed in
+  the evening and vice versa. Writes a version in force now, copied from
+  the current one with only the windows changed; the other routine gets a
+  zero-length window, which the changeset refuses, hence `Repo.insert!/1`
+  on the struct. `restore/0` undoes it.
   """
   def open(routine) when routine in [:morning, :evening] do
     all_day = {~T[00:00:00], ~T[23:59:59]}
     never = {~T[23:59:59], ~T[23:59:59]}
-    other = BearCub.Routines.other(routine)
 
-    Application.put_env(:bear_cub, :routine_windows, [{routine, all_day}, {other, never}])
-    broadcast()
+    write_version(fn day ->
+      {morning, evening} = if routine == :morning, do: {all_day, never}, else: {never, all_day}
+      {morning_start, morning_end} = morning
+      {evening_start, evening_end} = evening
+
+      %{
+        day
+        | morning_start: morning_start,
+          morning_end: morning_end,
+          evening_start: evening_start,
+          evening_end: evening_end
+      }
+    end)
+  end
+
+  @doc """
+  Moves the early bird cutoff, so a chore tapped *now* can count as early
+  (`cutoff(~T[23:00:00])`) or late (`cutoff(~T[00:01:00])`) in a live
+  tap-through. Writes a version like `open/1`, with no window check — pair
+  it with `open(:morning)`. `restore/0` brings the real cutoff back.
+  """
+  def cutoff(%Time{} = time) do
+    write_version(&%{&1 | early_bird_cutoff: time})
+  end
+
+  @doc """
+  Inserts a copy of the schedule that the first scenario write displaced,
+  in force now, and forgets it. A no-op without a stash.
+  """
+  def restore do
+    case :persistent_term.get(@stash, nil) do
+      nil ->
+        :ok
+
+      id ->
+        :persistent_term.erase(@stash)
+        write_copy(Repo.get!(ScheduleVersion, id), & &1)
+    end
+  end
+
+  # A copy of the version in force with `fun` applied to each day entry,
+  # effective now. The first write of a VM stashes the id of the version it
+  # displaced; later scenario writes leave the stash alone, so `restore/0`
+  # always reaches back to the real schedule. No column marks scenario rows.
+  defp write_version(fun) do
+    current = Schedules.current()
+    if :persistent_term.get(@stash, nil) == nil, do: :persistent_term.put(@stash, current.id)
+    write_copy(current, fun)
+  end
+
+  defp write_copy(%ScheduleVersion{} = source, fun) do
+    at = wait_for_free_second()
+
+    Repo.insert!(%ScheduleVersion{
+      effective_at: at,
+      routine_bonus: source.routine_bonus,
+      early_bird_bonus: source.early_bird_bonus,
+      days: Enum.map(source.days, fun)
+    })
+
+    # Repo.insert! bypasses Schedules.change/1, which would broadcast
+    Phoenix.PubSub.broadcast(BearCub.PubSub, "schedules", :schedule_changed)
     :ok
+  end
+
+  # `effective_at` is unique to the second: a scenario written in the same
+  # second as the newest version waits out the rest of it, so the new
+  # version is in force the moment it lands. A dev edge, like the clock.
+  defp wait_for_free_second do
+    latest = Schedules.current().effective_at
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    if DateTime.compare(now, latest) == :gt do
+      now
+    else
+      Process.sleep(1_000)
+      wait_for_free_second()
+    end
   end
 
   # The same `:chores_changed` message `Chores` broadcasts after a write,
@@ -151,28 +229,9 @@ defmodule BearCub.Dev.Scenarios do
   # domain gains nothing it needs for a dev-only consumer.
   defp broadcast, do: Phoenix.PubSub.broadcast(BearCub.PubSub, "chores", :chores_changed)
 
-  @doc """
-  Moves the early bird cutoff in the running VM, so a chore tapped *now*
-  can count as early (`cutoff(~T[23:00:00])`) or late (`cutoff(~T[00:01:00])`)
-  in a live tap-through. Config only, no boot-time window check — pair
-  it with `open(:morning)`. Restart the server to get the real cutoff back.
-  """
-  def cutoff(%Time{} = time) do
-    Application.put_env(:bear_cub, :early_bird_cutoff, time)
-    broadcast()
-    :ok
-  end
-
   defp seed_if_empty do
     if Chores.list_kids() == [] do
       Code.eval_file(Path.join(:code.priv_dir(:bear_cub), "repo/seeds.exs"))
-    end
-  end
-
-  defp ensure_config(key, default) do
-    case Application.fetch_env(:bear_cub, key) do
-      {:ok, _} -> :ok
-      :error -> Application.put_env(:bear_cub, key, default)
     end
   end
 end

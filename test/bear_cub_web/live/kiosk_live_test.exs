@@ -13,7 +13,7 @@ defmodule BearCubWeb.KioskLiveTest do
   # Tests never mock the clock: expected outcomes are computed with the
   # same pure functions the LiveView uses, from the real current time.
   defp auto_routine do
-    {_state, auto} = Routines.current(LocalTime.now())
+    {_state, auto} = BearCub.ScheduleHelpers.current_routine()
     auto
   end
 
@@ -52,8 +52,6 @@ defmodule BearCubWeb.KioskLiveTest do
       # Pinned so the columns render at any wall-clock hour: inside the
       # 23:00-05:00 Good Night gap the kiosk renders no columns at all
       # (docs/learnings.org [2026-07-17]).
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
@@ -81,8 +79,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "renders the shown routine's chores as icon + name rows",
          %{conn: conn, kid_a: kid_a} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       chore =
@@ -101,8 +97,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "chore cards render at a fixed height instead of equally filling the column",
          %{conn: conn, kid_a: kid_a} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       chore_fixture(kid_a, %{
@@ -137,8 +131,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "with no calendars configured, the events strip renders empty and chores still render",
          %{conn: conn, kid_a: kid_a} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       chore =
@@ -373,8 +365,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "shows the auto-selected routine's chores, never a manually flipped one",
          %{conn: conn, chores: chores} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       auto = auto_routine()
@@ -399,8 +389,6 @@ defmodule BearCubWeb.KioskLiveTest do
     alias BearCub.Repo
 
     setup do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       # pinned rather than left to the real clock (tests must never inherit
       # the real clock — see docs/learnings.org), so the routine is always
       # in its active window no matter when the suite runs
@@ -553,9 +541,6 @@ defmodule BearCubWeb.KioskLiveTest do
       evening_chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
       morning_chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid, evening_chore: evening_chore, morning_chore: morning_chore}
     end
 
@@ -563,9 +548,6 @@ defmodule BearCubWeb.KioskLiveTest do
     # clock itself (design invariant: no clock mocking) — this lets a
     # boundary crossing be simulated deterministically between a mount and
     # a `:boundary` message, regardless of when the suite actually runs.
-    defp put_windows(morning, evening) do
-      Application.put_env(:bear_cub, :routine_windows, morning: morning, evening: evening)
-    end
 
     for evening_state <- [:complete, :incomplete] do
       test "the boundary handler drops into the night screen when the evening window closes (evening #{evening_state})",
@@ -671,27 +653,11 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
     # Pins morning active all day, evening never active — deterministic
     # regardless of when the suite runs, mirroring the Good Night helper.
-    defp morning_active do
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[00:00:00], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
-    end
-
-    defp evening_active do
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[23:59:59], ~T[23:59:59]},
-        evening: {~T[00:00:00], ~T[23:59:59]}
-      )
-    end
 
     test "morning-complete-in-window collapses to a band with the message and reveals extras (outstanding + done-today), retired never appears",
          %{conn: conn, kid: kid} do
@@ -924,9 +890,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -1049,9 +1012,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
-
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
 
       # These tests complete chores at the real `now` and assert a plain +R
       # badge; before 07:45 local that would be +R+E (D104). Pin the cutoff
@@ -1176,9 +1136,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -1269,22 +1226,12 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
-    end
-
-    defp morning_active_delay do
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[00:00:00], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
     end
 
     test "completing the last routine chore keeps it visible in rows before the routine list collapses, then collapses once the delay elapses (AC1, AC2)",
          %{conn: conn, kid: kid} do
-      morning_active_delay()
+      morning_active()
 
       chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
 
@@ -1304,7 +1251,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "completing a chore that is not the last causes no delay — the routine stays in rows with no pending collapse (AC2)",
          %{conn: conn, kid: kid} do
-      morning_active_delay()
+      morning_active()
 
       chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
       _companion = chore_fixture(kid, %{name: "Comb Hair", icon: "💇", routine: "morning"})
@@ -1327,9 +1274,6 @@ defmodule BearCubWeb.KioskLiveTest do
 
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
-
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
 
       morning_active()
 
@@ -1620,9 +1564,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -1788,9 +1729,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -1865,8 +1803,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       # The badge sits in the column banner, which never renders in the
       # Good Night gap (docs/learnings.org [2026-07-17]).
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
@@ -1929,13 +1865,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
     test "the badge stays visible across rows, collapsed band, and re-expanded rows; the night screen replaces it entirely (D56)",
          %{conn: conn, kid: kid} do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[00:00:00], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
+      morning_active()
 
       chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
 
@@ -1955,10 +1885,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#chores-#{kid.id}")
       assert has_element?(view, "#points-badge-#{kid.id}")
 
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[23:59:59], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
+      put_windows({~T[23:59:59], ~T[23:59:59]}, {~T[23:59:59], ~T[23:59:59]})
 
       send(view.pid, :boundary)
 
@@ -1972,8 +1899,6 @@ defmodule BearCubWeb.KioskLiveTest do
     alias BearCub.Rewards
 
     setup do
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
       morning_active()
 
       kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
@@ -2476,9 +2401,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -2863,9 +2785,6 @@ defmodule BearCubWeb.KioskLiveTest do
     setup do
       kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
 
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
       %{kid: kid}
     end
 
@@ -2926,6 +2845,119 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert has_element?(view, "#chore-earned-#{extra.id}", "+12")
       refute has_element?(view, "#chore-effort-#{extra.id}")
+    end
+  end
+
+  describe "following the schedule live (D124)" do
+    import BearCub.SchedulesFixtures
+
+    alias BearCub.Schedules
+
+    # Evening open from 00:00:02 on, morning only the first two seconds of
+    # the day — a save that puts any real "now" in the evening.
+    @evening_now %{
+      morning_start: ~T[00:00:00],
+      morning_end: ~T[00:00:02],
+      evening_start: ~T[00:00:02],
+      evening_end: ~T[23:59:59],
+      early_bird_cutoff: ~T[00:00:01]
+    }
+
+    # The rest of the week keeps the morning open nearly all day, as the
+    # default pin does, so "not today" stays morning at any hour.
+    @morning_now %{
+      morning_start: ~T[00:00:00],
+      morning_end: ~T[23:59:58],
+      evening_start: ~T[23:59:58],
+      evening_end: ~T[23:59:59],
+      early_bird_cutoff: ~T[07:45:00]
+    }
+
+    defp evening_now_attrs(weekdays) do
+      days =
+        for w <- 1..7 do
+          day_attrs(w, if(w in weekdays, do: @evening_now, else: @morning_now))
+        end
+
+      valid_attrs(%{days: days})
+    end
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      morning = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      evening = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+      %{kid: kid, morning: morning, evening: evening}
+    end
+
+    defp boundary_timer(view), do: :sys.get_state(view.pid).socket.assigns.boundary_timer
+
+    test "saving a schedule that puts now in the other routine flips the open kiosk at once",
+         %{conn: conn, morning: morning, evening: evening} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#chore-#{morning.id}")
+      refute has_element?(view, "#chore-#{evening.id}")
+
+      {:ok, _} = Schedules.change(evening_now_attrs(1..7))
+
+      assert has_element?(view, "#chore-#{evening.id}")
+      refute has_element?(view, "#chore-#{morning.id}")
+    end
+
+    test "the kiosk follows today's weekday entry, not another day's",
+         %{conn: conn, morning: morning, evening: evening} do
+      today = DateTime.to_date(LocalTime.now())
+      other_day = Enum.find(1..7, &(&1 != Date.day_of_week(today)))
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      {:ok, _} =
+        Schedules.change(
+          evening_now_attrs([other_day]),
+          DateTime.add(DateTime.utc_now(), -2, :minute)
+        )
+
+      assert has_element?(view, "#chore-#{morning.id}")
+
+      {:ok, _} =
+        Schedules.change(
+          evening_now_attrs([Date.day_of_week(today)]),
+          DateTime.add(DateTime.utc_now(), -1, :minute)
+        )
+
+      assert has_element?(view, "#chore-#{evening.id}")
+    end
+
+    test "after repeated saves exactly one boundary timer is armed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      first = boundary_timer(view)
+      assert is_integer(Process.read_timer(first))
+
+      # distinct instants: effective_at is unique to the second
+      long_ago = DateTime.add(DateTime.utc_now(), -30, :minute)
+      {:ok, _} = Schedules.change(evening_now_attrs(1..7), long_ago)
+      second = boundary_timer(view)
+
+      {:ok, _} =
+        Schedules.change(valid_attrs(%{routine_bonus: 7}), DateTime.add(long_ago, 1, :minute))
+
+      third = boundary_timer(view)
+
+      # every earlier timer was cancelled before the next was armed
+      assert Process.read_timer(first) == false
+      assert Process.read_timer(second) == false
+      assert is_integer(Process.read_timer(third))
+    end
+
+    test "a :boundary re-arms by cancelling the stored timer", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      first = boundary_timer(view)
+
+      send(view.pid, :boundary)
+      second = boundary_timer(view)
+
+      assert first != second
+      assert Process.read_timer(first) == false
+      assert is_integer(Process.read_timer(second))
     end
   end
 end

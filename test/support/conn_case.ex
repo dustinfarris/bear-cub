@@ -28,11 +28,19 @@ defmodule BearCubWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import BearCubWeb.ConnCase
+      import BearCub.ScheduleHelpers
     end
   end
 
   setup tags do
     BearCub.DataCase.setup_sandbox(tags)
+    # D126: every LiveView test starts under a known schedule, so none
+    # inherits the hour it happens to run at. `@tag :real_schedule` opts out.
+    # Async modules skip it: they never mount a view, and a SQLite write
+    # from several of them at once fails "Database busy".
+    unless tags[:real_schedule] || tags[:async],
+      do: BearCub.ScheduleHelpers.pin_default_schedule()
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

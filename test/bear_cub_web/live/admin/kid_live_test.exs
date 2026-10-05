@@ -40,13 +40,8 @@ defmodule BearCubWeb.Admin.KidLiveTest do
          %{conn: conn, kid_a: kid_a} do
       # The kiosk renders no columns in the Good Night gap; pin a window so
       # this passes at any hour (docs/learnings.org [2026-07-17]).
-      original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-      on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
 
-      Application.put_env(:bear_cub, :routine_windows,
-        morning: {~T[00:00:00], ~T[23:59:59]},
-        evening: {~T[23:59:59], ~T[23:59:59]}
-      )
+      morning_active()
 
       {:ok, kiosk, _} = live(Phoenix.ConnTest.build_conn(), ~p"/")
       {:ok, view, _html} = live(conn, ~p"/admin/kids/#{kid_a.id}/edit")

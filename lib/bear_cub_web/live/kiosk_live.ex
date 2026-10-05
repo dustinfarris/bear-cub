@@ -9,6 +9,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Points
   alias BearCub.Rewards
   alias BearCub.Routines
+  alias BearCub.Schedules
 
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
   # chore completing and the routine list collapsing, so that chore's own
@@ -55,6 +56,7 @@ defmodule BearCubWeb.KioskLive do
       Chores.subscribe()
       Calendars.subscribe()
       Rewards.subscribe()
+      Schedules.subscribe()
     end
 
     # one clock read per mount — two could straddle a window edge
@@ -69,6 +71,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
      |> assign(:counting, %{})
+     |> assign(:boundary_timer, nil)
      |> load(now)
      |> schedule_boundary(now)}
   end
@@ -311,6 +314,23 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
+  # A saved schedule can move the routine edge to now or take the next one
+  # somewhere else: re-resolve the version in force and re-arm the one
+  # boundary timer (D124), clearing the shop as a boundary does.
+  def handle_info(:schedule_changed, socket) do
+    now = LocalTime.now()
+
+    socket =
+      socket
+      |> cancel_all_rewards_idle_timers()
+      |> assign(:rewards, MapSet.new())
+      |> assign(:counting, %{})
+      |> load(now)
+      |> schedule_boundary(now)
+
+    {:noreply, socket}
+  end
+
   def handle_info(:boundary, socket) do
     # Window handoff (FR-3) and the midnight re-render of derived day state
     # (design §2) are all one event: recompute everything and schedule the
@@ -389,7 +409,7 @@ defmodule BearCubWeb.KioskLive do
   defp load(socket, local_now, opts \\ []) do
     just_sunk = Keyword.get(opts, :just_sunk)
 
-    {routine_state, auto} = Routines.current(local_now)
+    {routine_state, auto} = Routines.current(local_now, Schedules.day_entry(local_now))
     night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
 
@@ -796,14 +816,20 @@ defmodule BearCubWeb.KioskLive do
     {slot, done}
   end
 
+  # The one boundary chain (D124): every :boundary arms the next, so
+  # anything that arms from elsewhere (a schedule save) must cancel the
+  # timer it replaces or a second chain starts and never ends.
   defp schedule_boundary(socket, now) do
-    if connected?(socket) do
-      ms = DateTime.diff(Routines.next_boundary(now), now, :millisecond)
-      # floor guards against a timer that fires a hair early re-arming hot
-      Process.send_after(self(), :boundary, max(ms, 1_000))
-    end
+    if socket.assigns.boundary_timer, do: Process.cancel_timer(socket.assigns.boundary_timer)
 
-    socket
+    if connected?(socket) do
+      entry = Schedules.day_entry(now)
+      ms = DateTime.diff(Routines.next_boundary(now, entry), now, :millisecond)
+      # floor guards against a timer that fires a hair early re-arming hot
+      assign(socket, :boundary_timer, Process.send_after(self(), :boundary, max(ms, 1_000)))
+    else
+      socket
+    end
   end
 
   # Idle auto-return timer (Story 05, D65): armed on open, replaced (not

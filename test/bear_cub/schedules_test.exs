@@ -33,6 +33,23 @@ defmodule BearCub.SchedulesTest do
     end
   end
 
+  describe "day_entry/1" do
+    test "resolves the version in force and the date's weekday entry" do
+      # 2026-10-04 is a Sunday (7); the new version differs only on Sundays
+      attrs = attrs_with_day(7, %{morning_start: ~T[08:00:00], early_bird_cutoff: ~T[09:00:00]})
+      {:ok, _} = Schedules.change(attrs, ~U[2026-10-04 12:00:00Z])
+
+      sunday_after = DateTime.new!(~D[2026-10-04], ~T[06:00:00], "America/Los_Angeles")
+      sunday_before = DateTime.new!(~D[2026-10-04], ~T[04:59:00], "America/Los_Angeles")
+      monday_after = DateTime.new!(~D[2026-10-05], ~T[06:00:00], "America/Los_Angeles")
+
+      assert Schedules.day_entry(sunday_after).morning_start == ~T[08:00:00]
+      assert Schedules.day_entry(sunday_before).morning_start == ~T[05:00:00]
+      assert Schedules.day_entry(monday_after).morning_start == ~T[05:00:00]
+      assert Schedules.day_entry(monday_after).weekday == 1
+    end
+  end
+
   describe "change/2" do
     test "inserts a new version effective at the given now, leaving earlier ones alone" do
       before = Schedules.versions()
