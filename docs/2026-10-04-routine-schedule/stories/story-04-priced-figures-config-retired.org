@@ -1,0 +1,75 @@
+#+title: Story 04 — Kiosk figures priced or live, and routine config retired
+#+date: 2026-10-04
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Kiosk — routine figures and / Admin — Today screen (its priced-figures half), the ~Routines~ bullet of §Key Behaviors / Modules and boundaries, the config-deletion paragraph of §Data Model / The seed, and the LiveView-kiosk bullet of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Kiosk — routine figures: incurred figures are priced, stake figures are live
+
+The kiosk's routine numbers today call ~Routines.bonus/0~ directly from ~kiosk_components.ex~. They split into two kinds ([[file:../decisions.org::#d123][D123]]):
+
+- *Incurred* — the completion badge ~+R~ / ~+R+E~ on a finished routine, and the ~−R~ penalty indicator on a failed one — shows the /priced/ figures for that routine-day, matching the ledger. A morning earned at 07:30 under ~R = 5~ keeps showing ~+5~ after ~R~ is raised to 8 at 10:00; a penalty shows ~R~ as priced at ~first_failed_at~.
+- *Stake* — the stake chip ~+R~, what finishing would earn — shows ~R~ from the version in force now.
+
+~Chores~ exposes the priced breakdown of a routine-day — e.g. ~routine_day_pricing/3~ returning ~%{r: …, e: …, penalty: …}~ — built from the same ~contribution~ internals; ~KioskLive.load/3~ resolves today's version and passes ~r~ / ~e~ (live) and the priced breakdowns down as assigns. Components stop calling ~Routines~ for numbers.
+
+  ** Admin — Today screen
+
+Uses the same resolution as the kiosk for its routine sections (the active routine from today's day entry; routine figures priced as above), and subscribes to schedule changes so it re-renders on a save.
+#+end_quote
+
+From §Key Behaviors / Modules and boundaries (verbatim):
+
+#+begin_quote
+- *~BearCub.Routines~* stays pure and DB-free. It gains ~in_force(versions, %DateTime{})~ — the version with the latest ~effective_at~ ≤ the instant; raises when there is none, because a silent default would re-score history — and ~day(version, %Date{})~. ~current/2~ and ~next_boundary/2~ take a resolved day entry instead of reading config. ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed; every caller receives values from a resolved version.
+#+end_quote
+
+From §Data Model / The seed (verbatim):
+
+#+begin_quote
+The ~BEAR_CUB_MORNING_WINDOW~, ~BEAR_CUB_EVENING_WINDOW~, ~BEAR_CUB_ROUTINE_BONUS~, ~BEAR_CUB_EARLY_BIRD_CUTOFF~ and ~BEAR_CUB_EARLY_BIRD_BONUS~ variables and their ~runtime.exs~ parsing and checks are deleted in the same change.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *LiveView, kiosk:* an edit while mounted flips the routine and the stake chip live; the earned badge keeps its priced ~R~ after an ~R~ edit; after repeated edits exactly one boundary timer is armed.
+#+end_quote
+
+* User Story
+
+As a kid, I need the badge on a routine I finished to keep showing the points I actually got, and the chip on a routine I haven't finished to show what finishing it would earn right now, so that the numbers on the screen always match my total.
+
+* Acceptance Criteria
+
+** [ ] A finished routine's completion badge shows the routine bonus, plus the early bird bonus when earned, as priced for that routine day. A morning earned before the routine bonus is raised keeps showing its original figure afterwards. (SC-1)
+** [ ] A failed routine's penalty indicator shows the routine bonus as priced at that day's first fail. (SC-1)
+** [ ] An unfinished routine's stake chip shows the routine bonus in force now, and changes on an already-open kiosk, with no reload, when the routine bonus is saved. (SC-3, SC-4)
+** [ ] The admin Today screen's routine figures follow the same split: priced for what a routine day has incurred, in force now for what is at stake. (SC-1, SC-3)
+** [ ] Routine timing and bonus amounts can no longer be set through server config or environment variables. The five ~BEAR_CUB_*~ routine variables and their ~runtime.exs~ parsing and checks are gone, and the server boots without them. (SC-3)
+
+# GAP: The excerpt says the five variables "and their ~runtime.exs~ parsing and checks are deleted in the same change" as the migration that lands the table (Story 01). Here they are deleted in this story instead, which removes the last config reader (~kiosk_components.ex~'s ~Routines.bonus/0~). Story 01 cannot delete them without also rewiring the derivation, routine resolution and kiosk figures that Stories 02–04 carry. The batch deploys as one unit, so production never runs with both the table and the variables. Human to confirm this reading of "the same change"; Story 01 carries the matching GAP.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 02, whose ~contribution~ internals the priced breakdown is built from, and on Story 03, whose ~:schedule_changed~ reload is what makes the stake chip change live.
+- Read ~docs/design-language.org~ before touching ~kiosk_components.ex~ (CLAUDE.md). This story changes where the badge numbers come from, not how they look; any visual change beyond the numbers is out of scope.
+- ~Routines.bonus/0~ is called at ~lib/bear_cub_web/components/kiosk_components.ex:88~ (completion badge, with ~early_bird_bonus/0~), ~:266~ (stake chip) and ~:287~ (penalty indicator). Each becomes an attr fed from ~KioskLive.load~: ~r~ / ~e~ from the version in force now for the stake, the priced breakdown for incurred figures. The component tests in ~test/bear_cub_web/components/kiosk_components_test.exs~ pass those attrs directly.
+- ~routine_day_pricing~ takes the version list with a convenience arity (Story 02's excerpt), so a kiosk render loads the history once, not once per kid per routine.
+- Removing ~Routines.bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ is the check that nothing still reads config. Once they are gone, ~mix compile --warnings-as-errors~ (in ~mix precommit~) catches any straggler. Then delete the five variables' parsing and boot-time checks from ~config/runtime.exs~, and any test of those checks. ~test/bear_cub/local_time_test.exs~ and ~chore_lifecycle_migration_test.exs~ reference the keys; check whether they need anything beyond deleting the reference. Update the ~Routines~ moduledoc, which still describes the ~:routine_windows~ config.
+- The backlog's "testing dev overrides" note (~docs/backlog.org~, the ~BEAR_CUB_MORNING_WINDOW=…~ recipe) goes stale here. Do not edit it in this story; record it as Deferred for the gate's backlog sweep.
+- The homeassistant repo's NixOS module sets none of these variables (§The seed), so the deploy needs no change there.
+- Visual review: stage a finished morning with ~Scenarios.early_bird/1~ or ~midway/2~, raise ~R~ by saving a version (e.g. from ~project_eval~), and screenshot the earned badge unchanged beside a stake chip showing the new ~R~.

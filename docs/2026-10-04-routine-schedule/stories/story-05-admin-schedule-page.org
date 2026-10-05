@@ -1,0 +1,74 @@
+#+title: Story 05 — The admin Schedule page
+#+date: 2026-10-04
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / Interfaces / Admin — Schedule page, the concurrent-saves bullet of §Key Behaviors / Failure modes, and the LiveView-admin bullet of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Admin — Schedule page (SC-2, SC-3)
+
+~live "/admin/schedule", ScheduleLive~, with a nav entry beside Chores / Kids / Calendars / Rewards. Phone-first. It is a single form over ~Schedules.change_version/1~ with insert-only saves — no CRUD — so it is shaped by hand over the generated form patterns rather than scaffolded as a resource ([[file:../decisions.org::#d125][D125]]).
+
+Top to bottom:
+
+1. *Bonuses* — Routine bonus (~R~) and Early bird bonus (~E~, hint "0 turns it off").
+2. *Seven day cards*, Monday → Sunday, each with Morning start–end, Evening start–end, Early bird cutoff as native ~type="time"~ inputs. A card that differs from Monday carries a quiet "custom" marker so a varying weekend is visible while scrolling.
+3. *One Save*, flash "Saved — in effect now". Errors render on the specific day card and field (e.g. "Cutoff must fall inside the morning window (05:00–12:00)").
+
+*"Copy to" on each day card:* weekdays / weekend / all days. It overwrites the other cards' fields /in the unsaved form only/; nothing is written until Save.
+
+*A save with no changes is a no-op:* no version, no broadcast, so the history stays meaningful.
+
+Not built: a version history view, future-dated changes, deletion or rollback (rolling back is saving the old values — a new version).
+#+end_quote
+
+From §Key Behaviors / Failure modes (verbatim):
+
+#+begin_quote
+- *Concurrent saves from two phones* both insert and the later ~effective_at~ wins. ~effective_at~ is unique at second precision, so a same-second collision fails the insert and the form says to try again. Accepted for one household.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *LiveView, admin:* save creates a version; per-field errors land on the right day card; Copy to weekdays / weekend / all; no-op save writes nothing.
+#+end_quote
+
+* User Story
+
+As a parent, I need a Schedule page in the phone admin where I can set the routine bonus, the early bird bonus, and each weekday's windows and cutoff, so that I can retune the routines (a later summer cutoff, a slower weekend) myself, with no deploy.
+
+* Acceptance Criteria
+
+** [ ] The admin navigation has a Schedule entry beside Chores, Kids, Calendars and Rewards, leading to the Schedule page. (SC-3)
+** [ ] The page shows, top to bottom: the routine bonus and the early bird bonus (the latter hinted "0 turns it off"), then seven day cards from Monday to Sunday. Each card has a morning start and end, an evening start and end, and an early bird cutoff as time inputs, all prefilled from the schedule in force. (SC-2, SC-3)
+** [ ] The page is usable on a phone. (SC-3)
+** [ ] Saving changed values records a new schedule in effect at once and shows "Saved — in effect now". (SC-3)
+** [ ] An invalid save shows each error on the specific day card and field it concerns, and records nothing. (SC-2)
+** [ ] A day card whose timings differ from Monday's carries a quiet "custom" marker. (SC-2)
+** [ ] Each day card's "Copy to" (weekdays, weekend, all days) overwrites the other cards' fields in the unsaved form only, and nothing is recorded until Save. (SC-2)
+** [ ] Saving with no changes records nothing. (SC-3)
+** [ ] A save that collides in the same second with another phone's save tells the parent to try again, rather than failing silently. (SC-3)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 01 only, for ~Schedules.change_version/1~, ~change/1~, the no-op rule and the same-second refusal. It is ordered last so that a save here has a visible effect on an open kiosk (Stories 03–04); it could move earlier without code changes.
+- Shaped by hand, not scaffolded (D125, overriding the repo's generator default for this page). Model it on the existing admin form LiveViews' patterns: ~to_form/2~, ~phx-change~ validate, ~phx-submit~ save, and the ~<.input>~ core component with ~type="time"~. Each day card is an ~inputs_for~ over the ~days~ embed, so changeset errors land on the right card and field without extra mapping.
+- The design's "05:00–12:00" error text is illustrative. The AC is that the error lands on the right card and field; the exact copy (and whether it interpolates that day's morning window) is implementation.
+- "Copy to" is a ~phx-click~ that rewrites the form params and re-validates. It never calls ~Schedules.change/1~. A LiveView test asserts no new version exists after a Copy.
+- The "custom" marker compares each card's five times with Monday's in the current form state, so it updates as the parent edits or copies.
+- "Usable on a phone" is the repo's existing admin standard (the phone-first admin reached over Tailscale). Hold it to the existing admin pages' layout conventions; this story sets no new breakpoint.
+- The local review viewport is the kiosk's. Check the page at a phone width as well during the review, but the screenshot at the declared viewport is the DoD evidence.
+- Visual review: add a small ~BearCub.Dev.Scenarios~ function that writes a version in force now whose weekend timings differ from Monday's, so ~/admin/schedule~ loads with the "custom" marker showing (CLAUDE.md: add a scenario when a feature adds a state worth looking at). Pair it with ~Scenarios.restore/0~ from Story 03. Trigger one validation error by hand on the staged page.

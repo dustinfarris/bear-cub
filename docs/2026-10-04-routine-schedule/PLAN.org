@@ -1,0 +1,28 @@
+#+title: PLAN — routine-schedule
+#+date: 2026-10-04
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1 — Routine schedule
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+# Order: the data layer first, additive and read by nothing. Then the derivation moves onto it, with
+# the domain tests' config pins converted alongside. Then routine resolution and the live
+# ~:schedule_changed~ path move onto it, together with the default LiveView test pin and the
+# scenario rewrite: once windows come from versions, every ~put_env~ pin and scenario goes inert at
+# once. Then the kiosk figures, which removes the last config reader and so retires the config
+# (see the GAP in Stories 01 and 04). The admin page depends only on Story 01 and could move
+# earlier; it is last so that a save has a visible effect on an open kiosk.
+
+** TODO [[file:stories/story-01-schedule-versions.org][Story 01 — The schedule versions table, version 0, and the Schedules context]]
+** TODO [[file:stories/story-02-priced-derivation.org][Story 02 — Each points term priced by the schedule in force at its instant]]
+** TODO [[file:stories/story-03-kiosk-follows-schedule.org][Story 03 — The kiosk and Today screen follow the schedule, live]]
+** TODO [[file:stories/story-04-priced-figures-config-retired.org][Story 04 — Kiosk figures priced or live, and routine config retired]]
+** TODO [[file:stories/story-05-admin-schedule-page.org][Story 05 — The admin Schedule page]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

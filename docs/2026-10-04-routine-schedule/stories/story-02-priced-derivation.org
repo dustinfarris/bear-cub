@@ -1,0 +1,120 @@
+#+title: Story 02 — Each points term priced by the schedule in force at its instant
+#+date: 2026-10-04
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model / ~routine_day_status/3~ gains ~first_failed_at~, §Key Behaviors / Pricing and / SQL gathers facts, the ~Chores~ bullet of §Key Behaviors / Modules and boundaries, the Tests paragraph of §Key Behaviors / Dev scenarios and test infrastructure, and the Pricing, SC-5 and hygiene bullets of §Key Behaviors / Testing. Canon from §Overview restated where it frames the derivation.
+
+From §Overview (verbatim, the canon this story changes):
+
+#+begin_quote
+- *D39 / D40 — the routine-day contribution.* ~+R~ when a non-empty roster is fully live, ~−R~ (once) when any completion that day was failed. Shape unchanged; only the source of ~R~ changes.
+- *[[file:../decisions.org::#d72][D72]] / [[file:../decisions.org::#d89][D89]] — the grouped derivation (~earnings_by_kid/1~) agrees pointwise with the per-kid one (~earnings/2~), and ~contribution/4~ is the single place routine-day booleans become points.* That single place is where pricing goes.
+- *[[file:../decisions.org::#d100][D100]] — the early bird.* ~+E~ on a morning that is earned, unfailed, and whose /last live/ completion (~last_completed_at~) landed strictly before the cutoff in local wall-clock time; the UTC→local shift happens in Elixir because SQLite has no timezone tables. Its sentence "re-derivation against current config is the established doctrine" is superseded by [[file:../decisions.org::#d121][D121]].
+- *[[file:../decisions.org::#d81][D81]] — the routine-day roster is the chores live on that day*, so archiving a chore drops it from the archive day itself.
+#+end_quote
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** ~routine_day_status/3~ gains ~first_failed_at~
+
+No column changes on ~completions~. The per-routine-day status map gains a fifth key, ~first_failed_at~ — the earliest ~failed_at~ among that routine-day's completions, ~nil~ when never failed — selected as ~MIN(failed_at)~ in the same aggregate that already yields ~last_completed_at~ ([[file:../decisions.org::#d122][D122]]). ~Chores.standing/2~ ignores the new key.
+
+  ** Pricing: each term at the instant it came into being (SC-1, SC-4)
+
+A versions table keyed by /date/ fails SC-1 on a same-day edit: a morning earned at 07:30 under ~R = 5~ would re-score when ~R~ is raised at 10:00 that day; making the edit wait until tomorrow fails SC-3. So versions carry an instant, and each term resolves against the version in force at /its/ instant ([[file:../decisions.org::#d121][D121]]):
+
+| term | instant it is priced at                                             | what is read from that version                                |
+|------+---------------------------------------------------------------------+---------------------------------------------------------------|
+| ~+R~ | ~last_completed_at~ — the last live tap on the day's roster         | ~routine_bonus~                                               |
+| ~+E~ | ~last_completed_at~ (same instant as ~+R~)                          | the cutoff for ~local_date~'s weekday, and ~early_bird_bonus~ |
+| ~−R~ | ~first_failed_at~ — the earliest ~failed_at~ that routine-day       | ~routine_bonus~                                               |
+
+The weekday is always that of the routine-day's ~local_date~. "Early" and "how much" for the early bird come from the same version, so the verdict and the amount are judged by the same rules.
+
+Consequences:
+
+- An earned day failed after ~R~ changed, then redone: the redo is a new last live tap, so ~+R~ re-prices at the new value and the fail costs the new value — net 0, as today.
+- An earned day failed after ~R~ changed and /not/ redone: the day is no longer complete, so ~+R~ drops out and the day nets ~−R~ at the new value — the same shape as today, at the price in force when the fail happened.
+- An undo-and-redo after an edit re-earns at the new ~R~ (and is re-judged against the new cutoff). The kid's total moves by the difference at the moment of the re-tap; nothing they already held moved.
+- ~last_completed_at~ is "the last live tap on the day's roster", which is /usually/ the moment the day became earned but not always. Under [[file:../decisions.org::#d81][D81]] archiving a chore drops it from that day's roster: if it held the last tap, ~last_completed_at~ falls back to an earlier tap and ~+R~ / ~+E~ re-price against the version in force then; an archive that completes the roster with no new tap is priced at the existing last tap. Accepted: the trigger is an archive, not a schedule edit, and D81 already lets an archive change that day's result, so SC-1 (which is about schedule changes) is not engaged.
+
+  ** SQL gathers facts; Elixir prices them in one place
+
+~contribution/4~ becomes ~contribution(versions, routine, local_date, facts)~ and is still the single place routine-day facts become points, called by both derivation routes ([[file:../decisions.org::#d122][D122]]):
+
+#+begin_src elixir
+# +R if earned, -R if failed, +E if early — each resolved against
+# the version in force at its own instant (D121).
+defp contribution(versions, routine, local_date, facts) do
+  earn = facts.last_completed_at && Routines.in_force(versions, facts.last_completed_at)
+  fail = facts.first_failed_at && Routines.in_force(versions, facts.first_failed_at)
+  early? = early_bird?(routine, facts.earned?, facts.failed?, facts.last_completed_at,
+                       earn && Routines.day(earn, local_date))
+
+  if(facts.earned?, do: earn.routine_bonus, else: 0) +
+    if(facts.failed?, do: -fail.routine_bonus, else: 0) +
+    if(early?, do: earn.early_bird_bonus, else: 0)
+end
+#+end_src
+
+(Illustrative shape, not a signature contract: the constraint is one function, both routes, each term at its own instant.)
+
+~earnings/2~ and ~earnings_by_kid/1~ each call ~Schedules.versions/0~ once and pass the list down. Public per-routine-day functions (~routine_day_contribution/3~, the kiosk pricing helper) take the version list as an argument (with a convenience arity that fetches it), so a whole render loads the history once rather than per call. [[file:../decisions.org::#d72][D72]]'s "two queries regardless of history" becomes three, still O(1); the versions table grows by one row per parent save.
+#+end_quote
+
+From §Key Behaviors / Modules and boundaries (verbatim):
+
+#+begin_quote
+- *~BearCub.Chores~* depends on ~Schedules~ (scheduling is part of the points core). ~Schedules~ depends on nothing. ~BearCub.Points~ is unchanged.
+#+end_quote
+
+From §Key Behaviors / Dev scenarios and test infrastructure (verbatim, the Tests paragraph):
+
+#+begin_quote
+*Tests.* Migrations run in the test DB, so every test starts with version 0. The ~put_windows~ / ~morning_active~ / ~evening_active~ idioms become version inserts (effective one second before now) inside the sandbox; the real clock still runs ([[file:../decisions.org::#d119][D119]]).
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *Pricing* — the [[file:../decisions.org::#d72][D72]] pointwise agreement test between ~earnings/2~ and ~earnings_by_kid/1~, extended over a fixture with: an ~R~ change between earn and fail; between earn and redo; a cutoff change on one weekday only; a version with ~E = 0~; and ~R~ raised after an earn leaving that earn's total unchanged (SC-1). *This is the most important test in the set*: it is the only thing that catches the two routes resolving a term at different instants.
+- *SC-5:* ~earnings_by_kid/1~ over a fixture history equals a hand-computed figure at ~R = 5~ / ~E = 2~ / cutoff 07:45 with only version 0 present.
+- *Test hygiene:* fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]].
+#+end_quote
+
+* User Story
+
+As a kid, I need the points I earned on a routine to stay exactly what they were when I earned them, so that my total and my shop balance don't move when a parent changes the rules.
+
+* Acceptance Criteria
+
+** [ ] A routine day earned under one routine bonus keeps that bonus in the kid's total and shop balance after the bonus is raised later the same day. (SC-1)
+** [ ] Changing either bonus or any cutoff leaves every kid's total and shop balance unchanged for points already earned. (SC-1)
+** [ ] A routine day's earn is priced by the schedule in force at the last live tap on that day's roster. (SC-4)
+** [ ] The early bird is judged against the cutoff for the routine day's own weekday and paid at the early bird bonus of the same schedule, the one in force at that last live tap. A cutoff changed on one weekday changes no other weekday's verdict. (SC-2, SC-4)
+** [ ] No early bird is paid on a morning priced under a schedule whose early bird bonus is 0. (SC-4)
+** [ ] A failed routine day costs the routine bonus in force at its first fail. (SC-1, SC-4)
+** [ ] An earned day failed after the routine bonus changed and then redone nets zero. Failed and not redone, it nets minus the bonus in force when the fail happened. (SC-1, SC-4)
+** [ ] An undo and redo after a schedule change re-earns at the new routine bonus and is re-judged against the new cutoff. Nothing earned before the redo moves. (SC-1, SC-4)
+** [ ] A kid's total is the same figure computed one kid at a time or for the whole roster at once, over a history that combines all of the above: a bonus change between earn and fail, between earn and redo, a single-weekday cutoff change, an early bird bonus of 0, and a bonus raised after an earn. (SC-1)
+** [ ] With only version 0 present, a fixture history's totals equal a figure computed by hand at a routine bonus of 5, an early bird bonus of 2 and a 07:45 cutoff, so history from before launch scores exactly as it did. (SC-5)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 01, because pricing reads ~Schedules.versions/0~ and resolves through ~Routines.in_force/2~ and ~Routines.day/2~.
+- Scope is the derivation in ~BearCub.Chores~: ~routine_day_status/3~'s aggregate, ~contribution~, ~early_bird?~ (public ~early_bird?/2~ and the private clauses around ~lib/bear_cub/chores.ex:533–561~), ~routine_day_contribution/3~, ~earnings/2~ and ~earnings_by_kid/1~. After this story ~Chores~ reads no ~Routines.bonus/0~, ~early_bird_cutoff/0~ or ~early_bird_bonus/0~. The functions themselves stay until Story 04, because ~kiosk_components.ex~ still calls ~Routines.bonus/0~ for display. Version 0 and config agree, so the kiosk's figures stay correct in between.
+- The kiosk pricing helper (~routine_day_pricing/3~) belongs to Story 04, where the kiosk consumes it. Shape ~contribution~ so that Story 04 can build it from the same internals without a second pricing path.
+- *Convert the domain tests' config pins in this story.* ~test/bear_cub/chores_test.exs~, ~points_test.exs~, ~rewards_test.exs~ and ~points_redemptions_test.exs~ pin ~:routine_bonus~, ~:early_bird_cutoff~ and ~:early_bird_bonus~ with ~Application.put_env~. Once ~Chores~ stops reading config those pins silently do nothing, and a test asserting a non-default value either fails or, worse, passes for the wrong reason. Each becomes a version insert at a fixed instant before the fixture's completions. Grep for ~put_env~ in those files and leave no routine-bonus or cutoff pin behind.
+- The agreement test is the one with teeth (excerpt). Carry forward the effort-multiplier Story 02 near-miss recorded in its PLAN LOGBOOK: a fixture whose terms cancel proves nothing. Assert each route against a hand-derived figure, and confirm that figure differs from what pricing against the current version alone would give. Otherwise a route resolving every term at "now" passes.
+- ~early_bird?~ currently converts ~last_completed_at~ from UTC to local in Elixir (D100). Keep that shift; only the cutoff's source changes, to the in-force version's day entry for ~local_date~'s weekday.
+- ~Chores.standing/2~ ignores ~first_failed_at~ (excerpt). Check that adding the key to the status map breaks no pattern match there.

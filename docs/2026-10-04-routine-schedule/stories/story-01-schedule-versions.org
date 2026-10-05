@@ -1,0 +1,120 @@
+#+title: Story 01 — The schedule versions table, version 0, and the Schedules context
+#+date: 2026-10-04
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model (the ~schedule_versions~ table, validation, the seed), §Key Behaviors / Modules and boundaries (~BearCub.Schedules~, and ~Routines.in_force/2~ / ~day/2~), the broadcast sentence of §Key Behaviors / Immediate effect, the concurrent-saves bullet of §Key Behaviors / Failure modes, the ~Routines~ and ~Schedules~ bullets of §Key Behaviors / Testing, and the CLAUDE.md bullet of §Documents this initiative updates.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** ~schedule_versions~: one append-only table, weekday map embedded as JSON
+
+| column             | type                 | notes                                                     |
+|--------------------+----------------------+-----------------------------------------------------------|
+| ~id~               | integer              |                                                           |
+| ~effective_at~     | ~utc_datetime~       | unique; the instant this version took over                |
+| ~routine_bonus~    | integer, ≥ 0         | ~R~                                                       |
+| ~early_bird_bonus~ | integer, ≥ 0         | ~E~; ~0~ disables the early bird, as today                |
+| ~days~             | JSON (~embeds_many~) | exactly seven entries, one per ISO weekday 1–7            |
+| ~inserted_at~      | ~utc_datetime~       |                                                           |
+
+Each ~days~ entry: ~weekday~, ~morning_start~, ~morning_end~, ~evening_start~, ~evening_end~, ~early_bird_cutoff~ (all wall-clock ~Time~ except ~weekday~).
+
+*Append-only* ([[file:../decisions.org::#d120][D120]]). Rows are never updated or deleted. Every save inserts a full row — all seven days and both bonuses, copied forward where unchanged. One edited cutoff costs a whole row, and that is accepted: each version is self-contained and resolution is a single lookup. The weekday entries are embedded JSON rather than a normalized child table because they are only ever read with their version, and an embed lets one changeset validate the whole schedule.
+
+  ** Validation moves from boot to the changeset
+
+Today ~config/runtime.exs~ raises at boot on a malformed window or a cutoff outside the morning. Those rules become per-day changeset errors on the embed:
+
+- each window's start is strictly before its end (no window spans midnight);
+- the morning ends no later than the evening starts;
+- the cutoff falls strictly inside the morning window.
+
+On the version: ~routine_bonus~ and ~early_bird_bonus~ are integers ≥ 0; ~days~ has exactly seven entries with weekdays 1–7, each once.
+
+  ** The seed: version 0 is the past (SC-5)
+
+One migration creates the table and inserts *version 0* with ~effective_at = 1970-01-01T00:00:00Z~ and, on all seven days: morning 05:00–17:00, evening 17:00–23:00, cutoff 07:45; ~R = 5~, ~E = 2~.
+
+These are production's actual values: the deployed NixOS module (~nixos/bear-cub.nix~ in the homeassistant repo) sets none of the ~BEAR_CUB_*~ routine variables, so production has always run the code defaults. Because version 0 predates every completion, every historical term resolves against exactly the numbers it resolves against today.
+
+The seed is schema-independent: version 0 is written with ~Repo.insert_all/3~ on the table name with plain maps and a literal JSON ~days~ value (times as ISO ~"HH:MM:SS"~ strings, the form the embed serialises ~Time~ to), never through the ~ScheduleVersion~ module, so a later schema change cannot break the migration on a fresh database. A test loads version 0 through the schema and asserts it round-trips.
+
+The ~BEAR_CUB_MORNING_WINDOW~, ~BEAR_CUB_EVENING_WINDOW~, ~BEAR_CUB_ROUTINE_BONUS~, ~BEAR_CUB_EARLY_BIRD_CUTOFF~ and ~BEAR_CUB_EARLY_BIRD_BONUS~ variables and their ~runtime.exs~ parsing and checks are deleted in the same change.
+#+end_quote
+
+From §Key Behaviors / Modules and boundaries (verbatim):
+
+#+begin_quote
+- *~BearCub.Schedules~* (new context, persistence): ~versions/0~ (full history, ordered by ~effective_at~), ~current/0~, ~change_version/1~ (form changeset, prefilled from current), ~change/1~ (insert effective now, then broadcast), ~subscribe/0~. The "now" for ~change/1~ is taken at the context boundary like every other write's timestamp; no domain function reads the clock.
+- *~BearCub.Routines~* stays pure and DB-free. It gains ~in_force(versions, %DateTime{})~ — the version with the latest ~effective_at~ ≤ the instant; raises when there is none, because a silent default would re-score history — and ~day(version, %Date{})~. ~current/2~ and ~next_boundary/2~ take a resolved day entry instead of reading config. ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed; every caller receives values from a resolved version.
+- *~BearCub.Chores~* depends on ~Schedules~ (scheduling is part of the points core). ~Schedules~ depends on nothing. ~BearCub.Points~ is unchanged.
+#+end_quote
+
+From §Key Behaviors / Immediate effect (verbatim):
+
+#+begin_quote
+~Schedules.change/1~ broadcasts ~:schedule_changed~ on a ~"schedules"~ topic after a successful insert.
+#+end_quote
+
+From §Key Behaviors / Failure modes (verbatim):
+
+#+begin_quote
+- *No version at all* means a broken migration: ~Routines.in_force/2~ raises rather than defaulting.
+- *An instant before version 0* cannot occur; version 0 is at the epoch.
+- *Concurrent saves from two phones* both insert and the later ~effective_at~ wins. ~effective_at~ is unique at second precision, so a same-second collision fails the insert and the form says to try again. Accepted for one household.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *~Routines~ (pure):* ~in_force/2~ exactly at an ~effective_at~ and one second before; raises with no versions; ~day/2~ by weekday; ~current/2~ and ~next_boundary/2~ against a per-weekday entry, including a Friday→Saturday midnight with different timings.
+- *~Schedules~:* each day-changeset rule; the seven-entry requirement; no-op save; broadcast on save; insert-only (no update path exists); version 0 round-trips through the schema.
+- *Test hygiene:* fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]].
+#+end_quote
+
+From §Key Behaviors / Documents this initiative updates (verbatim):
+
+#+begin_quote
+- *CLAUDE.md*, by the story that lands the table: the invariant "Routines are app constants … Windows live in ~runtime.exs~ (env-overridable)" is reworded to: routines are constants; their timings and bonuses are append-only data in ~schedule_versions~, and each points term is priced by the version in force at its instant.
+#+end_quote
+
+* User Story
+
+As a parent, I need the routine timing and bonus amounts kept as a history of schedules, each in force from the moment it was saved, so that changing the rules later can never reach back and change what the kids already earned.
+
+* Acceptance Criteria
+
+** [ ] A freshly migrated database holds exactly one schedule, version 0, in force from the epoch. On every day of the week it has a morning of 05:00–17:00, an evening of 17:00–23:00 and an early bird cutoff of 07:45, with a routine bonus of 5 and an early bird bonus of 2. It loads through the schema with those values intact. (SC-5)
+** [ ] Saving a schedule records a new version in force from the moment of the save. Every earlier version stays exactly as it was, and no path exists to edit or delete a version. (SC-1, SC-3)
+** [ ] Each day of the week can carry its own morning window, evening window and early bird cutoff, different from every other day's. (SC-2)
+** [ ] A save is refused, with the error attached to the offending day and field, when a window's start is not strictly before its end, when the morning ends after the evening starts, or when the cutoff is not strictly inside the morning window. (SC-2)
+** [ ] A save is refused when either bonus is negative, or when the schedule lacks exactly one entry for each of the seven weekdays. (SC-2, SC-3)
+** [ ] Saving a schedule identical to the one in force records nothing and notifies no one. (SC-3)
+** [ ] A successful save notifies subscribers that the schedule changed. (SC-3)
+** [ ] A second save in the same second as the previous one is refused rather than overwriting it. (SC-1)
+** [ ] For any instant, the schedule in force is the version with the latest effective time at or before that instant: a version applies from exactly its effective instant, not one second earlier. Resolving against no versions at all raises rather than falling back to a default. (SC-1, SC-4)
+** [ ] The day's timings resolved for a date come from the entry for that date's weekday. (SC-2, SC-4)
+** [ ] CLAUDE.md's "Routines are app constants" invariant now says that routines are constants, their timings and bonuses are append-only data in ~schedule_versions~, and each points term is priced by the version in force at its instant. (SC-3)
+
+# GAP: The excerpt's seed section says the five ~BEAR_CUB_*~ routine variables "and their ~runtime.exs~ parsing and checks are deleted in the same change" as the migration. This story lands the table additively and leaves the config in place, because config is still read by ~BearCub.Chores~, ~kiosk_components.ex~, ~KioskLive~, ~Admin.TodayLive~ and ~BearCub.Dev.Scenarios~. Deleting it here would mean rewiring all of them in this story. The deletion is placed in Story 04, which removes the last reader; the batch ships as one deploy, so production never runs with both. Human to confirm that reading of "the same change", or rule that the deletion must land with this migration.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story is additive. Nothing reads the new table yet, and every existing caller keeps reading config until the stories that move them: Story 02 for the derivation, Story 03 for routine resolution, Story 04 for the kiosk figures and the config deletion. Config and version 0 hold the same values, so the app behaves identically throughout.
+- From the ~Routines~ testing bullet, this story covers ~in_force/2~ and ~day/2~ only. ~current/2~ and ~next_boundary/2~ taking a day entry is Story 03, and removing ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ is Story 04.
+- Scaffold per CLAUDE.md: ~mix phx.gen.context Schedules ScheduleVersion schedule_versions ...~, then reshape. Drop the generated update and delete functions, since insert-only is the design and "no update path exists" is a tested property. Add the ~embeds_many~ day schema by hand, since the generator has no embed support. The seed is hand-written in the migration (~Repo.insert_all/3~ on the table name, literal JSON ~days~), never through the schema module.
+- The no-op rule is stated in full in DESIGN §Screens / Admin — Schedule page ("no version, no broadcast"). Story 05 excerpts it, and this story implements it at the context. It is not excerpted here because no screen is built in this story. ~change_version/1~ prefills from ~current/0~. The no-op check compares the submitted schedule against the one in force; how it compares (changeset ~changes~ against current, or value equality on the normalised days and bonuses) is implementation.
+- The same-second refusal comes from the unique index on ~effective_at~ at ~utc_datetime~ precision. Surface it as a changeset error with ~unique_constraint/2~, not a raised exception, so Story 05's form can say "try again".
+- ~Schedules~ depends on nothing; check that no ~Chores~, ~Calendars~ or ~Points~ alias creeps in.
+- Domain tests use fixed instants for every version (excerpt, test hygiene). A test that inserts a version at a hand-chosen ~effective_at~ can go through ~Repo.insert!~ on the struct where the changeset's "now" would get in the way.
+- The CLAUDE.md reword edits the existing first bullet under "Design invariants (do not violate)", keeping "(D8)" and adding the new D-number citation per the repo's style there. It is a code-adjacent edit to a convention file, so it rides in this story's code commit, not a chain-document commit.

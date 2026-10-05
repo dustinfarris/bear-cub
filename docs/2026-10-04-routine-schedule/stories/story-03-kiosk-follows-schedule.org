@@ -1,0 +1,106 @@
+#+title: Story 03 — The kiosk and Today screen follow the schedule, live
+#+date: 2026-10-04
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Key Behaviors / Immediate effect, the ~Routines~ bullet of §Key Behaviors / Modules and boundaries, the DST bullet of §Key Behaviors / Failure modes, §Key Behaviors / Dev scenarios and test infrastructure, §Screens / Interfaces / Admin — Today screen (its routine-resolution and subscription halves), and the ~Routines~ and LiveView-kiosk bullets of §Key Behaviors / Testing.
+
+Excerpt (verbatim):
+
+#+begin_quote
+  ** Immediate effect (SC-3, SC-4)
+
+~Schedules.change/1~ broadcasts ~:schedule_changed~ on a ~"schedules"~ topic after a successful insert. ~KioskLive~ and admin ~TodayLive~ subscribe at mount beside their existing ~Chores~ / ~Rewards~ subscriptions.
+
+On ~:schedule_changed~ the kiosk reloads — re-resolving the version in force now and today's day entry — and re-arms its boundary timer.
+
+*The boundary timer keeps its ref* ([[file:../decisions.org::#d124][D124]]). ~schedule_boundary/2~ today fires ~Process.send_after~ and discards the ref; each ~:boundary~ arms the next. This feature is the first thing that arms it from anywhere else, and a second arm would start a second chain that never ends. The ref is stored in an assign and cancelled before every re-arm.
+
+What a mid-day edit does, by kind:
+
+- a *window* edit changes what the kiosk shows from now on — the routine can flip immediately; no derivation reads windows;
+- a *cutoff* edit affects any morning whose last live tap lands after the edit; a morning already finished keeps its verdict;
+- an *~R~ / ~E~* edit affects terms that come into being from now on: an earn, a redo, a fail.
+
+Midnight stays a boundary, so a new weekday's timings take over with no special case.
+#+end_quote
+
+From §Key Behaviors / Modules and boundaries (verbatim):
+
+#+begin_quote
+- *~BearCub.Routines~* stays pure and DB-free. It gains ~in_force(versions, %DateTime{})~ — the version with the latest ~effective_at~ ≤ the instant; raises when there is none, because a silent default would re-score history — and ~day(version, %Date{})~. ~current/2~ and ~next_boundary/2~ take a resolved day entry instead of reading config. ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed; every caller receives values from a resolved version.
+#+end_quote
+
+From §Key Behaviors / Failure modes (verbatim):
+
+#+begin_quote
+- *DST*: windows and cutoffs stay wall-clock per weekday and are resolved through the existing ~local_datetime/3~ gap/fold handling; version instants are UTC, so a version's start is unambiguous.
+#+end_quote
+
+From §Screens / Interfaces (verbatim):
+
+#+begin_quote
+  ** Admin — Today screen
+
+Uses the same resolution as the kiosk for its routine sections (the active routine from today's day entry; routine figures priced as above), and subscribes to schedule changes so it re-renders on a save.
+#+end_quote
+
+From §Key Behaviors (verbatim):
+
+#+begin_quote
+  ** Dev scenarios and test infrastructure
+
+*Scenarios* ([[file:../decisions.org::#d126][D126]]). ~BearCub.Dev.Scenarios.open/1~ and ~cutoff/1~ stop calling ~Application.put_env~ and instead insert a version effective now, copied from current with only the timing changed — a real write, reaching kiosks through the new broadcast. ~open/1~ fakes the other routine with a zero-length window, which the changeset rightly refuses, so scenarios insert via ~Repo.insert!~ on the struct (dev/test-only module). "Restart the server to get the real windows back" no longer holds, since the windows are in the DB: the first scenario write in a VM stashes the id of the version it displaced in ~:persistent_term~ (later scenario writes leave the stash alone), and a new ~Scenarios.restore/0~ inserts a copy of that stashed version effective now and clears the stash. No column marks scenario versions. ~ensure_config/2~'s routine keys go.
+
+*Tests.* Migrations run in the test DB, so every test starts with version 0. The ~put_windows~ / ~morning_active~ / ~evening_active~ idioms become version inserts (effective one second before now) inside the sandbox; the real clock still runs ([[file:../decisions.org::#d119][D119]]).
+
+*The LiveView test case pins a known version by default*, with an explicit opt-out for tests that need the real windows ([[file:../decisions.org::#d126][D126]]). This absorbs the backlog item "LiveView test case should pin ~:routine_windows~ by default"; its mechanism is a version insert in the shared setup rather than a ~put_env~. The ~docs/learnings.org~ [2026-07-17] entry is revised to point at the mechanism by the story that lands it, not before.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- *~Routines~ (pure):* ~in_force/2~ exactly at an ~effective_at~ and one second before; raises with no versions; ~day/2~ by weekday; ~current/2~ and ~next_boundary/2~ against a per-weekday entry, including a Friday→Saturday midnight with different timings.
+- *LiveView, kiosk:* an edit while mounted flips the routine and the stake chip live; the earned badge keeps its priced ~R~ after an ~R~ edit; after repeated edits exactly one boundary timer is armed.
+#+end_quote
+
+* User Story
+
+As a parent, I need the kiosk to open and close routines by the schedule I set for each weekday, and to switch the moment I save a change, so that the kids' screen matches the rules I just set without anyone touching the tablet.
+
+* Acceptance Criteria
+
+** [ ] The kiosk shows the routine whose window is open now, by today's weekday entry in the schedule in force. Outside both windows it shows the routine that opens next, as today. (SC-2, SC-4)
+** [ ] Saving a window change while a kiosk is open flips that kiosk's routine at once, with no reload, when the new windows put now in the other routine. (SC-3, SC-4)
+** [ ] After any number of schedule saves while a kiosk is open, it still re-renders exactly once at each routine boundary, because exactly one boundary timer is armed. (SC-3)
+** [ ] At midnight the new weekday's timings take over with no reload. Given a Saturday entry that differs from Friday's, the next boundary after Friday's last edge is midnight, and from then on Saturday's windows govern. (SC-2, SC-4)
+** [ ] Window edges that fall in a DST gap or fold still resolve to a real instant, so the boundary timer always fires. (SC-2, SC-4)
+** [ ] The admin Today screen shows its active routine from today's weekday entry in the schedule in force, and re-renders when a schedule is saved. (SC-3, SC-4)
+** [ ] ~Scenarios.open/1~ and ~Scenarios.cutoff/1~ stage their state by writing a schedule version in force now, which reaches an already-open kiosk without a restart. ~Scenarios.restore/0~ brings back the schedule that was in force before the first scenario write. (SC-3, SC-4)
+** [ ] Every LiveView test runs under a known schedule by default, with an explicit opt-out for a test that needs the real windows. The suite's result does not depend on the time of day or the weekday it runs. (SC-4)
+** [ ] The ~docs/learnings.org~ [2026-07-17] entry points at the default schedule pin as the mechanism. (SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 01, for ~Schedules.subscribe/0~, ~current/0~ and the broadcast, and for ~Routines.in_force/2~ and ~day/2~. It is independent of Story 02, but ordered after it so that the domain test conversions land first.
+- *Scope is routine resolution and live effect, not figures.* The stake chip and the earned/penalty badges are Story 04. The LiveView-kiosk testing bullet's "flips … the stake chip live" and "earned badge keeps its priced ~R~" halves, and the Today screen's "routine figures priced as above", are Story 04's ACs. ~Routines.windows/0~ stays defined until Story 04 deletes it, but nothing under ~lib/~ calls it after this story.
+- ~Routines.current/2~ and ~next_boundary/2~ change to take a resolved day entry in place of the ~windows~ default argument. Their callers are ~KioskLive~ (~lib/bear_cub_web/live/kiosk_live.ex:392~ and ~schedule_boundary/2~ around line 799) and ~Admin.TodayLive~ (line 141). Every ~:boundary~ re-resolves the version and the day entry for the /new/ local date; resolving only at mount would leave Friday's timings governing Saturday.
+- *D124's ref.* Store the ref from ~Process.send_after~ in an assign, and cancel it before every arm: at mount, on ~:boundary~, on ~:schedule_changed~. The "exactly one timer" test can count via ~Process.read_timer/1~ on the stored ref, plus a check that no stray ~:boundary~ arrives. Any approach that proves a second chain is not running is fine.
+- *These three pieces belong together on purpose.* After this story the kiosk reads windows from versions, so every ~put_env(:routine_windows, …)~ in tests and in ~Scenarios~ becomes a silent no-op at once. Without the default pin and the idiom conversion, the after-23:00 failures recorded in ~docs/learnings.org~ [2026-07-17] come back (the effort-multiplier Batch 1 gate saw 16 of 730 fail). Without the scenario rewrite, the visual review item above cannot be staged.
+- The idiom conversion is large: about 128 references in ~test/bear_cub_web/live/kiosk_live_test.exs~, plus helpers in ~admin/chore_live_test.exs~, ~admin/today_live_test.exs~, ~admin/kid_live_test.exs~, ~admin/reward_live_test.exs~, ~components/kiosk_components_test.exs~ and ~test/bear_cub/dev/scenarios_test.exs~. Convert the helpers (~put_windows/2~, ~morning_active/0~, ~evening_active/0~, ~morning_active_delay/0~) to version inserts first, and most call sites follow without edits.
+- *Two traps for the default pin:*
+  - ~effective_at~ is unique at second precision. A default pin at now − 1 s followed by a test's own insert "one second before now" in the same second collides. Have test helpers pick an instant strictly after the latest existing version, or have the default pin sit further back. Back-to-back scenario calls in one second hit the same wall.
+  - The default pin should give all seven days identical timings. Tests read the real clock (D119), so a pin that varies by weekday makes results depend on the day the suite runs. A test for per-weekday behaviour inserts its own version.
+- The default pin lives in the LiveView test case's shared setup: ~test/support/conn_case.ex~, which delegates to ~BearCub.DataCase.setup_sandbox/1~. The opt-out is a tag; the name is implementation.
+- Scenarios: ~open/1~'s zero-length "other" window is refused by the changeset, hence ~Repo.insert!~ on the struct. ~Repo.insert!~ bypasses ~Schedules.change/1~, so it does not broadcast by itself. Scenarios must broadcast ~:schedule_changed~ themselves (or call a ~Schedules~ function that does), or the excerpt's "reaching kiosks through the new broadcast" does not hold. ~ensure_config/2~'s routine keys (~:early_bird_cutoff~, ~:early_bird_bonus~ in ~early_bird/1~) go. Update the scenarios moduledoc, and CLAUDE.md's Project guidelines bullet on scenarios, which mentions config overrides and restarts. Run them through Tidewave ~project_eval~ for the review.
+- The learnings revision updates the existing entry rather than adding a new one (CLAUDE.md, ~docs/learnings.org~ rules). The backlog's default-pin entry is already marked as claimed by this initiative and leaves at initiative close. Leave it alone here.
+- Visual review: stage a routine flip with ~Scenarios.open/1~ against an open kiosk at the declared viewport, then ~Scenarios.restore/0~.
