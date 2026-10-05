@@ -41,7 +41,13 @@ config :bear_cub,
 # treatment (never in git, never logged); on the server the NixOS module
 # generates the topic into the state directory on first boot, the same
 # way it makes SECRET_KEY_BASE, and the admin Notifications page shows it.
-config :bear_cub, :ntfy_url, System.get_env("BEAR_CUB_NTFY_URL")
+#
+# Not in test: .envrc exports a dev topic, and a set URL there makes every
+# chore completion spawn a push task with no Req.Test stub. Tests that
+# want pushes set the URL themselves.
+if config_env() != :test do
+  config :bear_cub, :ntfy_url, System.get_env("BEAR_CUB_NTFY_URL")
+end
 
 port = String.to_integer(System.get_env("PORT", "4000"))
 
