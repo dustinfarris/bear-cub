@@ -540,3 +540,45 @@ Ruled by the human at Story 04's close-out. Refines [[#d123][D123]]: once a rout
 :END:
 
 Ruled by the human at the routine-schedule Batch 1 gate, keeping what Story 03 built by analogy with [[#d65][D65]]. On ~:schedule_changed~ ~KioskLive~ cancels the shop's idle timers and clears ~:rewards~ and ~:counting~ before it reloads and re-arms the boundary timer, exactly as ~:boundary~ does. A save can flip the routine under an open column, and one rule for "the kiosk re-resolved its schedule" is simpler than two. Rejected — keeping the shop open across a save: a reader of "the kiosk reloads" might expect it, but the column it was opened over may no longer be the one on screen. A parent saving while a kid shops is rare in one household. → routine-schedule/Key Behaviors (immediate effect).
+
+* D132 (2026-10-05) — Night Owl cutoffs embed per weekday per kid inside each ~DayEntry~; the bonus ~N~ is a column on the version
+:PROPERTIES:
+:CUSTOM_ID: d132
+:END:
+
+Each ~DayEntry~ in a schedule version gains ~night_owl_cutoffs~, an ~embeds_many~ of ~{kid_id, cutoff}~, and ~schedule_versions~ gains ~night_owl_bonus~ (integer ≥ 0, default 0). A cutoff is a property of a day (a late-practice night), it is validated against that day's evening window in the same embed, the admin edits one card per day entry, and "Copy to" already copies a whole day. Because cutoffs and ~N~ live in the append-only version ([[#d120][D120]]), per-instant pricing ([[#d121][D121]]) keeps earned Night Owls fixed with no new machinery. The migration adds the column only; an existing ~days~ value without the key loads as no cutoffs, so every past version prices with ~N = 0~. Rejected — a flat top-level list of ~{kid_id, weekday, cutoff}~ on the version: reads per kid, but validation must reach across embeds for the evening window and "Copy to" needs its own branch. Rejected — a separate append-only cutoffs table with its own ~effective_at~: one save would write two histories and pricing would resolve two lists at one instant, doubling the machinery and the [[#d72][D72]] pointwise-agreement risk for one household. Settles night-owl-bonus/SC-1, night-owl-bonus/SC-4. → night-owl-bonus/Data Model.
+
+* D133 (2026-10-05) — The Night Owl is priced as the Early Bird: last live tap, version in force then, strictly before the kid's cutoff
+:PROPERTIES:
+:CUSTOM_ID: d133
+:END:
+
+~+N~ is earned on an evening routine-day that is earned and unfailed, whose ~last_completed_at~ shifted to local wall-clock time is strictly before the kid's cutoff for ~local_date~'s weekday, with the cutoff and ~N~ both read from the version in force at ~last_completed_at~ — the same instant and version as ~+R~ and ~+E~ ([[#d100][D100]], [[#d121][D121]]). A fail forfeits it, an undo-and-redo after the cutoff loses it, and a finish at the cutoff earns nothing. The private facts map gains ~kid_id~ so both derivation routes can look up the kid's cutoff, ~contribution/4~ stays the single place facts become points ([[#d122][D122]]), and the Early Bird's comparison generalises to one shared ~before_cutoff?~ predicate so the two bonuses cannot drift on the strict comparison or the DST shift. ~routine_day_pricing~ gains ~n~ and ~night_owl?~. Settles night-owl-bonus/SC-2, night-owl-bonus/SC-4. → night-owl-bonus/Key Behaviors.
+
+* D134 (2026-10-05) — ~N = 0~ turns the Night Owl off in the verdict itself; the Early Bird's ~E = 0~ behaviour is left alone
+:PROPERTIES:
+:CUSTOM_ID: d134
+:END:
+
+Ruled by the human during the design conversation. The Night Owl verdict requires the earn version's ~night_owl_bonus > 0~, so at ~N = 0~ there is no pill, no badge addition and no ledger term, and the admin hint "0 turns it off" is true in the domain rather than only in a template. Rejected — mirroring the Early Bird exactly, whose verdict ignores ~E~ so the =EARLY= pill still shows at ~E = 0~: a pill with nothing behind it makes "0 turns it off" half true. The Early Bird is not changed to match, because the PRD keeps the morning as it is; the inconsistency is recorded in the backlog. → night-owl-bonus/Key Behaviors (~N = 0~ means off).
+
+* D135 (2026-10-05) — A kid without a cutoff earns no Night Owl; the Schedule form prefills one at the evening's end minus an hour
+:PROPERTIES:
+:CUSTOM_ID: d135
+:END:
+
+A kid absent from a day's ~night_owl_cutoffs~ in the version in force has no Night Owl that day — the case of a kid added after the last save, and of every version from before this initiative. The domain does not require every kid to have an entry. The Schedule form always renders a field per current kid; a kid with no saved cutoff starts at that day's ~evening_end~ minus one hour, or the window's midpoint when that would not fall strictly inside the window; the human chose the prefill during the design conversation. The prefill is a pure ~Schedules.prefill_cutoffs/2~ taking kid ids from the LiveView, so ~Schedules~ never queries kids and keeps [[#d128][D128]]'s dependency line (~Chores~ already depends on ~Schedules~; the reverse would be a cycle). Rejected — a blank field the parent must fill before saving: every first save after a kid is added would fail until that kid's seven times were typed, for a value the parent will likely adjust anyway. → night-owl-bonus/Data Model, night-owl-bonus/Screens / Interfaces (admin).
+
+* D136 (2026-10-05) — A white =NIGHT OWL= pill under the moon, with ~R + N~ as one number on the moon's badge
+:PROPERTIES:
+:CUSTOM_ID: d136
+:END:
+
+Ruled by the human during the design conversation. The evening counterpart of [[#d104][D104]]: on a Night Owl evening the moon's completion badge reads ~R + N~ and a white =NIGHT OWL= pill in the kid's own color sits under the moon; badge and pill are one signal and a fail removes both. The pill names the bonus the parents tell the kids about, so the kiosk and the conversation use the same words. It is Nunito text, so [[#d103][D103]]'s inline-SVG rule is not engaged. The stake chip is unchanged ([[#d130][D130]]): nothing on the kiosk hints at ~N~ or the cutoff before the finish. Rejected — =OWL=: matches =EARLY='s length but relies on the parents having named it. Rejected — reusing =EARLY= in the evening: the kids would hear one name and see another. Settles night-owl-bonus/SC-3. → night-owl-bonus/Screens / Interfaces (kiosk).
+
+* D137 (2026-10-05) — The Schedule form has no prefill: a blank cutoff is no entry, and a kid without one earns no Night Owl
+:PROPERTIES:
+:CUSTOM_ID: d137
+:END:
+
+Supersedes the prefill half of [[#d135][D135]]; its other half stands (a kid absent from a day's ~night_owl_cutoffs~ earns nothing). Ruled by the human after the user-stories pass. The form renders a time input per current kid, blank when that kid has no saved cutoff, and a blank field saves as no entry, dropped by the changeset rather than rejected. The group's label says a blank means no Night Owl, because native time inputs show no placeholder. ~Schedules.prefill_cutoffs/2~ is not built. Rejected — D135's prefill (evening end minus an hour): the first load after deploy filled every kid on every day, so an untouched Save differed from the version in force and wrote one, against [[#d125][D125]]'s no-op rule, and a guessed cutoff could be saved unseen and quietly start paying a Night Owl. Rejected — a placeholder: it does not render on a time input. → night-owl-bonus/Data Model, night-owl-bonus/Screens / Interfaces (admin).

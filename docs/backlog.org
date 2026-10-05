@@ -17,6 +17,14 @@ This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B mi
 There should be a configurable bonus.
 
 A badge for earning the bonus similar to the Early Bird badge.
+
+Claimed [2026-10-05 Mon] by the night-owl-bonus initiative (docs/2026-10-05-night-owl-bonus/): per-kid, per-weekday cutoffs embedded in each schedule day entry and a family-wide bonus ~N~ on the version, priced like the Early Bird ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]]), with a =NIGHT OWL= pill under the moon ([[file:decisions.org::#d136][D136]]). Leaves this file when that initiative closes.
+
+* TODO [#C] Early Bird pill shows at ~E = 0~, unlike the Night Owl at ~N = 0~
+:PROPERTIES:
+:CREATED:  [2026-10-05 Mon 13:49]
+:END:
+The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows the =EARLY= pill and earns nothing, while the admin hint says "0 turns it off". The night-owl-bonus initiative made ~N = 0~ turn the Night Owl off inside its verdict ([[file:decisions.org::#d134][D134]]) and left the morning alone, because its PRD keeps the morning as it is. Making the two consistent means adding ~early_bird_bonus > 0~ to the Early Bird verdict in ~Chores.resolve/4~; with ~E = 2~ in force nothing visible changes today. Trigger: a parent sets ~E = 0~, or the next initiative that touches the morning.
 * TODO [#A] Show the day's weather so the kid knows how to dress in the morning. :promote:
 :PROPERTIES:
 :CREATED:  [2026-10-04 Sun 19:02]
