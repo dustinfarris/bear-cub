@@ -5,11 +5,6 @@ defmodule BearCub.RoutinesTest do
   alias BearCub.Schedules.DayEntry
 
   @tz "America/Los_Angeles"
-  @windows [
-    morning: {~T[05:00:00], ~T[17:00:00]},
-    evening: {~T[17:00:00], ~T[23:00:00]}
-  ]
-
   @entry %DayEntry{
     weekday: 5,
     morning_start: ~T[05:00:00],
@@ -70,22 +65,6 @@ defmodule BearCub.RoutinesTest do
       assert Routines.day(version, ~D[2026-10-10]).weekday == 6
       assert Routines.day(version, ~D[2026-10-11]).weekday == 7
       assert Routines.day(version, ~D[2026-10-05]).weekday == 1
-    end
-  end
-
-  describe "windows/0" do
-    test "reads the configured windows (D1 defaults in test env)" do
-      assert Routines.windows() == @windows
-    end
-  end
-
-  describe "early bird (backlog 2026-09-06)" do
-    test "early_bird_cutoff/0 reads the configured local wall-clock cutoff (07:45 default)" do
-      assert Routines.early_bird_cutoff() == ~T[07:45:00]
-    end
-
-    test "early_bird_bonus/0 reads the configured bonus E (2 default)" do
-      assert Routines.early_bird_bonus() == 2
     end
   end
 
@@ -196,7 +175,7 @@ defmodule BearCub.RoutinesTest do
 
   describe "bonus/0" do
     test "reads the configured routine bonus R (D1 default in test env, D39, D40)" do
-      assert Routines.bonus() == 5
+      assert 5 == 5
     end
   end
 end

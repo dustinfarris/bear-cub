@@ -18,20 +18,6 @@ defmodule BearCub.Chores.ChoreLifecycleMigrationTest do
 
   @tz "America/Los_Angeles"
 
-  # Per `docs/learnings.org` [2026-07-17]: pin the windows rather than
-  # inheriting whichever routine the real wall clock happens to land in.
-  setup do
-    original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-    on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
-    Application.put_env(:bear_cub, :routine_windows,
-      morning: {~T[05:00:00], ~T[17:00:00]},
-      evening: {~T[17:00:00], ~T[23:00:00]}
-    )
-
-    :ok
-  end
-
   defp la(date, time), do: DateTime.new!(date, time, @tz)
 
   # The migration's own backfill, loaded from the migration file itself

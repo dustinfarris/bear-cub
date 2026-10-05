@@ -4,7 +4,6 @@ defmodule BearCub.ChoresTest do
   alias BearCub.Chores
   alias BearCub.Chores.Completion
   alias BearCub.Chores.Kid
-  alias BearCub.Routines
 
   describe "kids" do
     import BearCub.ChoresFixtures
@@ -742,12 +741,12 @@ defmodule BearCub.ChoresTest do
 
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
 
       {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-20], ~T[09:00:00]))
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
-      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => 5}
     end
 
     test "an archived chore vanishes from list_chores/2" do
@@ -847,7 +846,7 @@ defmodule BearCub.ChoresTest do
 
       {:ok, _} = Chores.archive_chore(b, la(~D[2026-07-10], ~T[09:00:00]))
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
     end
   end
 
@@ -1225,7 +1224,7 @@ defmodule BearCub.ChoresTest do
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
     end
 
     test "a fully-complete 4-chore routine still earns exactly R (SC-2)" do
@@ -1236,7 +1235,7 @@ defmodule BearCub.ChoresTest do
         {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       end
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
     end
 
     test "an incomplete routine (not every chore live) contributes zero with no fails" do
@@ -1257,7 +1256,7 @@ defmodule BearCub.ChoresTest do
 
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -5
     end
 
     test "two failed routine chores in the same routine-day still cost a single -R (capped, SC-3)" do
@@ -1270,7 +1269,7 @@ defmodule BearCub.ChoresTest do
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
       fail_completion(cb, ~U[2026-07-10 15:01:00Z])
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -5
     end
 
     test "failing then redoing the failed chore restores +R while -R persists, netting zero (SC-3)" do
@@ -1280,10 +1279,10 @@ defmodule BearCub.ChoresTest do
       {:ok, ca} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _cb} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
 
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == -5
 
       {:ok, _redo} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[16:00:00]), "kiosk")
       assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 0
@@ -1299,8 +1298,8 @@ defmodule BearCub.ChoresTest do
   describe "early bird (backlog 2026-09-06, D100)" do
     import BearCub.ChoresFixtures
 
-    defp r, do: Routines.bonus()
-    defp e, do: Routines.early_bird_bonus()
+    defp r, do: 5
+    defp e, do: 2
 
     defp two_morning_chores(kid) do
       {chore_fixture(kid, %{name: "A", routine: "morning"}),
@@ -1444,12 +1443,12 @@ defmodule BearCub.ChoresTest do
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
 
       _c = chore_fixture(kid, %{name: "C", routine: "morning"}, la(~D[2026-07-20], ~T[09:00:00]))
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
-      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
+      assert Chores.earnings_by_kid(~D[2026-07-20]) == %{kid.id => 5}
     end
 
     test "a chore added today is required today, so today's routine-day is incomplete" do
@@ -1457,7 +1456,7 @@ defmodule BearCub.ChoresTest do
       a = chore_fixture(kid, %{name: "A", routine: "morning"}, la(~D[2026-07-01], ~T[08:00:00]))
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-20], ~T[08:00:00]), "kiosk")
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-20]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-20]) == 5
 
       _b = chore_fixture(kid, %{name: "B", routine: "morning"}, la(~D[2026-07-20], ~T[09:00:00]))
 
@@ -1491,10 +1490,10 @@ defmodule BearCub.ChoresTest do
       stamp(b, archived_on: ~D[2026-07-10])
 
       # the day before the archive still requires b — it was live then
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == Routines.bonus()
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-09]) == 5
       # the archive date itself does not: the card is gone from the kiosk
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
-      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 2 * Routines.bonus()}
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 2 * 5}
     end
 
     test "a chore completed on the day it is archived stops counting toward that day's roster" do
@@ -1510,8 +1509,8 @@ defmodule BearCub.ChoresTest do
 
       stamp(b, archived_on: ~D[2026-07-10])
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
-      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => Routines.bonus()}
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 5}
     end
 
     # This is the tripwire for the ruling in D90, not a trivia assertion.
@@ -1548,8 +1547,8 @@ defmodule BearCub.ChoresTest do
 
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == Routines.bonus()
-      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => Routines.bonus()}
+      assert Chores.routine_day_contribution(kid, "morning", ~D[2026-07-10]) == 5
+      assert Chores.earnings_by_kid(~D[2026-07-10]) == %{kid.id => 5}
     end
 
     test "extras are never bounded: an archived extra's completions still sum (D81)" do
@@ -2300,6 +2299,44 @@ defmodule BearCub.ChoresTest do
 
       # Redo at 07:55 is under R 9 and late for the new 07:35 cutoff.
       assert_both(kid, @friday, 9)
+    end
+
+    test "routine_day_pricing/3 keeps the earned morning's R and E after both are raised (SC-1)" do
+      kid = kid_fixture()
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+      version_at(la(@friday, ~T[10:00:00]), %{routine_bonus: 9, early_bird_bonus: 6})
+
+      assert Chores.routine_day_pricing(kid, "morning", @friday) ==
+               %{r: 5, e: 2, early?: true, penalty: 0}
+    end
+
+    test "routine_day_pricing/3 prices the penalty at the first fail, not the latest R (SC-1)" do
+      kid = kid_fixture()
+      {a, b} = two_morning(kid)
+      tap(a, @friday, ~T[08:00:00])
+      cb = tap(b, @friday, ~T[08:10:00])
+      fail_completion(cb, ~U[2026-07-10 17:00:00Z])
+      version_at(la(@friday, ~T[12:00:00]), %{routine_bonus: 9})
+
+      assert %{penalty: 5, e: 0, early?: false} =
+               Chores.routine_day_pricing(kid, "morning", @friday)
+    end
+
+    test "routine_day_pricing/3 is all zero for an unfinished, unfailed routine-day" do
+      kid = kid_fixture()
+      {a, _b} = two_morning(kid)
+      tap(a, @friday, ~T[07:00:00])
+
+      assert Chores.routine_day_pricing(kid, "morning", @friday) ==
+               %{r: 0, e: 0, early?: false, penalty: 0}
+    end
+
+    test "routine_day_pricing/4 takes the history and agrees with the convenience arity" do
+      kid = kid_fixture()
+      finish(kid, @friday, ~T[07:00:00], ~T[07:30:00])
+
+      assert Chores.routine_day_pricing(kid, "morning", @friday, BearCub.Schedules.versions()) ==
+               Chores.routine_day_pricing(kid, "morning", @friday)
     end
 
     test "routine_day_status/3 carries the earliest fail instant, nil when never failed" do

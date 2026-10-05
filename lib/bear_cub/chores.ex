@@ -540,6 +540,33 @@ defmodule BearCub.Chores do
   end
 
   @doc """
+  The priced figures of a routine-day, for the kiosk's incurred numbers
+  (D123): `r` is the routine bonus earned, `e` the early bird bonus,
+  `penalty` the `R` charged for a fail, each `0` when not incurred and
+  each priced by the version in force at its own instant (D121) — the
+  same `resolve/4` the points derivation uses, so a badge can never
+  disagree with the ledger. `early?` is the early bird verdict itself,
+  which stays true when `E` is `0`. `versions` is `Schedules.versions/0`;
+  the arity without it fetches the history.
+  """
+  def routine_day_pricing(%Kid{} = kid, routine, %Date{} = local_date) do
+    routine_day_pricing(kid, routine, local_date, Schedules.versions())
+  end
+
+  def routine_day_pricing(%Kid{} = kid, routine, %Date{} = local_date, versions)
+      when routine in ~w(morning evening) do
+    facts = facts(routine_day_status(kid, routine, local_date))
+    {earn, fail, early?} = resolve(versions, routine, local_date, facts)
+
+    %{
+      r: if(facts.earned?, do: earn.routine_bonus, else: 0),
+      e: if(early?, do: earn.early_bird_bonus, else: 0),
+      early?: early?,
+      penalty: if(facts.failed?, do: fail.routine_bonus, else: 0)
+    }
+  end
+
+  @doc """
   Whether `kid` earned the early bird on `local_date` (D100): the morning
   routine-day is earned (complete, non-empty), unfailed, and its last live
   completion landed before the cutoff of the schedule in force at that

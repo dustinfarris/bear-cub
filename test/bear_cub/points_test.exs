@@ -12,27 +12,10 @@ defmodule BearCub.PointsTest do
   alias BearCub.Chores
   alias BearCub.Chores.Completion
   alias BearCub.Points
-  alias BearCub.Routines
 
   import BearCub.ChoresFixtures
 
   @tz "America/Los_Angeles"
-
-  # Per `docs/learnings.org` [2026-07-17]: pin the windows rather than
-  # inheriting whichever routine the real wall clock happens to land in.
-  # Nothing here reads the clock — every derivation takes a local date —
-  # but the pin keeps that true by construction rather than by accident.
-  setup do
-    original_windows = Application.fetch_env!(:bear_cub, :routine_windows)
-    on_exit(fn -> Application.put_env(:bear_cub, :routine_windows, original_windows) end)
-
-    Application.put_env(:bear_cub, :routine_windows,
-      morning: {~T[05:00:00], ~T[17:00:00]},
-      evening: {~T[17:00:00], ~T[23:00:00]}
-    )
-
-    :ok
-  end
 
   defp la(date, time), do: DateTime.new!(date, time, @tz)
 
@@ -95,7 +78,7 @@ defmodule BearCub.PointsTest do
         {:ok, _} = Chores.complete_chore(chore, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       end
 
-      assert Points.balance(kid, ~D[2026-07-10]) == Routines.bonus()
+      assert Points.balance(kid, ~D[2026-07-10]) == 5
     end
 
     test "an incomplete routine-day adds nothing" do
@@ -120,7 +103,7 @@ defmodule BearCub.PointsTest do
       fail_completion(ca, ~U[2026-07-10 15:00:00Z])
       fail_completion(cb, ~U[2026-07-10 15:01:00Z])
 
-      assert Points.balance(kid, ~D[2026-07-10]) == 20 - Routines.bonus()
+      assert Points.balance(kid, ~D[2026-07-10]) == 20 - 5
     end
 
     test "morning and evening are separate routine-days on the same date" do
@@ -131,7 +114,7 @@ defmodule BearCub.PointsTest do
       {:ok, _} = Chores.complete_chore(morning, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(evening, la(~D[2026-07-10], ~T[19:00:00]), "kiosk")
 
-      assert Points.balance(kid, ~D[2026-07-10]) == 2 * Routines.bonus()
+      assert Points.balance(kid, ~D[2026-07-10]) == 2 * 5
     end
   end
 
@@ -147,10 +130,10 @@ defmodule BearCub.PointsTest do
       # day-rollover behavior is exercised by passing a different local
       # date, never by mocking a clock
       assert Points.balance(kid, ~D[2026-06-30]) == 0
-      assert Points.balance(kid, ~D[2026-07-01]) == Routines.bonus()
-      assert Points.balance(kid, ~D[2026-07-02]) == 2 * Routines.bonus()
-      assert Points.balance(kid, ~D[2026-07-03]) == 3 * Routines.bonus()
-      assert Points.balance(kid, ~D[2026-07-31]) == 3 * Routines.bonus()
+      assert Points.balance(kid, ~D[2026-07-01]) == 5
+      assert Points.balance(kid, ~D[2026-07-02]) == 2 * 5
+      assert Points.balance(kid, ~D[2026-07-03]) == 3 * 5
+      assert Points.balance(kid, ~D[2026-07-31]) == 3 * 5
     end
 
     test "extras accumulate across dates alongside routine-days" do
@@ -166,8 +149,8 @@ defmodule BearCub.PointsTest do
         {:ok, _} = Chores.complete_chore(chore, la(day, ~T[08:00:00]), "kiosk")
       end
 
-      assert Points.balance(kid, ~D[2026-07-01]) == Routines.bonus() + 4
-      assert Points.balance(kid, ~D[2026-07-10]) == Routines.bonus() + 12
+      assert Points.balance(kid, ~D[2026-07-01]) == 5 + 4
+      assert Points.balance(kid, ~D[2026-07-10]) == 5 + 12
     end
 
     test "one kid's completions never leak into another kid's balance" do
@@ -231,8 +214,8 @@ defmodule BearCub.PointsTest do
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
-      assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+      assert Points.balance(kid, ~D[2026-07-20]) == 5
+      assert Points.balances(~D[2026-07-20]) == %{kid.id => 5}
 
       _c =
         chore_fixture(
@@ -243,8 +226,8 @@ defmodule BearCub.PointsTest do
 
       # 2026-07-10 was fully complete when it happened, and stays scored
       # against the two chores that were live that day.
-      assert Points.balance(kid, ~D[2026-07-20]) == Routines.bonus()
-      assert Points.balances(~D[2026-07-20]) == %{kid.id => Routines.bonus()}
+      assert Points.balance(kid, ~D[2026-07-20]) == 5
+      assert Points.balances(~D[2026-07-20]) == %{kid.id => 5}
     end
 
     test "archiving a routine chore leaves a past incomplete routine-day at zero (no drift)" do
@@ -404,7 +387,7 @@ defmodule BearCub.PointsTest do
       {:ok, _} = Chores.complete_chore(a, la(~D[2026-07-10], ~T[08:00:00]), "kiosk")
       {:ok, _} = Chores.complete_chore(b, la(~D[2026-07-10], ~T[08:01:00]), "kiosk")
 
-      assert Points.total(kid, ~D[2026-07-10]) == Routines.bonus()
+      assert Points.total(kid, ~D[2026-07-10]) == 5
     end
 
     test "recomputes purely from completions — nothing stored, a kid with none scores zero" do

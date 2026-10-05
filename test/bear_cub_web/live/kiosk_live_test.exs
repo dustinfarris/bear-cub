@@ -1016,9 +1016,7 @@ defmodule BearCubWeb.KioskLiveTest do
       # These tests complete chores at the real `now` and assert a plain +R
       # badge; before 07:45 local that would be +R+E (D104). Pin the cutoff
       # to midnight so nothing here is ever early, whatever the clock says.
-      original_cutoff = Application.fetch_env!(:bear_cub, :early_bird_cutoff)
-      Application.put_env(:bear_cub, :early_bird_cutoff, ~T[00:00:00])
-      on_exit(fn -> Application.put_env(:bear_cub, :early_bird_cutoff, original_cutoff) end)
+      BearCub.ScheduleHelpers.put_cutoff(~T[00:00:00])
 
       %{kid: kid}
     end
@@ -1067,7 +1065,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
       refute has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
       refute has_element?(view, "#completion-badge-#{kid.id} .hero-check")
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
     end
 
     test "shows a large moon icon with a green bonus badge for a complete evening routine",
@@ -1082,7 +1080,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
       refute has_element?(view, "#completion-icon-#{kid.id} .hero-sun-solid")
       refute has_element?(view, "#completion-badge-#{kid.id} .hero-check")
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
     end
 
     test "the bonus badge shows the intact routine bonus when nothing failed (AC4, D47)",
@@ -1094,7 +1092,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
     end
 
     test "no bonus badge shows when the routine was completed via an in-window redo after a fail, though the icon still toggles (AC4, D45, D47)",
@@ -1126,7 +1124,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
     end
   end
 
@@ -1159,12 +1157,56 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(
                view,
                "#completion-badge-#{kid.id}",
-               "+#{Routines.bonus() + Routines.early_bird_bonus()}"
+               "+7"
              )
 
       assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id}", "EARLY")
       refute has_element?(view, "#completion-icon-#{kid.id} svg.sparrow")
       refute has_element?(view, "#early-bird-badge-#{kid.id}")
+    end
+
+    defp minutes_ago(n), do: DateTime.add(LocalTime.now(), -n * 60, :second)
+
+    # SC-1, SC-3, SC-4: incurred figures are priced, the stake is live (D123).
+    test "an earned badge keeps its priced R after R is raised, while the chip follows the new R",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      done = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(done, minutes_ago(10), "kiosk")
+      BearCub.ScheduleHelpers.put_bonuses(8, 2, minutes_ago(5))
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
+    end
+
+    test "an unfinished routine's chip changes live when R is saved, with no reload",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
+
+      BearCub.ScheduleHelpers.put_bonuses(8, 2, minutes_ago(0))
+      Phoenix.PubSub.broadcast(BearCub.PubSub, "schedules", :schedule_changed)
+
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+8")
+    end
+
+    test "a penalty shows R as priced at the first fail, not the R in force now",
+         %{conn: conn, kid: kid} do
+      morning_active()
+      chore = chore_fixture(kid, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      chore_fixture(kid, %{name: "Make Bed", icon: "🛏️", routine: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, minutes_ago(10), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, minutes_ago(10))
+      BearCub.ScheduleHelpers.put_bonuses(9, 2, minutes_ago(5))
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#routine-penalty-#{kid.id}", "−5")
     end
 
     test "a morning finished after the cutoff shows the plain +R badge and no pill",
@@ -1175,7 +1217,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/")
 
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
       refute has_element?(view, "#early-bird-#{kid.id}")
     end
 
@@ -1202,7 +1244,7 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
-      assert has_element?(view, "#completion-badge-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
       refute has_element?(view, "#early-bird-#{kid.id}")
     end
 
@@ -1217,7 +1259,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(
                view,
                "#points-badge-#{kid.id}",
-               "#{Routines.bonus() + Routines.early_bird_bonus()}"
+               "7"
              )
     end
   end
@@ -1307,7 +1349,7 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert {0, 3} = segments(view, kid)
-      assert has_element?(view, "#stake-chip-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
       refute has_element?(view, "#stake-bar-#{kid.id}[data-paid]")
 
       view |> element("#chore-#{a.id}") |> render_click()
@@ -1326,7 +1368,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(view, "#band-#{kid.id}")
       assert has_element?(view, "#stake-bar-#{kid.id}[data-paid]")
       assert {3, 3} = segments(view, kid)
-      assert has_element?(view, "#stake-chip-#{kid.id}", "+#{Routines.bonus()}")
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
     end
 
     test "a forfeited routine keeps its segments but loses the chip, like the header badge (D47)",
@@ -1600,8 +1642,8 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       strip = view |> element("#routine-penalty-#{kid.id}") |> render()
-      assert strip =~ "−#{Routines.bonus()}"
-      refute strip =~ "−#{2 * Routines.bonus()}"
+      assert strip =~ "−5"
+      refute strip =~ "−10"
     end
 
     test "no routine-penalty strip when nothing is failed", %{conn: conn, kid: kid} do

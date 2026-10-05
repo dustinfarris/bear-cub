@@ -43,18 +43,68 @@ defmodule BearCub.ScheduleHelpers do
   """
   def put_windows({_, _} = morning, {_, _} = evening) do
     current = Schedules.current()
-    effective_at = DateTime.add(current.effective_at, 1, :second)
 
     insert_version(
       morning,
       evening,
-      effective_at,
+      next_instant(current),
       current.routine_bonus,
-      current.early_bird_bonus
+      current.early_bird_bonus,
+      hd(current.days).early_bird_cutoff
     )
   end
 
-  defp insert_version({morning_start, morning_end}, {evening_start, evening_end}, at, r, e) do
+  @doc """
+  Inserts a version in force now with the early bird cutoff on every
+  weekday, windows and bonuses copied from the current version. The
+  cutoff may fall outside the morning window; a midnight cutoff makes
+  nothing early, whatever the clock says.
+  """
+  def put_cutoff(%Time{} = cutoff) do
+    current = Schedules.current()
+    day = hd(current.days)
+
+    insert_version(
+      {day.morning_start, day.morning_end},
+      {day.evening_start, day.evening_end},
+      next_instant(current),
+      current.routine_bonus,
+      current.early_bird_bonus,
+      cutoff
+    )
+  end
+
+  @doc """
+  Inserts a version in force now with new `R` and `E`, windows and cutoff
+  copied from the current version, effective `at` (default: a second after
+  the latest version, which is an hour back under the default pin) — a
+  test staging an earned or failed routine-day *before* the raise passes
+  an `at` after those instants. Does not broadcast.
+  """
+  def put_bonuses(r, e, at \\ nil) do
+    current = Schedules.current()
+    day = hd(current.days)
+
+    insert_version(
+      {day.morning_start, day.morning_end},
+      {day.evening_start, day.evening_end},
+      if(at, do: DateTime.shift_zone!(at, "Etc/UTC"), else: next_instant(current)),
+      r,
+      e,
+      day.early_bird_cutoff
+    )
+  end
+
+  defp next_instant(current), do: DateTime.add(current.effective_at, 1, :second)
+
+  defp insert_version(
+         {morning_start, morning_end},
+         {evening_start, evening_end},
+         at,
+         r,
+         e,
+         cutoff \\ ~T[07:45:00]
+       ) do
     days =
       for weekday <- 1..7 do
         %DayEntry{
@@ -63,7 +113,7 @@ defmodule BearCub.ScheduleHelpers do
           morning_end: morning_end,
           evening_start: evening_start,
           evening_end: evening_end,
-          early_bird_cutoff: ~T[07:45:00]
+          early_bird_cutoff: cutoff
         }
       end
 

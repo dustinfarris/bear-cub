@@ -409,7 +409,14 @@ defmodule BearCubWeb.KioskLive do
   defp load(socket, local_now, opts \\ []) do
     just_sunk = Keyword.get(opts, :just_sunk)
 
-    {routine_state, auto} = Routines.current(local_now, Schedules.day_entry(local_now))
+    # One history read per render: the version in force now prices the
+    # stake (D123), the whole list prices what each routine-day incurred.
+    versions = Schedules.versions()
+    version = Routines.in_force(versions, local_now)
+
+    {routine_state, auto} =
+      Routines.current(local_now, Routines.day(version, DateTime.to_date(local_now)))
+
     night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
 
@@ -440,6 +447,8 @@ defmodule BearCubWeb.KioskLive do
         build_column(
           kid,
           auto,
+          version,
+          versions,
           night?,
           completions,
           old_completions,
@@ -502,6 +511,8 @@ defmodule BearCubWeb.KioskLive do
   defp build_column(
          kid,
          auto,
+         version,
+         versions,
          night?,
          completions,
          old_completions,
@@ -558,8 +569,6 @@ defmodule BearCubWeb.KioskLive do
     # completion icon's morning form — so the evening column and the
     # incomplete column pay nothing for it. Forfeiture on a fail is inside
     # the predicate, matching the bonus badge's own "not if failed" rule.
-    early_bird? = reveal? and auto == :morning and Chores.early_bird?(kid, today)
-
     state =
       cond do
         night? -> :night
@@ -579,6 +588,21 @@ defmodule BearCubWeb.KioskLive do
     # One entry per real chore — the stake bar draws a segment per entry,
     # so the sink and rise ghosts (see `sink_done/5`) stay out of it.
     chore_rows = Enum.reject(slot ++ done, & &1.ghost?)
+
+    # The single capped penalty strip: failed-and-not-redone, rows state only.
+    routine_penalty? = state == :rows and Enum.any?(chore_rows, & &1.failed?)
+
+    # What the routine-day has incurred is priced at the instants it
+    # happened (D123) and read only where a priced figure can render: the
+    # badge and paid chip (complete) or the penalty strip. The early bird
+    # (D100, D101) rides on the same read, so it costs nothing extra;
+    # a fail forfeits it inside the predicate, like the badge.
+    pricing =
+      if complete? or routine_penalty?,
+        do: Chores.routine_day_pricing(kid, Atom.to_string(auto), today, versions),
+        else: %{r: 0, e: 0, early?: false, penalty: 0}
+
+    early_bird? = reveal? and auto == :morning and pricing.early?
 
     extras =
       if state == :band and auto == :morning do
@@ -608,6 +632,10 @@ defmodule BearCubWeb.KioskLive do
       standing?: standing?,
       early_bird?: early_bird?,
       failed?: failed?,
+      # priced once the routine-day is paid, live while it is still at stake
+      r: if(complete?, do: pricing.r, else: version.routine_bonus),
+      e: pricing.e,
+      penalty: pricing.penalty,
       chores: chore_rows,
       slot: slot,
       done: done,
@@ -615,7 +643,7 @@ defmodule BearCubWeb.KioskLive do
       # The routine-penalty strip is a single capped indicator, modeled on
       # the boolean "any routine chore failed-and-not-redone" rather than a
       # per-chore loop (D45, D46) — only relevant in the expanded rows state.
-      routine_penalty?: state == :rows and Enum.any?(chore_rows, & &1.failed?),
+      routine_penalty?: routine_penalty?,
       events: Calendars.today_events(kid.id, today),
       points: Points.total(kid, today),
       pending_request?: pending_request?,
@@ -892,6 +920,9 @@ defmodule BearCubWeb.KioskLive do
               standing?: standing?,
               early_bird?: early_bird?,
               failed?: failed?,
+              r: r,
+              e: e,
+              penalty: penalty,
               chores: chores,
               slot: slot,
               done: done,
@@ -918,6 +949,8 @@ defmodule BearCubWeb.KioskLive do
             reveal?={reveal?}
             failed?={failed?}
             early_bird?={early_bird?}
+            r={r}
+            e={e}
             points={points}
             pending_request?={pending_request?}
           />
@@ -946,6 +979,7 @@ defmodule BearCubWeb.KioskLive do
               chores={chores}
               complete?={complete?}
               failed?={failed?}
+              r={r}
             />
 
             <%!-- Routine card: either the chore rows (normal or manually
@@ -969,7 +1003,7 @@ defmodule BearCubWeb.KioskLive do
                    Also covers the manually re-expanded band (state 4, D34):
                    same rows, all shown done, tap-to-undo. --%>
               <div :if={state == :rows} class="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-                <.routine_penalty :if={routine_penalty?} kid={kid} />
+                <.routine_penalty :if={routine_penalty?} kid={kid} penalty={penalty} />
 
                 <%!-- Two stacks (D105): pending rows as dashed slots in a
                      padded group, done rows flush beneath as one kid-color

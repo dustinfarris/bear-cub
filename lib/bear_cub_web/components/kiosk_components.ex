@@ -13,7 +13,6 @@ defmodule BearCubWeb.KioskComponents do
 
   alias BearCub.LocalTime
   alias BearCub.Messages
-  alias BearCub.Routines
 
   @doc """
   Night screen (D56, supersedes D32's per-column Good Night message): the
@@ -51,6 +50,8 @@ defmodule BearCubWeb.KioskComponents do
   attr :reveal?, :boolean, required: true
   attr :failed?, :boolean, required: true
   attr :early_bird?, :boolean, required: true
+  attr :r, :integer, required: true, doc: "the routine bonus as priced for this routine-day"
+  attr :e, :integer, required: true, doc: "the early bird bonus as priced for this routine-day"
   attr :points, :integer, required: true
   attr :pending_request?, :boolean, required: true
 
@@ -85,7 +86,7 @@ defmodule BearCubWeb.KioskComponents do
             class="absolute -right-4 -top-1 flex items-center rounded-full border-2 bg-success px-2 py-0.5 font-reward text-sm font-black text-success-content drop-shadow-sm"
             style={"border-color: #{@kid.color}"}
           >
-            +{Routines.bonus() + if(@early_bird?, do: Routines.early_bird_bonus(), else: 0)}
+            +{@r + if(@early_bird?, do: @e, else: 0)}
           </span>
           <%!-- Early bird pill (D100, D104): a white EARLY pill under
                the sun in the kid's own color. Same forfeit rule as the
@@ -217,6 +218,10 @@ defmodule BearCubWeb.KioskComponents do
   attr :complete?, :boolean, required: true
   attr :failed?, :boolean, required: true
 
+  attr :r, :integer,
+    required: true,
+    doc: "the routine bonus: live while unpaid, as priced once paid"
+
   def stake_bar(assigns) do
     ~H"""
     <div
@@ -263,7 +268,7 @@ defmodule BearCubWeb.KioskComponents do
           )
         ]}
       >
-        +{Routines.bonus()}
+        +{@r}
       </span>
     </div>
     """
@@ -276,6 +281,7 @@ defmodule BearCubWeb.KioskComponents do
   below always lands in the 1fr track, strip present or not.
   """
   attr :kid, :map, required: true
+  attr :penalty, :integer, required: true, doc: "the routine bonus as priced at the first fail"
 
   def routine_penalty(assigns) do
     ~H"""
@@ -284,7 +290,7 @@ defmodule BearCubWeb.KioskComponents do
       class="row-start-1 flex items-center justify-center gap-2 bg-warning px-4 py-2 font-reward text-base font-black text-warning-content"
     >
       <.icon name="hero-exclamation-triangle" class="size-5" />
-      <span>−{Routines.bonus()}</span>
+      <span>−{@penalty}</span>
     </div>
     """
   end

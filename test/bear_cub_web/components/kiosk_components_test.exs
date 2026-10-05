@@ -3,7 +3,6 @@ defmodule BearCubWeb.KioskComponentsTest do
 
   import Phoenix.LiveViewTest
 
-  alias BearCub.Routines
   alias BearCubWeb.KioskComponents
 
   # The kiosk's function components rendered in isolation, with plain maps
@@ -39,6 +38,8 @@ defmodule BearCubWeb.KioskComponentsTest do
             reveal?: false,
             failed?: false,
             early_bird?: false,
+            r: 5,
+            e: 2,
             points: 12,
             pending_request?: false
           },
@@ -64,17 +65,22 @@ defmodule BearCubWeb.KioskComponentsTest do
       html = banner(%{reveal?: true})
 
       assert has?(html, "#completion-icon-1 .hero-sun-solid")
-      assert text(html, "#completion-badge-1") =~ "+#{Routines.bonus()}"
+      assert text(html, "#completion-badge-1") =~ "+5"
       refute has?(html, "#early-bird-1")
     end
 
     test "an early morning folds E into the badge and adds the EARLY pill" do
       html = banner(%{reveal?: true, early_bird?: true})
 
-      assert text(html, "#completion-badge-1") =~
-               "+#{Routines.bonus() + Routines.early_bird_bonus()}"
+      assert text(html, "#completion-badge-1") =~ "+7"
 
       assert text(html, "#early-bird-1") =~ "EARLY"
+    end
+
+    test "the badge shows the r and e it is given, not any configured figure" do
+      html = banner(%{reveal?: true, early_bird?: true, r: 8, e: 3})
+
+      assert text(html, "#completion-badge-1") =~ "+11"
     end
 
     test "a forfeited routine keeps the icon and drops the badge" do
@@ -121,7 +127,8 @@ defmodule BearCubWeb.KioskComponentsTest do
             routine: :morning,
             chores: [%{done?: false}, %{done?: true}, %{done?: false}],
             complete?: false,
-            failed?: false
+            failed?: false,
+            r: 5
           },
           attrs
         )
@@ -134,7 +141,8 @@ defmodule BearCubWeb.KioskComponentsTest do
       assert count(html, "#stake-bar-1 [data-segment]") == 3
       assert count(html, "#stake-bar-1 [data-segment][data-filled]") == 1
       assert has?(html, "#stake-bar-1 [data-segment]:first-child[data-filled]")
-      assert text(html, "#stake-chip-1") =~ "+#{Routines.bonus()}"
+      assert text(html, "#stake-chip-1") =~ "+5"
+      assert stake_bar(%{r: 8}) |> text("#stake-chip-1") =~ "+8"
       refute has?(html, "#stake-bar-1[data-paid]")
     end
 
@@ -155,9 +163,9 @@ defmodule BearCubWeb.KioskComponentsTest do
 
   describe "routine_penalty/1" do
     test "renders the single capped −R" do
-      html = render_component(&KioskComponents.routine_penalty/1, %{kid: @kid})
+      html = render_component(&KioskComponents.routine_penalty/1, %{kid: @kid, penalty: 8})
 
-      assert text(html, "#routine-penalty-1") =~ "−#{Routines.bonus()}"
+      assert text(html, "#routine-penalty-1") =~ "−8"
     end
   end
 

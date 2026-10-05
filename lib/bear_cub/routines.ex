@@ -32,11 +32,6 @@ defmodule BearCub.Routines do
     Enum.find(version.days, &(&1.weekday == weekday))
   end
 
-  @doc "Active windows keyed by routine slug, from app config."
-  def windows do
-    Application.fetch_env!(:bear_cub, :routine_windows)
-  end
-
   @doc """
   The routine the kiosk should show at `local_now`, by the day's resolved
   `DayEntry` (see `in_force/2` and `day/2`): `{:active, slug}`
@@ -80,26 +75,6 @@ defmodule BearCub.Routines do
   @doc "The other routine — used by the admin Today view to render both routine sections."
   def other(:morning), do: :evening
   def other(:evening), do: :morning
-
-  @doc "The fixed per-routine-day point bonus `R` (D39, D40), from app config."
-  def bonus do
-    Application.fetch_env!(:bear_cub, :routine_bonus)
-  end
-
-  @doc """
-  The early bird cutoff (backlog 2026-09-06, D100): the local wall-clock
-  time the morning routine's last live completion must land *strictly
-  before* to earn `early_bird_bonus/0` on top of `bonus/0`. App constant
-  from config, guaranteed at boot to fall inside the morning window.
-  """
-  def early_bird_cutoff do
-    Application.fetch_env!(:bear_cub, :early_bird_cutoff)
-  end
-
-  @doc "The early bird bonus `E` (D100), from app config; `0` disables it."
-  def early_bird_bonus do
-    Application.fetch_env!(:bear_cub, :early_bird_bonus)
-  end
 
   defp entry_windows(%DayEntry{} = e) do
     [
