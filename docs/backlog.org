@@ -5,6 +5,28 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
+* TODO [#A] "night owl" bonus for completing evening routine early :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:03]
+:END:
+
+This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
+
+There should be a configurable bonus.
+
+A badge for earning the bonus similar to the Early Bird badge.
+* TODO [#A] Show the day's weather so the kid knows how to dress in the morning. :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:02]
+:END:
+
+An icon for hot/normal/cold and an icon for sunny or raining
+(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
+* TODO [#A] snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 14:10]
+:END:
+Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
 * TODO [#B] LiveView test case should pin ~:routine_windows~ by default, with an explicit opt-out for tests that need the real windows :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-10-04 Sun 19:30]
@@ -185,24 +207,7 @@ From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
 covered by tests, but is a slightly unusual pattern — change
 ~next_position/2~'s signature to take a bare ~kid_id~ instead and update
 callers and tests.
-* TODO "night owl" bonus for completing evening routine early :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:03]
-:END:
-
-This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
-
-There should be a configurable bonus.
-
-A badge for earning the bonus similar to the Early Bird badge.
-* TODO Show the day's weather so the kid knows how to dress in the morning. :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:02]
-:END:
-
-An icon for hot/normal/cold and an icon for sunny or raining
-(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
-* TODO On-device gate for the good-standing band and ring is still owed :hand:
+* TODO [#C] On-device gate for the good-standing band and ring is still owed :hand:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 09:08]
 :END:
@@ -225,11 +230,6 @@ Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute f
 
 What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
 
-* TODO snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 14:10]
-:END:
-Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
 * Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 22:40]
