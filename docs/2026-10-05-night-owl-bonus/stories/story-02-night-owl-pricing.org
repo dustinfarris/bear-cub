@@ -92,24 +92,84 @@ As a kid, I need finishing my evening routine before my own cutoff, without fail
 
 * Acceptance Criteria
 
-** [ ] A kid whose evening routine is complete and not failed, with its last live tap strictly before their cutoff for that weekday, earns the routine bonus plus the Night Owl bonus. (SC-2)
-** [ ] A finish exactly at the cutoff, or after it, earns no Night Owl. (SC-2)
-** [ ] A failed evening earns no Night Owl, and still earns none if it is redone afterwards. (SC-2)
-** [ ] An undo and redo that moves the evening's last live tap past the cutoff loses the Night Owl. (SC-2)
-** [ ] Two kids finishing the same evening are each judged against their own cutoff: one before theirs earns it, one after theirs does not. (SC-1, SC-2)
-** [ ] A kid with no cutoff for that weekday in the schedule in force earns no Night Owl. (SC-1, SC-2)
-** [ ] Under a schedule whose Night Owl bonus is 0, a timely finish earns no Night Owl. (SC-2)
-** [ ] The Night Owl is judged against the kid's cutoff, and paid at the bonus, of the schedule in force at the evening's last live tap. Raising the bonus or moving a cutoff afterwards leaves that evening's points unchanged. When a kid's cutoff changes between two evenings, each evening is judged by its own. (SC-4)
-** [ ] A kid's total is the same figure computed one kid at a time or for the whole roster at once. The history behind that check combines every case above: two kids with different cutoffs on one evening, a cutoff changed between evenings, the bonus raised after an earn, a kid with no cutoff, a bonus of 0, a fail, a fail then redo, and a finish exactly at the cutoff. (SC-2, SC-4)
-** [ ] The pricing the kiosk reads for an evening reports the Night Owl amount and whether it was earned. In every case above that earns no Night Owl, it reports 0 and not earned. (SC-3)
-** [ ] Every morning's figures, early bird included, are unchanged by this story. (SC-4)
+** [X] A kid whose evening routine is complete and not failed, with its last live tap strictly before their cutoff for that weekday, earns the routine bonus plus the Night Owl bonus. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "a timely evening earns R plus N, and the pricing reports it" (~test/bear_cub/chores_test.exs:2472~): 9 on both routes, pricing ~n: 4, night_owl?: true~. Code: ~resolve/4~ and ~contribution/4~ in ~lib/bear_cub/chores.ex~.
+:END:
+** [X] A finish exactly at the cutoff, or after it, earns no Night Owl. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "a finish exactly at the cutoff, or after it, earns no Night Owl" (~test/bear_cub/chores_test.exs:2481~): 20:00:00 and 20:00:01 both total 5; ~before_cutoff?/2~ compares strictly (~Time.compare == :lt~).
+:END:
+** [X] A failed evening earns no Night Owl, and still earns none if it is redone afterwards. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "a fail forfeits it, and so does a fail then redo" (~test/bear_cub/chores_test.exs:2509~): -5 after the fail, 0 after the redo, pricing ~n: 0, night_owl?: false~ in both.
+:END:
+** [X] An undo and redo that moves the evening's last live tap past the cutoff loses the Night Owl. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "an undo and redo past the cutoff loses it" (~test/bear_cub/chores_test.exs:2520~): 9 before, 5 after a 20:30 redo, both routes, pricing reports no Night Owl.
+:END:
+** [X] Two kids finishing the same evening are each judged against their own cutoff: one before theirs earns it, one after theirs does not. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "each kid is judged against their own cutoff" (~test/bear_cub/chores_test.exs:2530~): 20:00-cutoff kid gets 9, 19:00-cutoff kid gets 5 for the same 19:30 finish; also covered by kids a and b in the combined agreement test.
+:END:
+** [X] A kid with no cutoff for that weekday in the schedule in force earns no Night Owl. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "a kid with no cutoff entry earns no Night Owl" (~test/bear_cub/chores_test.exs:2493~): total 5, ~n: 0~; also kid c in the combined agreement test.
+:END:
+** [X] Under a schedule whose Night Owl bonus is 0, a timely finish earns no Night Owl. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "N = 0 means off, whatever the clock" (~test/bear_cub/chores_test.exs:2501~): timely finish totals 5, ~n: 0~; the ~earn.night_owl_bonus > 0~ condition lives in ~resolve/4~.
+:END:
+** [X] The Night Owl is judged against the kid's cutoff, and paid at the bonus, of the schedule in force at the evening's last live tap. Raising the bonus or moving a cutoff afterwards leaves that evening's points unchanged. When a kid's cutoff changes between two evenings, each evening is judged by its own. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by tests "N raised after an earn leaves the earned evening unchanged (SC-4)" (~test/bear_cub/chores_test.exs:2543~, stays 9 where the current N would give 15) and "a cutoff moved between evenings" (~test/bear_cub/chores_test.exs:2552~, 9 + 5 = 14). Verdict and amount come from the single ~earn~ version at ~last_completed_at~.
+:END:
+** [X] A kid's total is the same figure computed one kid at a time or for the whole roster at once. The history behind that check combines every case above: two kids with different cutoffs on one evening, a cutoff changed between evenings, the bonus raised after an earn, a kid with no cutoff, a bonus of 0, a fail, a fail then redo, and a finish exactly at the cutoff. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by test "per-kid and grouped routes agree over a history combining every case" (~test/bear_cub/chores_test.exs:2585~): hand-derived totals for eight kids (23, 5, 5, 9, 5, -5, 0, 5) via ~assert_both~ on ~earnings/2~ and ~earnings_by_kid/1~. A mutation setting ~kid_id: nil~ in the grouped route made it fail, so it catches a route without a cutoff lookup.
+:END:
+** [X] The pricing the kiosk reads for an evening reports the Night Owl amount and whether it was earned. In every case above that earns no Night Owl, it reports 0 and not earned. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by ~routine_day_pricing~ assertions in each no-Night-Owl test (at/after cutoff, no cutoff, N = 0, fail, fail then redo, undo-redo, strict kid): all ~n: 0, night_owl?: false~; timely case ~n: 4, night_owl?: true~. Return map built in ~routine_day_pricing/4~.
+:END:
+** [X] Every morning's figures, early bird included, are unchanged by this story. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verified by the unchanged morning expectations (only ~n: 0, night_owl?: false~ added to the pricing maps) and test "the morning's figures are unchanged" (~test/bear_cub/chores_test.exs:2575~): r 5, e 2, early? true, total 7. Existing early-bird tests pass.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  All eleven acceptance criteria are met (see their entries above); none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Tests for every acceptance criterion are in the new describe block "the Night Owl across derivation routes" in ~test/bear_cub/chores_test.exs~, and pass in the ~mix precommit~ run (826 passed); ~put_night_owl/3~ in ~test/support/schedule_helpers.ex~ is exercised by its own test.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  Verifier read the diff against CLAUDE.md: Elixir comments wrapped at 80, no ~DateTime.utc_now()~ in new code, fixed instants in tests, no public ~night_owl?~ wrapper; ~mix format --check-formatted~ and ~compile --warnings-as-errors~ pass inside ~mix precommit~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:24] \\
+  ~mix precommit~ run once by the verifier on the final code: exit 0, 826 tests, 0 failures, 0 warnings.
+:END:
 
 * Technical Notes
 
