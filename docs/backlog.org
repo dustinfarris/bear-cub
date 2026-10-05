@@ -5,23 +5,6 @@
 Repo-level backlog, cumulative across initiatives. Items land here from PLAN Deferred sections at initiative close, from ad-hoc discovery (org-capture or mid-session), and from work surfaced out of scope during execution. Items leave by being done, claimed by an initiative, or deliberately dropped. Rule [2026-07-24 Fri]: DONE entries do not stay here — move each to docs/completed.org (heading, properties, and full capture/triage/done trail intact) at the review that marks it, so this file only ever holds open work.
 
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
-* TODO "night owl" bonus for completing evening routine early :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:03]
-:END:
-
-This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
-
-There should be a configurable bonus.
-
-A badge for earning the bonus similar to the Early Bird badge.
-* TODO Show the day's weather so the kid knows how to dress in the morning. :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:02]
-:END:
-
-An icon for hot/normal/cold and an icon for sunny or raining
-(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
 * TODO [#B] Admin chore form: moving a counted extra into a routine fails the save with no visible error :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-26 Sat 23:21]
@@ -40,57 +23,6 @@ Seen at the effort-multiplier Batch 1 gate at 1280 × 800. The panel opened on t
 
 Found [2026-09-26 Sat 23:21] in the effort-multiplier Batch 1 gate review. The human signed off on the gate and asked for it to be backlogged.
 
-* TODO [#C] ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-09-21 Mon 06:57]
-:END:
-
-Every test that completes a chore without a ~Req.Test~ stub in place emits an ~[error] Task ... cannot find mock/stub BearCub.Notifications~ crash report, from the fire-and-forget ~Task~ in ~notify_completed/3~ racing test-process teardown. No test fails and the suite reports clean, but a ~mix precommit~ log now carries enough of this noise to bury a real failure — both verification subagents on effort-multiplier Story 01 had to reason past it to read the result, and so did the batch gate. Pre-existing and unrelated to counted chores; that story only made it more visible by adding tests that complete chores. Plausible fixes, neither attempted: stub ~BearCub.Notifications~ globally in ~test/test_helper.exs~, or default fixtures to ~notify_on_complete?: false~.
-
-Swept [2026-09-21 Mon 06:57] from docs/2026-09-20-effort-multiplier/PLAN.org's Deferred section (Story 01 discovery), at the Batch 1 gate.
-
-* TODO [#C] ~BearCub.Dev.Scenarios.effort/1~ is not idempotent — each run leaves two more counted chores behind :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-09-21 Mon 06:57]
-:END:
-
-~effort/1~ calls ~reset/1~ (which wipes the local day's /completions/) and then ~create_chore/3~ twice, so the chores themselves accumulate: after three runs the dev database carried three "Chess Puzzle" extras per kid, and Kid A's column at the Batch 1 gate showed six extras where a real day has one or two. The long column is what exposed the count panel's below-the-fold clipping, so the cruft was useful once, but it makes the staged frame unrepresentative and the next reviewer will hit the same surprise. Sibling scenarios do not have this shape — they stage completions against chores that already exist. Plausible fixes: archive or reuse a chore named "Chess Puzzle" on entry, or give the counted chore a stable marker ~effort/1~ looks up before creating.
-
-Found [2026-09-21 Mon 06:57] at the effort-multiplier Batch 1 gate.
-
-* TODO [#C] revisit web push for parent notifications
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 13:05]
-:END:
-Set aside [2026-09-06 Sun] while implementing the ntfy oneshot (now in docs/completed.org): web push would keep notifications first-party with no relay and no extra phone app, and delivery reaches the phone anywhere via Apple's/Google's push relays. What ruled it out for that session was the machinery, not the outcome: a secure context (TLS for the admin — a Tailscale cert for the MagicDNS name plus reverse proxy or Bandit TLS in the NixOS module), a service worker plus a per-phone subscribe flow in the admin UI, a subscriptions table and a VAPID keypair as a new server secret, a web-push encryption dep (~web_push_elixir~ or ~web_push_encryption~), and iOS only delivering to a Home Screen PWA (so a manifest too). Untagged deliberately: this is initiative-scale (promote) if picked up, and would replace rather than sit beside the ntfy path. Trigger to revisit: the public-relay trade ("<kid> finished <chore>" through ntfy.sh) stops being acceptable, or TLS lands for another reason.
-* TODO On-device gate for the good-standing band and ring is still owed :hand:
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 09:08]
-:END:
-
-Swept [2026-09-06 Sun 09:08] from the good-standing Batch 1 gate, where the human ruled it a documented deferral. Story 05's AC8 stays ~[-]~: the tablet cannot be exercised without a deploy, so nothing on this machine can close it.
-
-Still owed, on the tablet in Fully Kiosk, during the morning window, for a kid in good standing:
-
-1. band and ring render as designed;
-2. *both* read from across the room — the ring is a 4px inset ring against ~bg-base-100~ and read as a thin line in the desktop spot-check, so it needs the legibility check as much as the band does;
-3. band plus five manually re-expanded done morning chore rows fit without scrolling;
-4. band and ring disappear at 17:00 without anyone touching the tablet;
-5. standing still renders correctly after sleep/wake reconnect.
-
-Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute for the tablet, but it makes items 3 and 4 checkable before a deploy, which is what was missing:
-
-- Force the morning window to cover the current time and push evening past it: ~BEAR_CUB_MORNING_WINDOW=05:00-22:00 BEAR_CUB_EVENING_WINDOW=22:00-23:00 mix phx.server~. ~config/runtime.exs~ is not guarded by ~config_env()~, so both vars apply in dev; confirmed by reading ~:routine_windows~ back after an override. On an overlap ~Routines.current/2~ takes the first matching window in config order, which is morning.
-- Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
-- Watch the disappearance without waiting for 17:00: set the morning end a few minutes ahead of now, e.g. ~BEAR_CUB_MORNING_WINDOW=05:00-09:25 BEAR_CUB_EVENING_WINDOW=09:25-23:00~. ~Routines.next_boundary/2~ schedules a re-render at every window edge, so the band and ring vanish on their own at that edge.
-
-What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
-
-* TODO snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 14:10]
-:END:
-Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
 * TODO [#B] The extra chores need to show how many points they're worth. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-26 Sun 14:18]
@@ -103,48 +35,6 @@ Triage [2026-09-06 Sun]: oneshot, #B — today an extra's ~+N~ chip (~lib/bear_c
 :END:
 
 Triage [2026-09-06 Sun]: promote — not a clean oneshot. ~Points.balance/2~ is ~Chores.earnings + Rewards.spend_total~ (D42, D57); an ad hoc award is neither — it's a third signed-input source with no completion row and no redemption behind it, so it needs its own ruling on where it lives (a new context, or a new signed-event table under an existing one), an admin surface (amount + reason, at minimum), and how it composes into ~balance/2~ and the grouped ~balances/1~ without breaking the D72-style pointwise-agreement requirement between the per-kid and grouped derivations. Candidate for its own brainstorm rather than absorption into an existing initiative.
-* Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-Considered and deliberately not designed for in rewards/redemption (DESIGN.org "Out of Scope for This Design"): the app records that a redemption *happened*, not that the parent actually delivered it. At two-kid scale the verbal channel covers it, and deferral is structurally free — a nullable ~fulfilled_at~ marker plus one admin control later is a trivially additive oneshot. Act only if field evidence surfaces (a double-buy or a forgot-to-buy) that the verbal channel isn't catching.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section and DESIGN.org's Out of Scope section.
-* History pagination (D70) — backlog seed if the 50-row bound ever bites
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
-* TODO [#C] Wall-clock-derived date argument in ~today_live_test.exs~ (rewards/redemption Story 01) :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-A pre-existing test in ~test/bear_cub_web/live/admin/today_live_test.exs~ (/"a fail live-updates the kiosk: the chore reverts and the points badge drops"/) passes ~DateTime.to_date(LocalTime.now())~ as its local date rather than a fixed value — Story 01 only swapped the module name reference on that line, without changing the wall-clock read. Not a ~docs/learnings.org~ [2026-07-17] violation — the test does pin ~:routine_windows~, which is what that learning requires — but the date argument itself still tracks whichever local date the run happens to land on. A test-hygiene seed: apply the [2026-07-17] discipline to the date argument the learning didn't originally reach.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
-* TODO [#C] No automated guard on the ~Chores~ ⇏ ~Rewards~ dependency direction (rewards/redemption Story 01) :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-CLAUDE.md treats ~Chores~ ⇏ ~Rewards~ as a design invariant alongside the older ~Chores~ ⇏ ~Calendars~ one, and D57 rests on it: the moment ~Chores~ imports ~Rewards~, a rewards failure can reach the chore path. Today it holds by convention and by ~grep~ at review time only — nothing fails automatically if a future session wires the two together. A durable guard (a boundary test, or a compile-time check over the module's references) needs its own ruling on instrument and placement, and it applies equally to the older ~Calendars~ invariant, not just this one.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
-* TODO [#C] ~mix ecto.reset~ seeds the test database when run under ~MIX_ENV=test~ :oneshot:
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-The ~ecto.reset~ alias (~mix.exs~) chains ~ecto.drop~ → ~ecto.setup~, and ~ecto.setup~ unconditionally runs ~priv/repo/seeds.exs~ — there is no ~MIX_ENV~ guard distinguishing "reset my dev sandbox" from "reset the test database a suite is about to run against." Run against ~MIX_ENV=test~, it permanently inserts the placeholder kid/chore rows directly into the test db file, outside any ~Ecto.Adapters.SQL.Sandbox~ transaction — the seeded rows survive every subsequent ~mix test~ invocation until the file is manually dropped and recreated without seeding (~MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate~, skipping ~ecto.setup~'s seed step). Discovered when rewards/redemption Story 02's own verification loop hit this by accident (a run of failures — leaked kid/chore rows, id drift, a "fresh production database" test finding kids present — reproduced identically against a ~git stash~ of pre-story code, ruling out the rewrite as cause). A repo-tooling oneshot: guard ~ecto.setup~'s seed step on ~Mix.env() == :dev~, or split ~ecto.setup~ into seeding and non-seeding variants. Touches shared tooling (~mix.exs~), not any one story's code.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 02 discovery).
-* Late-approval same-day balance-read characteristic (D72-class, narrowed by D73)
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
 * TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day :promote:
 :PROPERTIES:
 :CREATED:  [2026-07-25 Sat 20:44]
@@ -189,6 +79,50 @@ Retriage [2026-09-06 Sun]: rewards/redemption shipped without claiming this — 
 :CREATED:  [2026-07-12 Sun 23:06]
 :END:
 Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
+* TODO [#C] ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-09-21 Mon 06:57]
+:END:
+
+Every test that completes a chore without a ~Req.Test~ stub in place emits an ~[error] Task ... cannot find mock/stub BearCub.Notifications~ crash report, from the fire-and-forget ~Task~ in ~notify_completed/3~ racing test-process teardown. No test fails and the suite reports clean, but a ~mix precommit~ log now carries enough of this noise to bury a real failure — both verification subagents on effort-multiplier Story 01 had to reason past it to read the result, and so did the batch gate. Pre-existing and unrelated to counted chores; that story only made it more visible by adding tests that complete chores. Plausible fixes, neither attempted: stub ~BearCub.Notifications~ globally in ~test/test_helper.exs~, or default fixtures to ~notify_on_complete?: false~.
+
+Swept [2026-09-21 Mon 06:57] from docs/2026-09-20-effort-multiplier/PLAN.org's Deferred section (Story 01 discovery), at the Batch 1 gate.
+
+* TODO [#C] ~BearCub.Dev.Scenarios.effort/1~ is not idempotent — each run leaves two more counted chores behind :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-09-21 Mon 06:57]
+:END:
+
+~effort/1~ calls ~reset/1~ (which wipes the local day's /completions/) and then ~create_chore/3~ twice, so the chores themselves accumulate: after three runs the dev database carried three "Chess Puzzle" extras per kid, and Kid A's column at the Batch 1 gate showed six extras where a real day has one or two. The long column is what exposed the count panel's below-the-fold clipping, so the cruft was useful once, but it makes the staged frame unrepresentative and the next reviewer will hit the same surprise. Sibling scenarios do not have this shape — they stage completions against chores that already exist. Plausible fixes: archive or reuse a chore named "Chess Puzzle" on entry, or give the counted chore a stable marker ~effort/1~ looks up before creating.
+
+Found [2026-09-21 Mon 06:57] at the effort-multiplier Batch 1 gate.
+
+* TODO [#C] revisit web push for parent notifications
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 13:05]
+:END:
+Set aside [2026-09-06 Sun] while implementing the ntfy oneshot (now in docs/completed.org): web push would keep notifications first-party with no relay and no extra phone app, and delivery reaches the phone anywhere via Apple's/Google's push relays. What ruled it out for that session was the machinery, not the outcome: a secure context (TLS for the admin — a Tailscale cert for the MagicDNS name plus reverse proxy or Bandit TLS in the NixOS module), a service worker plus a per-phone subscribe flow in the admin UI, a subscriptions table and a VAPID keypair as a new server secret, a web-push encryption dep (~web_push_elixir~ or ~web_push_encryption~), and iOS only delivering to a Home Screen PWA (so a manifest too). Untagged deliberately: this is initiative-scale (promote) if picked up, and would replace rather than sit beside the ntfy path. Trigger to revisit: the public-relay trade ("<kid> finished <chore>" through ntfy.sh) stops being acceptable, or TLS lands for another reason.
+* TODO [#C] Wall-clock-derived date argument in ~today_live_test.exs~ (rewards/redemption Story 01) :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+A pre-existing test in ~test/bear_cub_web/live/admin/today_live_test.exs~ (/"a fail live-updates the kiosk: the chore reverts and the points badge drops"/) passes ~DateTime.to_date(LocalTime.now())~ as its local date rather than a fixed value — Story 01 only swapped the module name reference on that line, without changing the wall-clock read. Not a ~docs/learnings.org~ [2026-07-17] violation — the test does pin ~:routine_windows~, which is what that learning requires — but the date argument itself still tracks whichever local date the run happens to land on. A test-hygiene seed: apply the [2026-07-17] discipline to the date argument the learning didn't originally reach.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
+* TODO [#C] No automated guard on the ~Chores~ ⇏ ~Rewards~ dependency direction (rewards/redemption Story 01) :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+CLAUDE.md treats ~Chores~ ⇏ ~Rewards~ as a design invariant alongside the older ~Chores~ ⇏ ~Calendars~ one, and D57 rests on it: the moment ~Chores~ imports ~Rewards~, a rewards failure can reach the chore path. Today it holds by convention and by ~grep~ at review time only — nothing fails automatically if a future session wires the two together. A durable guard (a boundary test, or a compile-time check over the module's references) needs its own ruling on instrument and placement, and it applies equally to the older ~Calendars~ invariant, not just this one.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 01 discovery).
+* TODO [#C] ~mix ecto.reset~ seeds the test database when run under ~MIX_ENV=test~ :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+The ~ecto.reset~ alias (~mix.exs~) chains ~ecto.drop~ → ~ecto.setup~, and ~ecto.setup~ unconditionally runs ~priv/repo/seeds.exs~ — there is no ~MIX_ENV~ guard distinguishing "reset my dev sandbox" from "reset the test database a suite is about to run against." Run against ~MIX_ENV=test~, it permanently inserts the placeholder kid/chore rows directly into the test db file, outside any ~Ecto.Adapters.SQL.Sandbox~ transaction — the seeded rows survive every subsequent ~mix test~ invocation until the file is manually dropped and recreated without seeding (~MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate~, skipping ~ecto.setup~'s seed step). Discovered when rewards/redemption Story 02's own verification loop hit this by accident (a run of failures — leaked kid/chore rows, id drift, a "fresh production database" test finding kids present — reproduced identically against a ~git stash~ of pre-story code, ruling out the rewrite as cause). A repo-tooling oneshot: guard ~ecto.setup~'s seed step on ~Mix.env() == :dev~, or split ~ecto.setup~ into seeding and non-seeding variants. Touches shared tooling (~mix.exs~), not any one story's code.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 02 discovery).
 * TODO [#C] Recurring-extra "off" exit — retiring naturally after completion history — has no test :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-06 Sun 10:00]
@@ -240,3 +174,69 @@ From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
 covered by tests, but is a slightly unusual pattern — change
 ~next_position/2~'s signature to take a bare ~kid_id~ instead and update
 callers and tests.
+* TODO "night owl" bonus for completing evening routine early :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:03]
+:END:
+
+This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
+
+There should be a configurable bonus.
+
+A badge for earning the bonus similar to the Early Bird badge.
+* TODO Show the day's weather so the kid knows how to dress in the morning. :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:02]
+:END:
+
+An icon for hot/normal/cold and an icon for sunny or raining
+(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
+* TODO On-device gate for the good-standing band and ring is still owed :hand:
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 09:08]
+:END:
+
+Swept [2026-09-06 Sun 09:08] from the good-standing Batch 1 gate, where the human ruled it a documented deferral. Story 05's AC8 stays ~[-]~: the tablet cannot be exercised without a deploy, so nothing on this machine can close it.
+
+Still owed, on the tablet in Fully Kiosk, during the morning window, for a kid in good standing:
+
+1. band and ring render as designed;
+2. *both* read from across the room — the ring is a 4px inset ring against ~bg-base-100~ and read as a thin line in the desktop spot-check, so it needs the legibility check as much as the band does;
+3. band plus five manually re-expanded done morning chore rows fit without scrolling;
+4. band and ring disappear at 17:00 without anyone touching the tablet;
+5. standing still renders correctly after sleep/wake reconnect.
+
+Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute for the tablet, but it makes items 3 and 4 checkable before a deploy, which is what was missing:
+
+- Force the morning window to cover the current time and push evening past it: ~BEAR_CUB_MORNING_WINDOW=05:00-22:00 BEAR_CUB_EVENING_WINDOW=22:00-23:00 mix phx.server~. ~config/runtime.exs~ is not guarded by ~config_env()~, so both vars apply in dev; confirmed by reading ~:routine_windows~ back after an override. On an overlap ~Routines.current/2~ takes the first matching window in config order, which is morning.
+- Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
+- Watch the disappearance without waiting for 17:00: set the morning end a few minutes ahead of now, e.g. ~BEAR_CUB_MORNING_WINDOW=05:00-09:25 BEAR_CUB_EVENING_WINDOW=09:25-23:00~. ~Routines.next_boundary/2~ schedules a re-render at every window edge, so the band and ring vanish on their own at that edge.
+
+What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
+
+* TODO snapshot the routine windows and early bird cutoff so a config change does not rewrite points history
+:PROPERTIES:
+:CREATED:  [2026-09-06 Sun 14:10]
+:END:
+Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
+* Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+Considered and deliberately not designed for in rewards/redemption (DESIGN.org "Out of Scope for This Design"): the app records that a redemption *happened*, not that the parent actually delivered it. At two-kid scale the verbal channel covers it, and deferral is structurally free — a nullable ~fulfilled_at~ marker plus one admin control later is a trivially additive oneshot. Act only if field evidence surfaces (a double-buy or a forgot-to-buy) that the verbal channel isn't catching.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section and DESIGN.org's Out of Scope section.
+* History pagination (D70) — backlog seed if the 50-row bound ever bites
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
+* Late-approval same-day balance-read characteristic (D72-class, narrowed by D73)
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
