@@ -43,6 +43,8 @@ defmodule BearCubWeb.Router do
     live "/rewards/:id/edit", RewardLive.Form, :edit
     live "/rewards/history", RewardLive.History
 
+    live "/schedule", ScheduleLive
+
     live "/notifications", NotificationLive
   end
 

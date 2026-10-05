@@ -23,7 +23,8 @@ defmodule BearCub.Dev.Scenarios do
       BearCub.Dev.Scenarios.effort()         # a counted extra ready to tap, another done at x8
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
       BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
-      BearCub.Dev.Scenarios.restore()        # the schedule from before open/cutoff
+      BearCub.Dev.Scenarios.slow_weekend()   # /admin/schedule with a "custom" weekend
+      BearCub.Dev.Scenarios.restore()        # the schedule from before open/cutoff/slow_weekend
       BearCub.Dev.Scenarios.reset()
 
   Placeholder kids and demo chores are seeded first if the database is
@@ -166,6 +167,23 @@ defmodule BearCub.Dev.Scenarios do
   """
   def cutoff(%Time{} = time) do
     write_version(&%{&1 | early_bird_cutoff: time})
+  end
+
+  @doc """
+  A valid schedule in force now whose Saturday and Sunday start the
+  morning at 08:00 with a 09:30 early bird cutoff, the weekdays untouched
+  — so `/admin/schedule` loads with the quiet "custom" marker on the two
+  weekend cards. Unlike `open/1` it passes the changeset, so the page
+  can save it as is. `restore/0` undoes it.
+  """
+  def slow_weekend do
+    write_version(fn
+      %{weekday: weekday} = day when weekday in [6, 7] ->
+        %{day | morning_start: ~T[08:00:00], early_bird_cutoff: ~T[09:30:00]}
+
+      day ->
+        day
+    end)
   end
 
   @doc """

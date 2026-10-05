@@ -82,4 +82,37 @@ defmodule BearCub.Dev.ScenariosTest do
     assert :persistent_term.get({Scenarios, :displaced}, nil) == nil
     assert_received :schedule_changed
   end
+
+  test "slow_weekend/0 writes a valid version whose Saturday and Sunday differ from the weekdays" do
+    Scenarios.slow_weekend()
+
+    versions = Schedules.versions()
+    current = List.last(versions)
+    day = fn weekday -> Enum.find(current.days, &(&1.weekday == weekday)) end
+
+    assert length(versions) == 2
+    assert day.(6).morning_start == ~T[08:00:00]
+    assert day.(7).early_bird_cutoff == ~T[09:30:00]
+    assert day.(1) == Enum.find(hd(versions).days, &(&1.weekday == 1))
+
+    # valid, so the Schedule page can save it untouched
+    assert {:ok, _} =
+             current
+             |> Map.take([:routine_bonus, :early_bird_bonus])
+             |> Map.put(:days, Enum.map(current.days, &Map.from_struct/1))
+             |> Schedules.change_version()
+             |> Ecto.Changeset.apply_action(:validate)
+
+    assert_received :schedule_changed
+  end
+
+  test "restore/0 undoes slow_weekend/0" do
+    original = Schedules.current()
+
+    Scenarios.slow_weekend()
+    Scenarios.restore()
+
+    assert Enum.sort_by(Schedules.current().days, & &1.weekday) ==
+             Enum.sort_by(original.days, & &1.weekday)
+  end
 end
