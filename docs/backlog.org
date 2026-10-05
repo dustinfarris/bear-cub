@@ -29,6 +29,9 @@ An icon for hot/normal/cold and an icon for sunny or raining
 :CREATED:  [2026-09-06 Sun 14:10]
 :END:
 Set aside [2026-09-06 Sun] while implementing the early bird oneshot (now in docs/completed.org), on the human's own call. Every routine-day contribution is re-derived from ~completions~ against the *current* config on every read (D10, D72): ~Routines.bonus/0~, ~Routines.early_bird_cutoff/0~, ~Routines.early_bird_bonus/0~, and ~Routines.windows/0~ all come from ~config/runtime.exs~ with no history. Bumping ~BEAR_CUB_EARLY_BIRD_CUTOFF~ from =07:45= to =09:00= for the summer therefore retroactively awards the early bird to every past morning finished between 7:45 and 9:00, and moving it back in September takes those points away again — the same class of drift as the roster drift D81 closed for chores, now on the config axis. The bonus amounts (~R~, ~E~) drift identically, and the windows would too if any derivation ever read them (none does today; ~completed_at~ is compared only to the cutoff). Untagged deliberately: the fix needs a ruling on shape before sizing — a dated effective-from table for the constants (config becomes data, seeded from env on first boot, edited in admin), a per-completion snapshot of the values in force at tap time (denormalizes onto the row and still misses ~R~, which is a routine-day fact, not a row fact), or a stated policy that re-derivation against current config is intended and the family accepts the drift. Trigger: the first seasonal cutoff change, or any bonus amount change with meaningful history behind it.
+
+Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/), which settles it with an append-only ~schedule_versions~ table priced term-by-term at the instant each term came into being ([[file:decisions.org::#d120][D120]], [[file:decisions.org::#d121][D121]]). Leaves this file when that initiative closes.
+
 * TODO [#B] LiveView test case should pin ~:routine_windows~ by default, with an explicit opt-out for tests that need the real windows :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-10-04 Sun 19:30]
@@ -39,6 +42,8 @@ Pin ~:routine_windows~ in the LiveView test case's shared setup so every LiveVie
 The 2026-07-17 learnings entry is to be revised to point at the mechanism once it exists, not before; revising it now would describe a default that is not there.
 
 Ruled [2026-10-04 Sun] at the effort-multiplier Batch 1 retro ("The Good Night gap, third time").
+
+Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/): with routine timings moving into the database, the default pin becomes a schedule-version insert in the LiveView case's shared setup rather than a ~put_env~ ([[file:decisions.org::#d126][D126]]). Leaves this file when that initiative closes.
 
 * TODO [#B] Admin chore form: moving a counted extra into a routine fails the save with no visible error :oneshot:
 :PROPERTIES:
@@ -253,3 +258,8 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 ~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
 
 Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
+* Commanded (CQRS / event sourcing) for the whole domain — act if auditability, replay or projections are ever wanted
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 22:16]
+:END:
+Considered during the routine-schedule design and kept out of that initiative ([[file:decisions.org::#d127][D127]]). Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (the in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections rather than deriving them on read (D10). The app already holds two append-only fact logs — ~completions~ and ~schedule_versions~ — which give derive-on-read the history it needs. Trigger: a concrete want for an audit trail of every parent and kid action, replaying history under new rules, or read models that derive-on-read cannot serve; make that case as its own PRD, not as a side effect of another feature.

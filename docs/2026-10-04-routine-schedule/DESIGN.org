@@ -1,0 +1,224 @@
+#+title: DESIGN — routine-schedule
+#+date: 2026-10-04
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+Routine timing (the morning and evening windows, the early bird cutoff) and the bonus amounts (routine bonus ~R~, early bird bonus ~E~) live in server config today, and every past day's points are re-derived against whatever that config says /now/ — so a parent cannot retune the rules without a deploy and without silently moving points the kids already earned. A single schedule for every day also fits neither weekends nor school days.
+
+A parent opens a new admin page, Schedule, on the phone. It shows ~R~, ~E~, and seven day cards (Monday–Sunday), each holding a morning window, an evening window and an early bird cutoff. Saving writes a new /version/ of the whole schedule, effective that instant; every open kiosk re-renders under it at once. Nothing already earned moves, because every points term is priced by the version that was in force when that term came into being.
+
+The whole feature is *one new append-only table of rule versions* ([[file:../decisions.org::#d120][D120]]) plus a change in /which/ values the existing derivation reads: the values in force at the instant each points term came into being ([[file:../decisions.org::#d121][D121]]), rather than the current config. Derive-on-read (D10) is kept; only its reference point moves. Three properties organise the design, all from the PRD's Success Criteria:
+
+1. *Earned points never move* (SC-1, SC-5). Versions are never edited or deleted, and the derivation resolves each term against the version in force at its own instant.
+2. *Per-weekday timing* (SC-2). Each version carries a seven-entry weekday map.
+3. *Immediate effect, no deploy* (SC-3, SC-4). A save is a DB insert plus a PubSub broadcast that the kiosk acts on, boundary timer included.
+
+Canon this builds on, restated so the design reads cold:
+
+- *D8 — routines are app constants.* ~:morning~ / ~:evening~ in ~BearCub.Routines~, never DB rows, no routine CRUD; windows from ~runtime.exs~, env-overridable. This design keeps the first half and supersedes the second: the routines stay constants, their timings become data ([[file:../decisions.org::#d120][D120]]).
+- *D10 — day state is derived, never stored.* Kept. No points figure is stored or snapshotted; derivation reads the version history instead of ~Application.fetch_env!/2~.
+- *D39 / D40 — the routine-day contribution.* ~+R~ when a non-empty roster is fully live, ~−R~ (once) when any completion that day was failed. Shape unchanged; only the source of ~R~ changes.
+- *[[file:../decisions.org::#d72][D72]] / [[file:../decisions.org::#d89][D89]] — the grouped derivation (~earnings_by_kid/1~) agrees pointwise with the per-kid one (~earnings/2~), and ~contribution/4~ is the single place routine-day booleans become points.* That single place is where pricing goes.
+- *[[file:../decisions.org::#d100][D100]] — the early bird.* ~+E~ on a morning that is earned, unfailed, and whose /last live/ completion (~last_completed_at~) landed strictly before the cutoff in local wall-clock time; the UTC→local shift happens in Elixir because SQLite has no timezone tables. Its sentence "re-derivation against current config is the established doctrine" is superseded by [[file:../decisions.org::#d121][D121]].
+- *[[file:../decisions.org::#d81][D81]] — the routine-day roster is the chores live on that day*, so archiving a chore drops it from the archive day itself.
+- *[[file:../decisions.org::#d119][D119]] — LiveView tests pin the routine windows and take today from the real clock; no clock mocking.* Kept; the pin's mechanism changes from ~put_env~ to inserting a version ([[file:../decisions.org::#d126][D126]]).
+- *Calendar independence, the kiosk/admin fence, local-datetime arguments* — untouched. ~Schedules~ depends on nothing; ~Calendars~ is not involved; the new page is admin-only.
+
+* Data Model
+
+** ~schedule_versions~: one append-only table, weekday map embedded as JSON
+
+| column             | type                 | notes                                                     |
+|--------------------+----------------------+-----------------------------------------------------------|
+| ~id~               | integer              |                                                           |
+| ~effective_at~     | ~utc_datetime~       | unique; the instant this version took over                |
+| ~routine_bonus~    | integer, ≥ 0         | ~R~                                                       |
+| ~early_bird_bonus~ | integer, ≥ 0         | ~E~; ~0~ disables the early bird, as today                |
+| ~days~             | JSON (~embeds_many~) | exactly seven entries, one per ISO weekday 1–7            |
+| ~inserted_at~      | ~utc_datetime~       |                                                           |
+
+Each ~days~ entry: ~weekday~, ~morning_start~, ~morning_end~, ~evening_start~, ~evening_end~, ~early_bird_cutoff~ (all wall-clock ~Time~ except ~weekday~).
+
+*Append-only* ([[file:../decisions.org::#d120][D120]]). Rows are never updated or deleted. Every save inserts a full row — all seven days and both bonuses, copied forward where unchanged. One edited cutoff costs a whole row, and that is accepted: each version is self-contained and resolution is a single lookup. The weekday entries are embedded JSON rather than a normalized child table because they are only ever read with their version, and an embed lets one changeset validate the whole schedule.
+
+** Validation moves from boot to the changeset
+
+Today ~config/runtime.exs~ raises at boot on a malformed window or a cutoff outside the morning. Those rules become per-day changeset errors on the embed:
+
+- each window's start is strictly before its end (no window spans midnight);
+- the morning ends no later than the evening starts;
+- the cutoff falls strictly inside the morning window.
+
+On the version: ~routine_bonus~ and ~early_bird_bonus~ are integers ≥ 0; ~days~ has exactly seven entries with weekdays 1–7, each once.
+
+** The seed: version 0 is the past (SC-5)
+
+One migration creates the table and inserts *version 0* with ~effective_at = 1970-01-01T00:00:00Z~ and, on all seven days: morning 05:00–17:00, evening 17:00–23:00, cutoff 07:45; ~R = 5~, ~E = 2~.
+
+These are production's actual values: the deployed NixOS module (~nixos/bear-cub.nix~ in the homeassistant repo) sets none of the ~BEAR_CUB_*~ routine variables, so production has always run the code defaults. Because version 0 predates every completion, every historical term resolves against exactly the numbers it resolves against today.
+
+The seed is schema-independent: version 0 is written with ~Repo.insert_all/3~ on the table name with plain maps and a literal JSON ~days~ value (times as ISO ~"HH:MM:SS"~ strings, the form the embed serialises ~Time~ to), never through the ~ScheduleVersion~ module, so a later schema change cannot break the migration on a fresh database. A test loads version 0 through the schema and asserts it round-trips.
+
+The ~BEAR_CUB_MORNING_WINDOW~, ~BEAR_CUB_EVENING_WINDOW~, ~BEAR_CUB_ROUTINE_BONUS~, ~BEAR_CUB_EARLY_BIRD_CUTOFF~ and ~BEAR_CUB_EARLY_BIRD_BONUS~ variables and their ~runtime.exs~ parsing and checks are deleted in the same change.
+
+** ~routine_day_status/3~ gains ~first_failed_at~
+
+No column changes on ~completions~. The per-routine-day status map gains a fifth key, ~first_failed_at~ — the earliest ~failed_at~ among that routine-day's completions, ~nil~ when never failed — selected as ~MIN(failed_at)~ in the same aggregate that already yields ~last_completed_at~ ([[file:../decisions.org::#d122][D122]]). ~Chores.standing/2~ ignores the new key.
+
+* Screens / Interfaces
+
+** Admin — Schedule page (SC-2, SC-3)
+
+~live "/admin/schedule", ScheduleLive~, with a nav entry beside Chores / Kids / Calendars / Rewards. Phone-first. It is a single form over ~Schedules.change_version/1~ with insert-only saves — no CRUD — so it is shaped by hand over the generated form patterns rather than scaffolded as a resource ([[file:../decisions.org::#d125][D125]]).
+
+Top to bottom:
+
+1. *Bonuses* — Routine bonus (~R~) and Early bird bonus (~E~, hint "0 turns it off").
+2. *Seven day cards*, Monday → Sunday, each with Morning start–end, Evening start–end, Early bird cutoff as native ~type="time"~ inputs. A card that differs from Monday carries a quiet "custom" marker so a varying weekend is visible while scrolling.
+3. *One Save*, flash "Saved — in effect now". Errors render on the specific day card and field (e.g. "Cutoff must fall inside the morning window (05:00–12:00)").
+
+*"Copy to" on each day card:* weekdays / weekend / all days. It overwrites the other cards' fields /in the unsaved form only/; nothing is written until Save.
+
+*A save with no changes is a no-op:* no version, no broadcast, so the history stays meaningful.
+
+Not built: a version history view, future-dated changes, deletion or rollback (rolling back is saving the old values — a new version).
+
+** Kiosk — routine figures: incurred figures are priced, stake figures are live
+
+The kiosk's routine numbers today call ~Routines.bonus/0~ directly from ~kiosk_components.ex~. They split into two kinds ([[file:../decisions.org::#d123][D123]]):
+
+- *Incurred* — the completion badge ~+R~ / ~+R+E~ on a finished routine, and the ~−R~ penalty indicator on a failed one — shows the /priced/ figures for that routine-day, matching the ledger. A morning earned at 07:30 under ~R = 5~ keeps showing ~+5~ after ~R~ is raised to 8 at 10:00; a penalty shows ~R~ as priced at ~first_failed_at~.
+- *Stake* — the stake chip ~+R~, what finishing would earn — shows ~R~ from the version in force now.
+
+~Chores~ exposes the priced breakdown of a routine-day — e.g. ~routine_day_pricing/3~ returning ~%{r: …, e: …, penalty: …}~ — built from the same ~contribution~ internals; ~KioskLive.load/3~ resolves today's version and passes ~r~ / ~e~ (live) and the priced breakdowns down as assigns. Components stop calling ~Routines~ for numbers.
+
+** Admin — Today screen
+
+Uses the same resolution as the kiosk for its routine sections (the active routine from today's day entry; routine figures priced as above), and subscribes to schedule changes so it re-renders on a save.
+
+* Key Behaviors
+
+** Pricing: each term at the instant it came into being (SC-1, SC-4)
+
+A versions table keyed by /date/ fails SC-1 on a same-day edit: a morning earned at 07:30 under ~R = 5~ would re-score when ~R~ is raised at 10:00 that day; making the edit wait until tomorrow fails SC-3. So versions carry an instant, and each term resolves against the version in force at /its/ instant ([[file:../decisions.org::#d121][D121]]):
+
+| term | instant it is priced at                                             | what is read from that version                                |
+|------+---------------------------------------------------------------------+---------------------------------------------------------------|
+| ~+R~ | ~last_completed_at~ — the last live tap on the day's roster         | ~routine_bonus~                                               |
+| ~+E~ | ~last_completed_at~ (same instant as ~+R~)                          | the cutoff for ~local_date~'s weekday, and ~early_bird_bonus~ |
+| ~−R~ | ~first_failed_at~ — the earliest ~failed_at~ that routine-day       | ~routine_bonus~                                               |
+
+The weekday is always that of the routine-day's ~local_date~. "Early" and "how much" for the early bird come from the same version, so the verdict and the amount are judged by the same rules.
+
+Consequences:
+
+- An earned day failed after ~R~ changed, then redone: the redo is a new last live tap, so ~+R~ re-prices at the new value and the fail costs the new value — net 0, as today.
+- An earned day failed after ~R~ changed and /not/ redone: the day is no longer complete, so ~+R~ drops out and the day nets ~−R~ at the new value — the same shape as today, at the price in force when the fail happened.
+- An undo-and-redo after an edit re-earns at the new ~R~ (and is re-judged against the new cutoff). The kid's total moves by the difference at the moment of the re-tap; nothing they already held moved.
+- ~last_completed_at~ is "the last live tap on the day's roster", which is /usually/ the moment the day became earned but not always. Under [[file:../decisions.org::#d81][D81]] archiving a chore drops it from that day's roster: if it held the last tap, ~last_completed_at~ falls back to an earlier tap and ~+R~ / ~+E~ re-price against the version in force then; an archive that completes the roster with no new tap is priced at the existing last tap. Accepted: the trigger is an archive, not a schedule edit, and D81 already lets an archive change that day's result, so SC-1 (which is about schedule changes) is not engaged.
+
+** SQL gathers facts; Elixir prices them in one place
+
+~contribution/4~ becomes ~contribution(versions, routine, local_date, facts)~ and is still the single place routine-day facts become points, called by both derivation routes ([[file:../decisions.org::#d122][D122]]):
+
+#+begin_src elixir
+# +R if earned, -R if failed, +E if early — each resolved against
+# the version in force at its own instant (D121).
+defp contribution(versions, routine, local_date, facts) do
+  earn = facts.last_completed_at && Routines.in_force(versions, facts.last_completed_at)
+  fail = facts.first_failed_at && Routines.in_force(versions, facts.first_failed_at)
+  early? = early_bird?(routine, facts.earned?, facts.failed?, facts.last_completed_at,
+                       earn && Routines.day(earn, local_date))
+
+  if(facts.earned?, do: earn.routine_bonus, else: 0) +
+    if(facts.failed?, do: -fail.routine_bonus, else: 0) +
+    if(early?, do: earn.early_bird_bonus, else: 0)
+end
+#+end_src
+
+(Illustrative shape, not a signature contract: the constraint is one function, both routes, each term at its own instant.)
+
+~earnings/2~ and ~earnings_by_kid/1~ each call ~Schedules.versions/0~ once and pass the list down. Public per-routine-day functions (~routine_day_contribution/3~, the kiosk pricing helper) take the version list as an argument (with a convenience arity that fetches it), so a whole render loads the history once rather than per call. [[file:../decisions.org::#d72][D72]]'s "two queries regardless of history" becomes three, still O(1); the versions table grows by one row per parent save.
+
+** Modules and boundaries
+
+- *~BearCub.Schedules~* (new context, persistence): ~versions/0~ (full history, ordered by ~effective_at~), ~current/0~, ~change_version/1~ (form changeset, prefilled from current), ~change/1~ (insert effective now, then broadcast), ~subscribe/0~. The "now" for ~change/1~ is taken at the context boundary like every other write's timestamp; no domain function reads the clock.
+- *~BearCub.Routines~* stays pure and DB-free. It gains ~in_force(versions, %DateTime{})~ — the version with the latest ~effective_at~ ≤ the instant; raises when there is none, because a silent default would re-score history — and ~day(version, %Date{})~. ~current/2~ and ~next_boundary/2~ take a resolved day entry instead of reading config. ~bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed; every caller receives values from a resolved version.
+- *~BearCub.Chores~* depends on ~Schedules~ (scheduling is part of the points core). ~Schedules~ depends on nothing. ~BearCub.Points~ is unchanged.
+
+** Immediate effect (SC-3, SC-4)
+
+~Schedules.change/1~ broadcasts ~:schedule_changed~ on a ~"schedules"~ topic after a successful insert. ~KioskLive~ and admin ~TodayLive~ subscribe at mount beside their existing ~Chores~ / ~Rewards~ subscriptions.
+
+On ~:schedule_changed~ the kiosk reloads — re-resolving the version in force now and today's day entry — and re-arms its boundary timer.
+
+*The boundary timer keeps its ref* ([[file:../decisions.org::#d124][D124]]). ~schedule_boundary/2~ today fires ~Process.send_after~ and discards the ref; each ~:boundary~ arms the next. This feature is the first thing that arms it from anywhere else, and a second arm would start a second chain that never ends. The ref is stored in an assign and cancelled before every re-arm.
+
+What a mid-day edit does, by kind:
+
+- a *window* edit changes what the kiosk shows from now on — the routine can flip immediately; no derivation reads windows;
+- a *cutoff* edit affects any morning whose last live tap lands after the edit; a morning already finished keeps its verdict;
+- an *~R~ / ~E~* edit affects terms that come into being from now on: an earn, a redo, a fail.
+
+Midnight stays a boundary, so a new weekday's timings take over with no special case.
+
+** Failure modes
+
+- *No version at all* means a broken migration: ~Routines.in_force/2~ raises rather than defaulting.
+- *An instant before version 0* cannot occur; version 0 is at the epoch.
+- *Concurrent saves from two phones* both insert and the later ~effective_at~ wins. ~effective_at~ is unique at second precision, so a same-second collision fails the insert and the form says to try again. Accepted for one household.
+- *DST*: windows and cutoffs stay wall-clock per weekday and are resolved through the existing ~local_datetime/3~ gap/fold handling; version instants are UTC, so a version's start is unambiguous.
+
+** Dev scenarios and test infrastructure
+
+*Scenarios* ([[file:../decisions.org::#d126][D126]]). ~BearCub.Dev.Scenarios.open/1~ and ~cutoff/1~ stop calling ~Application.put_env~ and instead insert a version effective now, copied from current with only the timing changed — a real write, reaching kiosks through the new broadcast. ~open/1~ fakes the other routine with a zero-length window, which the changeset rightly refuses, so scenarios insert via ~Repo.insert!~ on the struct (dev/test-only module). "Restart the server to get the real windows back" no longer holds, since the windows are in the DB: the first scenario write in a VM stashes the id of the version it displaced in ~:persistent_term~ (later scenario writes leave the stash alone), and a new ~Scenarios.restore/0~ inserts a copy of that stashed version effective now and clears the stash. No column marks scenario versions. ~ensure_config/2~'s routine keys go.
+
+*Tests.* Migrations run in the test DB, so every test starts with version 0. The ~put_windows~ / ~morning_active~ / ~evening_active~ idioms become version inserts (effective one second before now) inside the sandbox; the real clock still runs ([[file:../decisions.org::#d119][D119]]).
+
+*The LiveView test case pins a known version by default*, with an explicit opt-out for tests that need the real windows ([[file:../decisions.org::#d126][D126]]). This absorbs the backlog item "LiveView test case should pin ~:routine_windows~ by default"; its mechanism is a version insert in the shared setup rather than a ~put_env~. The ~docs/learnings.org~ [2026-07-17] entry is revised to point at the mechanism by the story that lands it, not before.
+
+** Testing
+
+Unit and LiveView layers both, per the MVP design's §11 test map.
+
+- *~Routines~ (pure):* ~in_force/2~ exactly at an ~effective_at~ and one second before; raises with no versions; ~day/2~ by weekday; ~current/2~ and ~next_boundary/2~ against a per-weekday entry, including a Friday→Saturday midnight with different timings.
+- *~Schedules~:* each day-changeset rule; the seven-entry requirement; no-op save; broadcast on save; insert-only (no update path exists); version 0 round-trips through the schema.
+- *Pricing* — the [[file:../decisions.org::#d72][D72]] pointwise agreement test between ~earnings/2~ and ~earnings_by_kid/1~, extended over a fixture with: an ~R~ change between earn and fail; between earn and redo; a cutoff change on one weekday only; a version with ~E = 0~; and ~R~ raised after an earn leaving that earn's total unchanged (SC-1). *This is the most important test in the set*: it is the only thing that catches the two routes resolving a term at different instants.
+- *SC-5:* ~earnings_by_kid/1~ over a fixture history equals a hand-computed figure at ~R = 5~ / ~E = 2~ / cutoff 07:45 with only version 0 present.
+- *LiveView, kiosk:* an edit while mounted flips the routine and the stake chip live; the earned badge keeps its priced ~R~ after an ~R~ edit; after repeated edits exactly one boundary timer is armed.
+- *LiveView, admin:* save creates a version; per-field errors land on the right day card; Copy to weekdays / weekend / all; no-op save writes nothing.
+- *Test hygiene:* fixed instants for every version and completion in domain tests; LiveView tests per [[file:../decisions.org::#d119][D119]].
+
+*Verification beyond ~mix precommit~:* the local kiosk review at 1280 × 800 via ~BearCub.Dev.Scenarios~ is the gate; the post-deploy checklist gains "kiosk totals identical before and after deploy" for SC-5.
+
+** Documents this initiative updates
+
+- *CLAUDE.md*, by the story that lands the table: the invariant "Routines are app constants … Windows live in ~runtime.exs~ (env-overridable)" is reworded to: routines are constants; their timings and bonuses are append-only data in ~schedule_versions~, and each points term is priced by the version in force at its instant.
+- *~docs/backlog.org~*, at promotion: the config-drift entry (captured 2026-09-06) is settled by this initiative; the default-pin entry is absorbed; a new entry records Commanded as considered and deferred ([[file:../decisions.org::#d127][D127]]).
+
+* Out of Scope for This Design
+
+- Scheduling a change for a future date (PRD out of scope); ~effective_at~ is already an instant, so a future value would resolve correctly if ever allowed.
+- A day with no morning or no evening (PRD out of scope); the changeset requires both windows.
+- Backdated corrections or re-scoring (PRD out of scope); there is no update path on a version.
+- A version history view in admin.
+- A Commanded / event-sourcing refactor of the domain ([[file:../decisions.org::#d127][D127]]).
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion)
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.

@@ -456,3 +456,59 @@ Ruled by the human on 2026-09-26 after living with [[#d116][D116]]'s panel on th
 :END:
 
 Ruled by the human at the effort-multiplier Batch 1 gate. The design's test-hygiene line asked every new test for "fixed local dates" and forbade deriving a date from the wall clock, but ~BearCubWeb.KioskLive~ reads ~LocalTime.now/0~ itself at mount and on every render, and the repo invariants forbid clock mocking. So a LiveView test can agree with the kiosk about "today" only by asking the same clock. The count-panel and completed-row tests do exactly that. What makes them deterministic is pinning ~:routine_windows~ (~docs/learnings.org~ [2026-07-17]), which removes the Good Night gap and the window edges, the failures that actually recur. The fixed-date rule keeps its force wherever a function takes the local datetime as an argument (~Chores~, ~Points~ and the contribution and changeset tests), because there it costs nothing. Accepted risk: a LiveView test that straddles local midnight can see two dates. That is a sub-second window in a suite that finishes in seconds. Rejected — injecting a clock into the kiosk mount (a param, an assign or a config override) so tests can fix the date: it adds a test-only branch to the mount path of the surface whose reliability depends on a single reconnect path, which is the posture [[#d114][D114]] took against a dev-only auto-open. Settles nothing against the PRD. → effort-multiplier/Key Behaviors (testing).
+
+* D120 (2026-10-04) — Routine timings and bonuses are data: an append-only ~schedule_versions~ table with an embedded weekday map, seeded as version 0 at the epoch — supersedes D8's "windows live in ~runtime.exs~" and the "app constant from config" of D39 and [[#d100][D100]]
+:PROPERTIES:
+:CUSTOM_ID: d120
+:END:
+
+The morning and evening windows, the early bird cutoff, ~R~ and ~E~ move out of ~config/runtime.exs~ into one table, ~schedule_versions~: ~effective_at~ (UTC instant, unique), ~routine_bonus~, ~early_bird_bonus~, and ~days~ — an ~embeds_many~ of exactly seven weekday entries (morning start/end, evening start/end, cutoff) stored as JSON. Rows are never updated or deleted; every admin save inserts a full row, copying forward what did not change, so each version is self-contained and resolution is one lookup. The boot-time ~raise~ checks become per-day changeset errors. A migration seeds version 0 at ~1970-01-01T00:00:00Z~ with 05:00–17:00 / 17:00–23:00 / cutoff 07:45 / ~R = 5~ / ~E = 2~ on all seven days — production's actual values, since the deployed NixOS module sets none of the ~BEAR_CUB_*~ routine variables — written via ~insert_all~ with literal JSON so it never depends on the schema module; the five env variables and their parsing are deleted. Routines themselves stay app constants (D8's first half holds: no routines table, no routine CRUD); only their timings become data. Rejected — a table keyed by effective /date/: a same-day edit re-scores a morning already earned that day (fails routine-schedule/SC-1), and deferring the edit to tomorrow fails routine-schedule/SC-3. Rejected — snapshotting ~R~ / ~E~ / cutoff onto each completion at tap time: needs a backfill, still needs an editable current schedule beside it (two sources of truth), and ~R~ is a routine-day fact, not a row fact. Rejected — a normalized ~schedule_version_days~ child table: the weekday entries are only read with their version, and the embed lets one changeset validate the whole schedule. Rejected — seeding version 0 from env on first boot: production sets no env values to carry over, and a migration constant is verifiable by reading it. Settles routine-schedule/SC-2, SC-5 and the 2026-09-06 config-drift backlog entry. → routine-schedule/Data Model.
+
+* D121 (2026-10-04) — Each points term is priced by the schedule version in force at the instant it came into being — supersedes [[#d100][D100]]'s "re-derivation against current config is the established doctrine"
+:PROPERTIES:
+:CUSTOM_ID: d121
+:END:
+
+Ruled by the human in the routine-schedule design conversation. ~+R~ and ~+E~ are priced at ~last_completed_at~ (the last live tap on the day's roster), ~−R~ at ~first_failed_at~ (the earliest ~failed_at~ that routine-day); the weekday is that of ~local_date~; the early-bird verdict and its amount are read from the same version. D10 holds — nothing is stored, every figure is still derived on read — but against the rules in force at the time, not the current config. Consequences accepted: an earned day failed after an ~R~ change and redone nets 0 at the new price; failed and not redone nets ~−R~ at the price in force at the fail; an undo-and-redo after an edit re-earns at the new values (the kid's own re-tap moves the total, not the edit); and under [[#d81][D81]] an archive that removes the chore holding the last tap moves ~last_completed_at~ back and re-prices that day — an archive, not a schedule edit, so routine-schedule/SC-1 is not engaged. Rejected — pricing a whole routine-day once, by the version in force when its window opened: simpler to state, but a mid-morning cutoff edit would not apply until tomorrow, against routine-schedule/SC-3 and SC-4's "in force at that moment". Settles routine-schedule/SC-1, SC-4. → routine-schedule/Key Behaviors (pricing).
+
+* D122 (2026-10-04) — Pricing resolves in Elixir inside ~contribution~; ~routine_day_status/3~ gains ~first_failed_at~; [[#d72][D72]]'s two queries become three
+:PROPERTIES:
+:CUSTOM_ID: d122
+:END:
+
+Ruled by the human. SQL gathers per-routine-day facts (counts, ~last_completed_at~, and a new ~MIN(failed_at)~ as ~first_failed_at~, in the same aggregate); the private ~contribution~ function — still the single place routine-day facts become points ([[#d89][D89]]) — takes the version history and prices each term per [[#d121][D121]]. ~earnings/2~ and ~earnings_by_kid/1~ each load ~Schedules.versions/0~ once and pass it down; public per-routine-day functions take the list as an argument (with a convenience arity), so a render loads it once. D72's "two queries independent of history" becomes three, still O(1). Rejected — resolving versions in SQL: the early-bird comparison needs the UTC→local shift that SQLite cannot do ([[#d100][D100]]), so pricing ~R~ in SQL would split the "in force" rule across two languages and two derivation routes; the SQL itself would be a correlated subquery over an aggregate plus ~json_extract~ keyed on a ~strftime~ weekday. Settles nothing new against the PRD. → routine-schedule/Data Model, routine-schedule/Key Behaviors.
+
+* D123 (2026-10-04) — Kiosk routine figures: incurred figures are priced, the stake figure is live
+:PROPERTIES:
+:CUSTOM_ID: d123
+:END:
+
+Ruled by the human. The completion badge (~+R~ / ~+R+E~) and the ~−R~ penalty indicator show what that routine-day was actually priced at under [[#d121][D121]]; the stake chip (what finishing would earn) shows ~R~ from the version in force now. On the day ~R~ goes from 5 to 8 at 10:00, a morning earned at 07:30 keeps its ~+5~ badge while the unfinished evening's chip reads ~+8~ — the kid-visible form of routine-schedule/SC-1. ~Chores~ exposes a priced breakdown per routine-day built from the same ~contribution~ internals; components stop calling ~Routines~ for numbers. Rejected — every figure reading the current ~R~: the badge would contradict the total it explains the moment a parent edits. → routine-schedule/Screens / Interfaces (kiosk).
+
+* D124 (2026-10-04) — The kiosk boundary timer keeps its ref and is cancelled before every re-arm
+:PROPERTIES:
+:CUSTOM_ID: d124
+:END:
+
+~KioskLive~ reloads and re-arms its boundary timer on ~:schedule_changed~ (routine-schedule/SC-3). Today ~schedule_boundary/2~ discards the ~Process.send_after~ ref and each ~:boundary~ arms the next, so a second arm from anywhere else would start a second self-perpetuating chain. The ref moves into an assign and is cancelled before every arm. In scope here because this is the first arm outside ~:boundary~. Rejected — tolerating duplicate ~:boundary~ messages as harmless reloads: each one arms another timer, so the chains multiply with every save. → routine-schedule/Key Behaviors (immediate effect).
+
+* D125 (2026-10-04) — Admin Schedule page: one form, insert-only saves, per-card "Copy to", no-op on no change
+:PROPERTIES:
+:CUSTOM_ID: d125
+:END:
+
+~/admin/schedule~ is a single phone-first form — bonuses card, seven day cards with native time inputs, one Save that inserts a version effective now — shaped by hand over the generated form patterns since there is no CRUD to scaffold. Each day card carries "Copy to" weekdays / weekend / all days (ruled by the human), acting on the unsaved form only. A save with nothing changed writes no version and broadcasts nothing. Not built: a version history view, rollback or deletion (rolling back is saving the old values again). Rejected — editing seven cards with no copy action: a school-days-versus-weekend split is 25 time inputs by hand. Settles routine-schedule/SC-2, SC-3. → routine-schedule/Screens / Interfaces (admin).
+
+* D126 (2026-10-04) — Dev scenarios and tests pin schedules by inserting versions; the LiveView case pins one by default
+:PROPERTIES:
+:CUSTOM_ID: d126
+:END:
+
+With timings in the DB, ~Application.put_env~ no longer reaches them. ~Scenarios.open/1~ and ~cutoff/1~ insert a version effective now (via ~Repo.insert!~ on the struct, since ~open/1~'s zero-length window is rightly refused by the changeset); the first scenario write stashes the displaced version's id in ~:persistent_term~ and ~Scenarios.restore/0~ re-inserts a copy of it. Test helpers that pinned ~:routine_windows~ insert a version one second before now inside the sandbox, keeping [[#d119][D119]]'s real clock. Ruled by the human: the LiveView test case's shared setup pins a known version by default with an explicit opt-out, absorbing the 2026-10-04 backlog item that asked for exactly that under ~put_env~. Rejected — a column marking scenario-written versions so ~restore~ could find the last real one: a production column existing only for a dev helper. → routine-schedule/Key Behaviors (dev scenarios and test infrastructure).
+
+* D127 (2026-10-04) — Commanded (CQRS / event sourcing) considered for this initiative and kept out
+:PROPERTIES:
+:CUSTOM_ID: d127
+:END:
+
+The human asked whether a broader refactor onto Commanded made sense alongside the routine schedule, and ruled it out of this initiative after the design was worked through. Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (its in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections — a reversal of D10. The event-sourced part this PRD needs is already present at the right size: ~completions~ is effectively an append-only fact log, and ~schedule_versions~ ([[#d120][D120]]) is an append-only log of rule changes; derive-on-read over the two gives routine-schedule/SC-1 with no framework. Commanded would earn its cost if domain-wide auditability, replay, or projections are ever wanted, and that case is captured as its own backlog entry. → routine-schedule/Out of Scope for This Design.
