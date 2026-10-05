@@ -11,6 +11,56 @@ defmodule BearCub.RoutinesTest do
 
   defp la(time), do: DateTime.new!(~D[2026-07-10], time, @tz)
 
+  describe "in_force/2 (schedule versions)" do
+    alias BearCub.Schedules.ScheduleVersion
+
+    @v0 %ScheduleVersion{id: 1, effective_at: ~U[1970-01-01 00:00:00Z]}
+    @v1 %ScheduleVersion{id: 2, effective_at: ~U[2026-10-04 12:00:00Z]}
+    @v2 %ScheduleVersion{id: 3, effective_at: ~U[2026-10-10 12:00:00Z]}
+
+    test "a version applies from exactly its effective instant" do
+      assert Routines.in_force([@v0, @v1], ~U[2026-10-04 12:00:00Z]) == @v1
+    end
+
+    test "one second before, the previous version still applies" do
+      assert Routines.in_force([@v0, @v1], ~U[2026-10-04 11:59:59Z]) == @v0
+    end
+
+    test "picks the latest effective_at at or before the instant, whatever the list order" do
+      assert Routines.in_force([@v2, @v0, @v1], ~U[2026-10-11 00:00:00Z]) == @v2
+      assert Routines.in_force([@v2, @v0, @v1], ~U[2026-10-05 00:00:00Z]) == @v1
+    end
+
+    test "resolves a local datetime by the instant it denotes" do
+      # 2026-10-04 05:00 PDT is 12:00Z — exactly @v1's instant
+      assert Routines.in_force([@v0, @v1], DateTime.new!(~D[2026-10-04], ~T[05:00:00], @tz)) ==
+               @v1
+    end
+
+    test "raises with no versions rather than defaulting" do
+      assert_raise ArgumentError, fn -> Routines.in_force([], ~U[2026-10-04 12:00:00Z]) end
+    end
+
+    test "raises when every version is later than the instant" do
+      assert_raise ArgumentError, fn -> Routines.in_force([@v1], ~U[2026-10-04 11:59:59Z]) end
+    end
+  end
+
+  describe "day/2" do
+    alias BearCub.Schedules.{DayEntry, ScheduleVersion}
+
+    test "returns the entry for the date's ISO weekday" do
+      days = for w <- 1..7, do: %DayEntry{weekday: w, early_bird_cutoff: Time.new!(w, 0, 0)}
+      version = %ScheduleVersion{days: Enum.shuffle(days)}
+
+      # 2026-10-09 is a Friday (5), 2026-10-10 a Saturday (6), 2026-10-11 a Sunday (7)
+      assert Routines.day(version, ~D[2026-10-09]).weekday == 5
+      assert Routines.day(version, ~D[2026-10-10]).weekday == 6
+      assert Routines.day(version, ~D[2026-10-11]).weekday == 7
+      assert Routines.day(version, ~D[2026-10-05]).weekday == 1
+    end
+  end
+
   describe "windows/0" do
     test "reads the configured windows (D1 defaults in test env)" do
       assert Routines.windows() == @windows

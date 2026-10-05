@@ -57,7 +57,7 @@ An implementation session refuses to start work over a dirty working tree; unexp
 
 ## Design invariants (do not violate)
 
-- **Routines are app constants** (`:morning`/`:evening` — see `BearCub.Routines`), never DB rows. Windows live in `runtime.exs` (env-overridable). No routines table, no routine CRUD. (D8)
+- **Routines are app constants** (`:morning`/`:evening` — see `BearCub.Routines`), never DB rows. Their timings and bonuses are append-only data in `schedule_versions` (`BearCub.Schedules`), and each points term is priced by the version in force at its instant. No routines table, no routine CRUD. (D8, D120)
 - **Day state is derived, never stored**: "done" means a `completions` row with `local_date = today AND undone_at IS NULL`. Never add a `completed` flag, a reset job, or midnight machinery. Undo sets `undone_at` — completion rows are never deleted. (D10)
 - **Calendar is a degradable overlay**: `BearCub.Chores` must never depend on `BearCub.Calendars`; calendar failures serve the cached payload and may never affect chore display.
 - **ICS URLs are secrets in the DB**: `redact: true` on the field; never log URLs (log calendar labels), never let them reach git or error output.

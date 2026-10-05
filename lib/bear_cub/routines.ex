@@ -10,6 +10,25 @@ defmodule BearCub.Routines do
   `start <= t < end`.
   """
 
+  @doc """
+  The schedule version in force at `instant`: the one with the latest
+  `effective_at` at or before it. Raises when there is none — a silent
+  default would re-score history.
+  """
+  def in_force(versions, %DateTime{} = instant) do
+    versions
+    |> Enum.filter(&(DateTime.compare(&1.effective_at, instant) != :gt))
+    |> Enum.max_by(& &1.effective_at, DateTime, fn ->
+      raise ArgumentError, "no schedule version in force at #{DateTime.to_iso8601(instant)}"
+    end)
+  end
+
+  @doc "The version's entry for `date`'s ISO weekday."
+  def day(version, %Date{} = date) do
+    weekday = Date.day_of_week(date)
+    Enum.find(version.days, &(&1.weekday == weekday))
+  end
+
   @doc "Active windows keyed by routine slug, from app config."
   def windows do
     Application.fetch_env!(:bear_cub, :routine_windows)
