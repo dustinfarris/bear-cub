@@ -1007,6 +1007,119 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "night owl (D136)" do
+    alias BearCub.Chores
+    import BearCub.ScheduleHelpers, only: [put_night_owl: 2, evening_active: 0]
+
+    setup do
+      kid = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      chore = chore_fixture(kid, %{name: "Pajamas On", icon: "🌙", routine: "evening"})
+
+      %{kid: kid, chore: chore}
+    end
+
+    # a cutoff no tap today can miss, and one no tap can beat
+    @timely ~T[23:59:59]
+    @never ~T[00:00:00]
+
+    defp tap_evening(chore), do: Chores.complete_chore(chore, LocalTime.now(), "kiosk")
+
+    test "a timely evening shows one combined +R+N badge on the moon and a NIGHT OWL pill",
+         %{conn: conn, kid: kid, chore: chore} do
+      evening_active()
+      put_night_owl([{kid.id, @timely}], 3)
+      {:ok, _} = tap_evening(chore)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id} .hero-moon-solid")
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+8")
+
+      assert has_element?(
+               view,
+               "#completion-icon-#{kid.id} #night-owl-#{kid.id}",
+               "NIGHT OWL"
+             )
+    end
+
+    test "a fail removes badge and pill together", %{conn: conn, kid: kid, chore: chore} do
+      evening_active()
+      put_night_owl([{kid.id, @timely}], 3)
+      {:ok, _} = tap_evening(chore)
+      {:ok, _} = Chores.fail_chore(chore, LocalTime.now())
+      {:ok, _} = tap_evening(chore)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+      refute has_element?(view, "#completion-badge-#{kid.id}")
+      refute has_element?(view, "#night-owl-#{kid.id}")
+    end
+
+    test "no pill, and R only, at a bonus of 0", %{conn: conn, kid: kid, chore: chore} do
+      evening_active()
+      put_night_owl([{kid.id, @timely}], 0)
+      {:ok, _} = tap_evening(chore)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
+      refute has_element?(view, "#night-owl-#{kid.id}")
+    end
+
+    test "no pill, and R only, for a kid without a cutoff", %{conn: conn, kid: kid, chore: chore} do
+      other = kid_fixture(%{name: "Kid B", color: "#3b82f6", position: 1})
+      evening_active()
+      put_night_owl([{other.id, @timely}], 3)
+      {:ok, _} = tap_evening(chore)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
+      refute has_element?(view, "#night-owl-#{kid.id}")
+    end
+
+    test "no pill, and R only, when the finish lands at or after the cutoff",
+         %{conn: conn, kid: kid, chore: chore} do
+      evening_active()
+      put_night_owl([{kid.id, @never}], 3)
+      {:ok, _} = tap_evening(chore)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#completion-badge-#{kid.id}", "+5")
+      refute has_element?(view, "#night-owl-#{kid.id}")
+    end
+
+    test "the stake chip shows R only while the evening is unfinished, with no hint of N",
+         %{conn: conn, kid: kid} do
+      evening_active()
+      put_night_owl([{kid.id, @timely}], 3)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
+      refute has_element?(view, "#stake-chip-#{kid.id}", "+8")
+      refute render(view) =~ "NIGHT OWL"
+    end
+
+    test "a schedule change reaches an open kiosk and applies from the next tap, with no reload",
+         %{conn: conn, kid: kid, chore: chore} do
+      evening_active()
+      put_night_owl([{kid.id, @never}], 3)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      put_night_owl([{kid.id, @timely}], 3)
+      Phoenix.PubSub.broadcast(BearCub.PubSub, "schedules", :schedule_changed)
+      view |> element("#chore-#{chore.id}") |> render_click()
+
+      # the finish was priced by the version the broadcast loaded; a fresh
+      # mount skips the post-finish reveal delay
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#night-owl-#{kid.id}", "NIGHT OWL")
+    end
+  end
+
   describe "completion icon (Story 08, D44, D47, D48)" do
     alias BearCub.Chores
 

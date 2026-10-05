@@ -68,6 +68,52 @@ defmodule BearCub.Dev.ScenariosTest do
     assert_received :schedule_changed
   end
 
+  describe "night_owl/1" do
+    setup do
+      Scenarios.early_bird(now())
+      %{kids: Chores.list_kids()}
+    end
+
+    defp cutoffs_today(kids) do
+      weekday = Date.day_of_week(today())
+      day = Enum.find(Schedules.current().days, &(&1.weekday == weekday))
+      for kid <- kids, do: Enum.find(day.night_owl_cutoffs, &(&1.kid_id == kid.id))
+    end
+
+    test "sets N and gives every kid a cutoff after now for today's weekday", %{kids: kids} do
+      Scenarios.night_owl(4)
+
+      assert Schedules.current().night_owl_bonus == 4
+      cutoffs = cutoffs_today(kids)
+      assert Enum.all?(cutoffs, & &1)
+
+      assert Enum.all?(
+               cutoffs,
+               &(Time.compare(&1.cutoff, LocalTime.now() |> DateTime.to_time()) == :gt)
+             )
+
+      assert_received :schedule_changed
+    end
+
+    test "defaults N to 3 when the current N is 0" do
+      Scenarios.night_owl()
+      assert Schedules.current().night_owl_bonus == 3
+    end
+
+    test "survives open(:evening) written after it, and restore/0 undoes it", %{kids: kids} do
+      Scenarios.night_owl(4)
+      Scenarios.open(:evening)
+
+      assert Schedules.current().night_owl_bonus == 4
+      assert Enum.all?(cutoffs_today(kids), & &1)
+
+      Scenarios.restore()
+
+      assert Schedules.current().night_owl_bonus == 0
+      assert Enum.all?(cutoffs_today(kids), &is_nil/1)
+    end
+  end
+
   test "restore/0 brings back the schedule in force before the first scenario write" do
     original = entry_now()
 

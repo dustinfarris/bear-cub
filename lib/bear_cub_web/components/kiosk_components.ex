@@ -33,6 +33,22 @@ defmodule BearCubWeb.KioskComponents do
     """
   end
 
+  attr :id, :string, required: true
+  attr :color, :string, required: true
+  slot :inner_block, required: true
+
+  defp routine_pill(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-white px-2 py-0.5 font-reward text-xs font-black tracking-wide drop-shadow-sm"
+      style={"color: #{@color}"}
+    >
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
   @doc """
   Header band: the color block, not the name, is the primary identifier
   (FR-5a) — a pre-reader finds their column by color. Never dimmed:
@@ -50,8 +66,10 @@ defmodule BearCubWeb.KioskComponents do
   attr :reveal?, :boolean, required: true
   attr :failed?, :boolean, required: true
   attr :early_bird?, :boolean, required: true
+  attr :night_owl?, :boolean, required: true
   attr :r, :integer, required: true, doc: "the routine bonus as priced for this routine-day"
   attr :e, :integer, required: true, doc: "the early bird bonus as priced for this routine-day"
+  attr :n, :integer, required: true, doc: "the Night Owl bonus as priced for this routine-day"
   attr :points, :integer, required: true
   attr :pending_request?, :boolean, required: true
 
@@ -79,26 +97,27 @@ defmodule BearCubWeb.KioskComponents do
                boolean. A forfeited bonus shows no badge at all rather
                than a zeroed one; the icon itself still toggles. On an
                early morning the badge carries R + E as one number
-               (D104), and the EARLY pill below the sun says why. --%>
+               (D104), and the EARLY pill below the sun says why; a
+               Night Owl evening is the mirror, R + N and a NIGHT OWL
+               pill under the moon (D136). --%>
           <span
             :if={not @failed?}
             id={"completion-badge-#{@kid.id}"}
             class="absolute -right-4 -top-1 flex items-center rounded-full border-2 bg-success px-2 py-0.5 font-reward text-sm font-black text-success-content drop-shadow-sm"
             style={"border-color: #{@kid.color}"}
           >
-            +{@r + if(@early_bird?, do: @e, else: 0)}
+            +{@r + if(@early_bird?, do: @e, else: 0) + if(@night_owl?, do: @n, else: 0)}
           </span>
-          <%!-- Early bird pill (D100, D104): a white EARLY pill under
-               the sun in the kid's own color. Same forfeit rule as the
-               badge — `early_bird?` is already false when failed. --%>
-          <span
-            :if={@early_bird?}
-            id={"early-bird-#{@kid.id}"}
-            class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-white px-2 py-0.5 font-reward text-xs font-black tracking-wide drop-shadow-sm"
-            style={"color: #{@kid.color}"}
-          >
+          <%!-- Early bird / Night Owl pill (D100, D104, D136): a white
+               pill under the sun or moon in the kid's own color. Same
+               forfeit rule as the badge — both flags are already false
+               when failed. --%>
+          <.routine_pill :if={@early_bird?} id={"early-bird-#{@kid.id}"} color={@kid.color}>
             EARLY
-          </span>
+          </.routine_pill>
+          <.routine_pill :if={@night_owl?} id={"night-owl-#{@kid.id}"} color={@kid.color}>
+            NIGHT OWL
+          </.routine_pill>
         </span>
       </button>
       <h1 class="font-reward text-4xl font-black tracking-tight text-white drop-shadow-sm">

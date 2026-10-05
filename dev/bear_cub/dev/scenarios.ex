@@ -170,6 +170,37 @@ defmodule BearCub.Dev.Scenarios do
   end
 
   @doc """
+  The evening mirror of `cutoff/1`: writes a version in force now with the
+  Night Owl bonus `n` (default: the current N, or 3 when that is 0) and
+  every kid's cutoff for today's weekday two hours after now, capped at
+  23:59:59, so a live evening tap counts as a Night Owl. Pair it with
+  `open(:evening)`; `restore/0` brings the real schedule back.
+  """
+  def night_owl(n \\ nil) do
+    now = LocalTime.now()
+    weekday = Date.day_of_week(DateTime.to_date(now))
+    current = Schedules.current()
+    n = n || if(current.night_owl_bonus > 0, do: current.night_owl_bonus, else: 3)
+
+    cutoff =
+      if DateTime.to_date(DateTime.add(now, 2, :hour)) == DateTime.to_date(now),
+        do: now |> DateTime.add(2, :hour) |> DateTime.to_time() |> Time.truncate(:second),
+        else: ~T[23:59:59]
+
+    entries =
+      for kid <- Chores.list_kids(),
+          do: %BearCub.Schedules.NightOwlCutoff{kid_id: kid.id, cutoff: cutoff}
+
+    write_version(
+      fn
+        %{weekday: ^weekday} = day -> %{day | night_owl_cutoffs: entries}
+        day -> day
+      end,
+      night_owl_bonus: n
+    )
+  end
+
+  @doc """
   A valid schedule in force now whose Saturday and Sunday start the
   morning at 08:00 with a 09:30 early bird cutoff, the weekdays untouched
   — so `/admin/schedule` loads with the quiet "custom" marker on the two
@@ -205,19 +236,20 @@ defmodule BearCub.Dev.Scenarios do
   # effective now. The first write of a VM stashes the id of the version it
   # displaced; later scenario writes leave the stash alone, so `restore/0`
   # always reaches back to the real schedule. No column marks scenario rows.
-  defp write_version(fun) do
+  defp write_version(fun, overrides \\ []) do
     current = Schedules.current()
     if :persistent_term.get(@stash, nil) == nil, do: :persistent_term.put(@stash, current.id)
-    write_copy(current, fun)
+    write_copy(current, fun, overrides)
   end
 
-  defp write_copy(%ScheduleVersion{} = source, fun) do
+  defp write_copy(%ScheduleVersion{} = source, fun, overrides \\ []) do
     at = wait_for_free_second()
 
     Repo.insert!(%ScheduleVersion{
       effective_at: at,
       routine_bonus: source.routine_bonus,
       early_bird_bonus: source.early_bird_bonus,
+      night_owl_bonus: Keyword.get(overrides, :night_owl_bonus, source.night_owl_bonus),
       days: Enum.map(source.days, fun)
     })
 

@@ -600,9 +600,10 @@ defmodule BearCubWeb.KioskLive do
     pricing =
       if complete? or routine_penalty?,
         do: Chores.routine_day_pricing(kid, Atom.to_string(auto), today, versions),
-        else: %{r: 0, e: 0, early?: false, penalty: 0}
+        else: %{r: 0, e: 0, early?: false, n: 0, night_owl?: false, penalty: 0}
 
     early_bird? = reveal? and auto == :morning and pricing.early?
+    night_owl? = reveal? and auto == :evening and pricing.night_owl?
 
     extras =
       if state == :band and auto == :morning do
@@ -631,10 +632,12 @@ defmodule BearCubWeb.KioskLive do
       complete?: complete?,
       standing?: standing?,
       early_bird?: early_bird?,
+      night_owl?: night_owl?,
       failed?: failed?,
       # priced once the routine-day is paid, live while it is still at stake
       r: if(complete?, do: pricing.r, else: version.routine_bonus),
       e: pricing.e,
+      n: pricing.n,
       penalty: pricing.penalty,
       chores: chore_rows,
       slot: slot,
@@ -919,9 +922,11 @@ defmodule BearCubWeb.KioskLive do
               complete?: complete?,
               standing?: standing?,
               early_bird?: early_bird?,
+              night_owl?: night_owl?,
               failed?: failed?,
               r: r,
               e: e,
+              n: n,
               penalty: penalty,
               chores: chores,
               slot: slot,
@@ -949,8 +954,10 @@ defmodule BearCubWeb.KioskLive do
             reveal?={reveal?}
             failed?={failed?}
             early_bird?={early_bird?}
+            night_owl?={night_owl?}
             r={r}
             e={e}
+            n={n}
             points={points}
             pending_request?={pending_request?}
           />

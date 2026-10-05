@@ -38,8 +38,10 @@ defmodule BearCubWeb.KioskComponentsTest do
             reveal?: false,
             failed?: false,
             early_bird?: false,
+            night_owl?: false,
             r: 5,
             e: 2,
+            n: 3,
             points: 12,
             pending_request?: false
           },
@@ -75,6 +77,15 @@ defmodule BearCubWeb.KioskComponentsTest do
       assert text(html, "#completion-badge-1") =~ "+7"
 
       assert text(html, "#early-bird-1") =~ "EARLY"
+    end
+
+    test "a Night Owl evening folds N into the badge and adds the NIGHT OWL pill" do
+      html = banner(%{reveal?: true, night_owl?: true, routine: :evening})
+
+      assert has?(html, "#completion-icon-1 .hero-moon-solid")
+      assert text(html, "#completion-badge-1") =~ "+8"
+      assert text(html, "#night-owl-1") =~ "NIGHT OWL"
+      refute has?(html, "#early-bird-1")
     end
 
     test "the badge shows the r and e it is given, not any configured figure" do
