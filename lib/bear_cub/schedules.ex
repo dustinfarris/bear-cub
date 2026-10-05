@@ -83,16 +83,24 @@ defmodule BearCub.Schedules do
     %ScheduleVersion{
       routine_bonus: current.routine_bonus,
       early_bird_bonus: current.early_bird_bonus,
+      night_owl_bonus: current.night_owl_bonus,
       days: current.days
     }
   end
 
   defp same_schedule?(a, b) do
     a.routine_bonus == b.routine_bonus and a.early_bird_bonus == b.early_bird_bonus and
-      sorted_days(a) == sorted_days(b)
+      a.night_owl_bonus == b.night_owl_bonus and sorted_days(a) == sorted_days(b)
   end
 
-  defp sorted_days(version), do: Enum.sort_by(version.days, & &1.weekday)
+  # Cutoff lists are sorted by kid so arrival order never reads as a change.
+  defp sorted_days(version) do
+    version.days
+    |> Enum.map(
+      &%{&1 | night_owl_cutoffs: Enum.sort_by(&1.night_owl_cutoffs, fn c -> c.kid_id end)}
+    )
+    |> Enum.sort_by(& &1.weekday)
+  end
 
   defp broadcast_change({:ok, _} = result) do
     Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :schedule_changed)

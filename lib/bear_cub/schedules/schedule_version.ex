@@ -1,8 +1,9 @@
 defmodule BearCub.Schedules.ScheduleVersion do
   @moduledoc """
-  One immutable schedule: the routine bonus `R`, the early bird bonus `E`
-  and a `DayEntry` for each ISO weekday, in force from `effective_at`
-  until a later version takes over (D120). Rows are only ever inserted.
+  One immutable schedule: the routine bonus `R`, the early bird bonus `E`,
+  the Night Owl bonus `N` and a `DayEntry` for each ISO weekday, in force
+  from `effective_at` until a later version takes over (D120). Rows are
+  only ever inserted.
   """
 
   use Ecto.Schema
@@ -14,6 +15,7 @@ defmodule BearCub.Schedules.ScheduleVersion do
     field :effective_at, :utc_datetime
     field :routine_bonus, :integer
     field :early_bird_bonus, :integer
+    field :night_owl_bonus, :integer, default: 0
     embeds_many :days, DayEntry, on_replace: :delete
 
     timestamps(type: :utc_datetime)
@@ -26,11 +28,12 @@ defmodule BearCub.Schedules.ScheduleVersion do
   """
   def changeset(version, attrs) do
     version
-    |> cast(attrs, [:routine_bonus, :early_bird_bonus])
+    |> cast(attrs, [:routine_bonus, :early_bird_bonus, :night_owl_bonus])
     |> cast_embed(:days, required: true)
-    |> validate_required([:routine_bonus, :early_bird_bonus])
+    |> validate_required([:routine_bonus, :early_bird_bonus, :night_owl_bonus])
     |> validate_number(:routine_bonus, greater_than_or_equal_to: 0)
     |> validate_number(:early_bird_bonus, greater_than_or_equal_to: 0)
+    |> validate_number(:night_owl_bonus, greater_than_or_equal_to: 0)
     |> validate_weekdays()
   end
 

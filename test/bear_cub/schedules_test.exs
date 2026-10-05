@@ -184,6 +184,198 @@ defmodule BearCub.SchedulesTest do
     end
   end
 
+  describe "Night Owl cutoffs and bonus" do
+    defp owl_attrs(weekday, cutoffs, overrides \\ %{}) do
+      attrs_with_day(weekday, %{night_owl_cutoffs: cutoffs}, overrides)
+    end
+
+    defp cutoff_errors(cs, weekday) do
+      [failed] = Enum.filter(cs.changes.days, &(&1.errors != [] or not &1.valid?))
+      assert Ecto.Changeset.get_field(failed, :weekday) == weekday
+      failed |> Ecto.Changeset.get_change(:night_owl_cutoffs, []) |> Enum.map(&errors_on/1)
+    end
+
+    test "a day holds one cutoff per kid and the version one bonus" do
+      attrs =
+        owl_attrs(2, [%{kid_id: 1, cutoff: ~T[21:00:00]}, %{kid_id: 2, cutoff: ~T[20:00:00]}], %{
+          night_owl_bonus: 3
+        })
+
+      assert {:ok, v} = Schedules.change(attrs, @t0)
+      assert v.night_owl_bonus == 3
+
+      assert [%{kid_id: 1, cutoff: ~T[21:00:00]}, %{kid_id: 2, cutoff: ~T[20:00:00]}] =
+               day(Schedules.current(), 2).night_owl_cutoffs
+
+      assert day(Schedules.current(), 3).night_owl_cutoffs == []
+    end
+
+    test "a kid may have no cutoff on a day, and a blank cutoff is dropped" do
+      attrs =
+        owl_attrs(2, [%{kid_id: 1, cutoff: ~T[21:00:00]}, %{kid_id: 2, cutoff: ""}], %{
+          night_owl_bonus: 3
+        })
+
+      assert {:ok, v} = Schedules.change(attrs, @t0)
+      assert [%{kid_id: 1}] = day(v, 2).night_owl_cutoffs
+    end
+
+    test "a cutoff must fall strictly inside that day's evening window, on that kid's field" do
+      for bad <- [~T[17:00:00], ~T[23:00:00], ~T[16:00:00], ~T[23:30:00]] do
+        attrs = owl_attrs(4, [%{kid_id: 1, cutoff: ~T[20:00:00]}, %{kid_id: 2, cutoff: bad}])
+        assert {:error, cs} = Schedules.change(attrs, @t0)
+        assert [%{}, %{cutoff: ["must fall inside the evening window"]}] = cutoff_errors(cs, 4)
+      end
+    end
+
+    test "the window checked is that day's own" do
+      attrs = owl_attrs(4, [%{kid_id: 1, cutoff: ~T[22:00:00]}])
+
+      attrs = %{
+        attrs
+        | days:
+            Enum.map(
+              attrs.days,
+              &if(&1.weekday == 4, do: %{&1 | evening_end: ~T[21:00:00]}, else: &1)
+            )
+      }
+
+      assert {:error, _} = Schedules.change(attrs, @t0)
+    end
+
+    test "two cutoffs for one kid on a day are refused" do
+      attrs =
+        owl_attrs(5, [%{kid_id: 1, cutoff: ~T[20:00:00]}, %{kid_id: 1, cutoff: ~T[21:00:00]}])
+
+      assert {:error, cs} = Schedules.change(attrs, @t0)
+      assert [%{}, %{kid_id: [_]}] = cutoff_errors(cs, 5)
+    end
+
+    test "a malformed cutoff is refused on that kid's field, not a crash" do
+      attrs = owl_attrs(4, [%{kid_id: 1, cutoff: "garbage"}])
+      assert {:error, cs} = Schedules.change(attrs, @t0)
+      assert [%{cutoff: [_]}] = cutoff_errors(cs, 4)
+    end
+
+    test "the same kid on different days is fine" do
+      attrs = owl_attrs(5, [%{kid_id: 1, cutoff: ~T[20:00:00]}], %{night_owl_bonus: 1})
+
+      attrs =
+        Map.update!(attrs, :days, fn days ->
+          Enum.map(days, fn
+            %{weekday: 6} = d ->
+              Map.put(d, :night_owl_cutoffs, [%{kid_id: 1, cutoff: ~T[20:00:00]}])
+
+            d ->
+              d
+          end)
+        end)
+
+      assert {:ok, _} = Schedules.change(attrs, @t0)
+    end
+
+    test "the bonus is required and non-negative; zero is accepted" do
+      assert {:error, cs} = Schedules.change(valid_attrs(%{night_owl_bonus: nil}), @t0)
+      assert errors_on(cs).night_owl_bonus != []
+      assert {:error, cs} = Schedules.change(valid_attrs(%{night_owl_bonus: -1}), @t0)
+      assert errors_on(cs).night_owl_bonus != []
+
+      assert {:ok, v} =
+               Schedules.change(valid_attrs(%{night_owl_bonus: 0, routine_bonus: 6}), @t0)
+
+      assert v.night_owl_bonus == 0
+    end
+
+    test "a version stored in the pre-migration shape loads with no cutoffs and N = 0" do
+      days =
+        for w <- 1..7 do
+          %{
+            "weekday" => w,
+            "morning_start" => "05:00:00",
+            "morning_end" => "17:00:00",
+            "evening_start" => "17:00:00",
+            "evening_end" => "23:00:00",
+            "early_bird_cutoff" => "07:45:00"
+          }
+        end
+
+      Repo.query!(
+        "INSERT INTO schedule_versions (effective_at, routine_bonus, early_bird_bonus, days, inserted_at, updated_at) VALUES (?, 5, 2, ?, ?, ?)",
+        ["2026-01-01T00:00:00", Jason.encode!(days), "2026-01-01T00:00:00", "2026-01-01T00:00:00"]
+      )
+
+      old = Enum.find(Schedules.versions(), &(&1.effective_at.year == 2026))
+      assert old.night_owl_bonus == 0
+      assert Enum.all?(old.days, &(&1.night_owl_cutoffs == []))
+    end
+
+    test "the staging helpers carry N and every day's cutoffs forward" do
+      cutoffs = [%{kid_id: 1, cutoff: ~T[20:00:00]}]
+      {:ok, _} = Schedules.change(owl_attrs(2, cutoffs, %{night_owl_bonus: 3}), @t0)
+
+      for restage <- [
+            fn ->
+              BearCub.ScheduleHelpers.put_windows(
+                {~T[05:00:00], ~T[17:00:00]},
+                {~T[17:00:00], ~T[23:00:00]}
+              )
+            end,
+            fn -> BearCub.ScheduleHelpers.put_cutoff(~T[07:00:00]) end,
+            fn -> BearCub.ScheduleHelpers.put_bonuses(6, 3, DateTime.add(@t0, 60)) end
+          ] do
+        restage.()
+        current = Schedules.current()
+        assert current.night_owl_bonus == 3
+        assert [%{kid_id: 1, cutoff: ~T[20:00:00]}] = day(current, 2).night_owl_cutoffs
+        assert day(current, 3).night_owl_cutoffs == []
+      end
+    end
+
+    test "a save changing only N records a new version" do
+      assert {:ok, v} = Schedules.change(valid_attrs(%{night_owl_bonus: 4}), @t0)
+      assert length(Schedules.versions()) == 2
+      assert v.night_owl_bonus == 4
+    end
+
+    test "a save changing only one kid's cutoff on one day records a new version" do
+      cutoffs = fn t -> [%{kid_id: 1, cutoff: ~T[20:00:00]}, %{kid_id: 2, cutoff: t}] end
+
+      {:ok, _} =
+        Schedules.change(owl_attrs(2, cutoffs.(~T[21:00:00]), %{night_owl_bonus: 3}), @t0)
+
+      assert {:ok, _} =
+               Schedules.change(
+                 owl_attrs(2, cutoffs.(~T[21:30:00]), %{night_owl_bonus: 3}),
+                 DateTime.add(@t0, 5)
+               )
+
+      assert length(Schedules.versions()) == 3
+    end
+
+    test "a save matching bonus and cutoffs, in any order, records and broadcasts nothing" do
+      {:ok, current} =
+        Schedules.change(
+          owl_attrs(
+            2,
+            [%{kid_id: 1, cutoff: ~T[20:00:00]}, %{kid_id: 2, cutoff: ~T[21:00:00]}],
+            %{night_owl_bonus: 3}
+          ),
+          @t0
+        )
+
+      Schedules.subscribe()
+
+      reordered =
+        owl_attrs(2, [%{kid_id: 2, cutoff: ~T[21:00:00]}, %{kid_id: 1, cutoff: ~T[20:00:00]}], %{
+          night_owl_bonus: 3
+        })
+
+      assert {:ok, ^current} = Schedules.change(reordered, DateTime.add(@t0, 5))
+      assert length(Schedules.versions()) == 2
+      refute_receive :schedule_changed
+    end
+  end
+
   describe "change_version/1" do
     test "is prefilled from the version in force" do
       cs = Schedules.change_version()

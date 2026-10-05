@@ -37,7 +37,8 @@ defmodule BearCub.ScheduleHelpers do
 
   @doc """
   Inserts a version in force now with the given `{start, end}` windows on
-  every weekday, copied from the current version otherwise. Goes through
+  every weekday, copied from the current version otherwise (Night Owl
+  bonus and cutoffs included). Goes through
   `Repo.insert!/1` on the struct, so a zero-length window the changeset
   would refuse is allowed. Does not broadcast.
   """
@@ -50,7 +51,8 @@ defmodule BearCub.ScheduleHelpers do
       next_instant(current),
       current.routine_bonus,
       current.early_bird_bonus,
-      hd(current.days).early_bird_cutoff
+      hd(current.days).early_bird_cutoff,
+      current
     )
   end
 
@@ -70,7 +72,8 @@ defmodule BearCub.ScheduleHelpers do
       next_instant(current),
       current.routine_bonus,
       current.early_bird_bonus,
-      cutoff
+      cutoff,
+      current
     )
   end
 
@@ -91,7 +94,8 @@ defmodule BearCub.ScheduleHelpers do
       if(at, do: DateTime.shift_zone!(at, "Etc/UTC"), else: next_instant(current)),
       r,
       e,
-      day.early_bird_cutoff
+      day.early_bird_cutoff,
+      current
     )
   end
 
@@ -103,7 +107,8 @@ defmodule BearCub.ScheduleHelpers do
          at,
          r,
          e,
-         cutoff \\ ~T[07:45:00]
+         cutoff \\ ~T[07:45:00],
+         carry \\ nil
        ) do
     days =
       for weekday <- 1..7 do
@@ -113,7 +118,8 @@ defmodule BearCub.ScheduleHelpers do
           morning_end: morning_end,
           evening_start: evening_start,
           evening_end: evening_end,
-          early_bird_cutoff: cutoff
+          early_bird_cutoff: cutoff,
+          night_owl_cutoffs: carried_cutoffs(carry, weekday)
         }
       end
 
@@ -121,8 +127,20 @@ defmodule BearCub.ScheduleHelpers do
       effective_at: DateTime.truncate(at, :second),
       routine_bonus: r,
       early_bird_bonus: e,
+      night_owl_bonus: if(carry, do: carry.night_owl_bonus, else: 0),
       days: days
     })
+  end
+
+  # Night Owl cutoffs and N ride along from the version being replaced, so
+  # restaging windows or bonuses never quietly resets them.
+  defp carried_cutoffs(nil, _weekday), do: []
+
+  defp carried_cutoffs(carry, weekday) do
+    case Enum.find(carry.days, &(&1.weekday == weekday)) do
+      nil -> []
+      day -> day.night_owl_cutoffs
+    end
   end
 
   def morning_active, do: put_windows(@all_day, @never)
