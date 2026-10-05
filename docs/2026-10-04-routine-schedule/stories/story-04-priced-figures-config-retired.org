@@ -46,21 +46,61 @@ As a kid, I need the badge on a routine I finished to keep showing the points I 
 
 * Acceptance Criteria
 
-** [ ] A finished routine's completion badge shows the routine bonus, plus the early bird bonus when earned, as priced for that routine day. A morning earned before the routine bonus is raised keeps showing its original figure afterwards. (SC-1)
-** [ ] A failed routine's penalty indicator shows the routine bonus as priced at that day's first fail. (SC-1)
-** [ ] An unfinished routine's stake chip shows the routine bonus in force now, and changes on an already-open kiosk, with no reload, when the routine bonus is saved. (SC-3, SC-4)
-** [ ] The admin Today screen's routine figures follow the same split: priced for what a routine day has incurred, in force now for what is at stake. (SC-1, SC-3)
-** [ ] Routine timing and bonus amounts can no longer be set through server config or environment variables. The five ~BEAR_CUB_*~ routine variables and their ~runtime.exs~ parsing and checks are gone, and the server boots without them. (SC-3)
+** [X] A finished routine's completion badge shows the routine bonus, plus the early bird bonus when earned, as priced for that routine day. A morning earned before the routine bonus is raised keeps showing its original figure afterwards. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified by the story-verifier pass: ~Chores.routine_day_pricing/3,4~ (~lib/bear_cub/chores.ex~) prices R and E through the ledger's own ~resolve/4~; ~KioskLive.build_column~ passes ~r~ / ~e~ to ~banner/1~. Tests: ~chores_test.exs~ "routine_day_pricing/3 keeps the earned morning's R and E after both are raised (SC-1)"; ~kiosk_live_test.exs~ "an earned badge keeps its priced R after R is raised, while the chip follows the new R"; ~kiosk_components_test.exs~ "the badge shows the r and e it is given, not any configured figure". ~mix precommit~ green, 782 tests. Screenshot at 1280 × 800 (~.work/story-04-earned-badge-vs-live-chip.png~): earned +7 with EARLY while R was raised to 8.
+:END:
+** [X] A failed routine's penalty indicator shows the routine bonus as priced at that day's first fail. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: ~routine_penalty/1~ renders the ~penalty~ attr, fed from ~pricing.penalty~ (R at ~first_failed_at~). Tests: ~chores_test.exs~ "routine_day_pricing/3 prices the penalty at the first fail, not the latest R (SC-1)"; ~kiosk_live_test.exs~ "a penalty shows R as priced at the first fail, not the R in force now". ~mix precommit~ green.
+:END:
+** [X] An unfinished routine's stake chip shows the routine bonus in force now, and changes on an already-open kiosk, with no reload, when the routine bonus is saved. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: ~KioskLive.load~ resolves the version in force from one ~Schedules.versions/0~ read and ~build_column~ gives an unfinished routine ~version.routine_bonus~. Tests: ~kiosk_live_test.exs~ "an unfinished routine's chip changes live when R is saved, with no reload" and "after repeated saves exactly one boundary timer is armed". Screenshot: Kid B unfinished chip +8 after R 5 → 8, updated with no reload. Note: once a routine-day is complete the chip shows the priced R, not the live one; the human ruled to keep that, recorded under Technical Notes for update-design.
+:END:
+** [-] The admin Today screen's routine figures follow the same split: priced for what a routine day has incurred, in force now for what is at stake. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Deferred — human ruling. ~admin/today_live.ex~ already subscribes to ~:schedule_changed~ and renders no R, E or penalty figures, so there is nothing to split into priced and live; the criterion holds only vacuously. Revisit if Today ever shows routine figures.
+:END:
+** [X] Routine timing and bonus amounts can no longer be set through server config or environment variables. The five ~BEAR_CUB_*~ routine variables and their ~runtime.exs~ parsing and checks are gone, and the server boots without them. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: ~config/runtime.exs~ no longer parses the five ~BEAR_CUB_*~ routine variables or runs their boot checks; ~Routines.bonus/0~, ~early_bird_cutoff/0~, ~early_bird_bonus/0~ and ~windows/0~ are removed. Grep of ~lib config test dev~ for those functions, the variables and ~:routine_windows~ is empty; ~mix precommit~ (~compile --warnings-as-errors~) green, 782 tests, so nothing still reads config. Tests that pinned the keys were deleted. A release boot was not run.
+:END:
 
 # GAP: The excerpt says the five variables "and their ~runtime.exs~ parsing and checks are deleted in the same change" as the migration that lands the table (Story 01). Here they are deleted in this story instead, which removes the last config reader (~kiosk_components.ex~'s ~Routines.bonus/0~). Story 01 cannot delete them without also rewiring the derivation, routine resolution and kiosk figures that Stories 02–04 carry. The batch deploys as one unit, so production never runs with both the table and the variables. Human to confirm this reading of "the same change"; Story 01 carries the matching GAP.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified by the second story-verifier pass: AC 1, 2, 3 and 5 met, AC 4 deferred by human ruling with its reason recorded, and the stale backlog note recorded as a Deferred discovery in Technical Notes.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: tests at the unit (~chores_test.exs~), component (~kiosk_components_test.exs~) and LiveView (~kiosk_live_test.exs~) layers cover each met criterion and passed in the ~mix precommit~ run (782 tests).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: ~mix format --check-formatted~ and ~compile --warnings-as-errors~ clean in ~mix precommit~; components take attrs instead of calling ~Routines~; comment wrap and markup follow CLAUDE.md.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: ~mix precommit~ exited 0 with 782 tests passing on the final code, run by the verifier.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-04 Sun 23:44] \\
+  Verified: screenshot at 1280 × 800 (~.work/story-04-earned-badge-vs-live-chip.png~), staged through ~Scenarios.open(:morning)~ and ~early_bird/0~ with R then raised 5 → 8 via ~Schedules.change/1~: Kid A earned badge +7 with EARLY, paid chip +5; Kid B unfinished chip +8, updated live. Dev schedule and data restored afterwards.
+:END:
 
 * Technical Notes
 
@@ -73,3 +113,6 @@ As a kid, I need the badge on a routine I finished to keep showing the points I 
 - The backlog's "testing dev overrides" note (~docs/backlog.org~, the ~BEAR_CUB_MORNING_WINDOW=…~ recipe) goes stale here. Do not edit it in this story; record it as Deferred for the gate's backlog sweep.
 - The homeassistant repo's NixOS module sets none of these variables (§The seed), so the deploy needs no change there.
 - Visual review: stage a finished morning with ~Scenarios.early_bird/1~ or ~midway/2~, raise ~R~ by saving a version (e.g. from ~project_eval~), and screenshot the earned badge unchanged beside a stake chip showing the new ~R~.
+- Deferred discovery: the backlog's "testing dev overrides" note (~docs/backlog.org~, the =BEAR_CUB_MORNING_WINDOW=…= recipe) is stale now that the variables are gone. Left unedited per the note above; for the gate's backlog sweep.
+- Deferred discovery: the stake chip shows the /priced/ ~R~ once a routine-day is complete (green paid chip beside the badge) and the live ~R~ only while it is unfinished, where the excerpt says the chip is always live. Kept so a paid card never shows a chip that disagrees with its badge (the user story's "numbers always match my total"); the human ruled to keep it. ~/workflow-kit:update-design~ should mint the D-entry, body edit and Advisory for the excerpt's "Stake — … shows ~R~ from the version in force now".
+- Deferred discovery: admin Today renders no ~R~ / ~E~ / penalty figures at all, so AC 4's priced/live split has nothing to apply to; it already subscribes to ~:schedule_changed~. Revisit if Today ever shows routine figures.

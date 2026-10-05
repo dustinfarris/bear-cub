@@ -92,13 +92,13 @@ Not built: a version history view, future-dated changes, deletion or rollback (r
 The kiosk's routine numbers today call ~Routines.bonus/0~ directly from ~kiosk_components.ex~. They split into two kinds ([[file:../decisions.org::#d123][D123]]):
 
 - *Incurred* — the completion badge ~+R~ / ~+R+E~ on a finished routine, and the ~−R~ penalty indicator on a failed one — shows the /priced/ figures for that routine-day, matching the ledger. A morning earned at 07:30 under ~R = 5~ keeps showing ~+5~ after ~R~ is raised to 8 at 10:00; a penalty shows ~R~ as priced at ~first_failed_at~.
-- *Stake* — the stake chip ~+R~, what finishing would earn — shows ~R~ from the version in force now.
+- *Stake* — the stake chip ~+R~ on an /unfinished/ routine, what finishing would earn — shows ~R~ from the version in force now. Once the routine-day is complete the stake bar turns paid and its chip shows the priced ~r~, the same figure as the badge, so one card never shows two numbers for one payment ([[file:../decisions.org::#d130][D130]]).
 
-~Chores~ exposes the priced breakdown of a routine-day — e.g. ~routine_day_pricing/3~ returning ~%{r: …, e: …, penalty: …}~ — built from the same ~contribution~ internals; ~KioskLive.load/3~ resolves today's version and passes ~r~ / ~e~ (live) and the priced breakdowns down as assigns. Components stop calling ~Routines~ for numbers.
+~Chores.routine_day_pricing/3,4~ returns the priced breakdown of a routine-day, ~%{r: …, e: …, early?: …, penalty: …}~, each figure ~0~ when not incurred, built on the same private ~facts/1~ and ~resolve/4~ as ~contribution~; ~early?~ is the early bird verdict itself, which stays true when ~E = 0~. ~KioskLive.load/3~ reads ~Schedules.versions/0~ once per render, resolves the version in force now from it, and prices a column only when it is complete or shows the penalty strip. Components take ~r~ / ~e~ / ~penalty~ as attrs and stop calling ~Routines~ for numbers.
 
 ** Admin — Today screen
 
-Uses the same resolution as the kiosk for its routine sections (the active routine from today's day entry; routine figures priced as above), and subscribes to schedule changes so it re-renders on a save.
+Uses the same resolution as the kiosk for its routine sections (the active routine from today's day entry), and subscribes to schedule changes so it re-renders on a save. It shows no ~R~, ~E~ or penalty figures, so the kiosk's priced/live split has nothing to apply to here; a figure added later follows that split.
 
 * Key Behaviors
 
@@ -212,7 +212,7 @@ Unit and LiveView layers both, per the MVP design's §11 test map.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion; D128–D129 at implementation)
+Decisions for this initiative: [[file:../decisions.org]] (D120–D127 minted at promotion; D128–D130 at implementation)
 
 * Advisories
 
@@ -234,3 +234,15 @@ This document said "~Schedules~ depends on nothing", and listed its functions as
 /Sections affected: Key Behaviors — Dev scenarios and test infrastructure/
 
 This document, and [[file:../decisions.org::#d126][D126]], said test helpers insert a version effective one second before now. That still reads as the obvious choice. It collides: ~effective_at~ is unique to the second, so a default pin and a test's own pin in the same second fail the insert. The default pin now sits an hour back and helpers stamp one second after the latest version. Also do not "simplify" the pin to read ~R~ / ~E~ from version 0, or to run for async modules: both reintroduce "Database busy" under SQLite. Rationale: [[file:../decisions.org::#d129][D129]].
+
+** [2026-10-04 Sun 23:45] The stake chip is no longer live on a paid routine (D130)
+
+/Sections affected: Screens / Interfaces — Kiosk routine figures/
+
+This document said the stake chip "shows ~R~ from the version in force now", for every chip. That still reads as the clean rule (incurred figures priced, the chip live) and a cleanup that drops the ~complete?~ branch in ~KioskLive.build_column~ would restore it. Don't: once ~R~ is raised, a paid card would show a ~+5~ badge beside a green ~+8~ chip for the same payment. The chip is live only while the routine-day is unfinished; paid, it shows the priced ~r~. Rationale: [[file:../decisions.org::#d130][D130]].
+
+** [2026-10-04 Sun 23:45] The Today screen has no routine figures to price
+
+/Sections affected: Screens / Interfaces — Admin Today screen/
+
+This document said Today's routine sections show "routine figures priced as above". Today has never rendered ~R~, ~E~ or penalty figures; the line described figures that do not exist, and Story 04's acceptance criterion on them was deferred by the human for that reason. Do not add figures to Today to satisfy the old line. If figures are wanted there, that is new scope, and they follow the kiosk's priced/live split. Repair, no D-entry.
