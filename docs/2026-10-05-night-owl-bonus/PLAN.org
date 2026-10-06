@@ -6,6 +6,10 @@
 Design: [[file:DESIGN.org]]
 
 * Batch 1 — Night Owl bonus
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 18:03] \\
+  Gate closed. Checks: ~mix precommit~ green (848 tests, 0 failures). Key Behaviors walked against ~BearCub.Chores~ (~resolve/4~, ~contribution/4~, ~before_cutoff?/2~, ~facts/2~ and the grouped route's facts map both carrying ~kid_id~), ~Schedules.change/2~'s no-op comparison, ~DayEntry~ validation, ~ScheduleLive~ (~copy_day~ keys, per-kid group), ~KioskLive.build_column~ and ~Scenarios.night_owl/1~: no unrecorded divergence; the DESIGN's ~facts/1~ is ~facts/2~, an arity detail recorded in Story 02's Plan note. PLAN statuses match every story file's checkboxes; no deferrals. Shared log: no entry after D137, no supersession touching this chain, no duplicate D-number. Local review at 1280 × 800: ~gate-1-kiosk-night-owl-1280.png~ (staged with ~Scenarios.night_owl/0~ plus a version moving Kid B's Monday cutoff to 18:00, then both evenings finished at 18:03: Kid A's moon reads +8 with the =NIGHT OWL= pill, Kid B's +5 with none) and Story 04's ~story-04-schedule-1280x800.png~ (Thursday custom cutoff, ~N = 3~). Post-deploy Android check per CLAUDE.md still to run: the wider pill inside the banner. Verdict: PASS. Advisories: 1 withdrawn (~copy_day~ copies a fixed key list), 1 lesson candidate, 0 promoted.
+:END:
 
 # Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
 

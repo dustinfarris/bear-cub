@@ -1,0 +1,26 @@
+#+title: Retro — night-owl-bonus
+
+* Batch 1 — Night Owl bonus — 2026-10-05
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 2 | 5 | 1 | 9 | 2(1.2m) | 38.8k | 91 | 210 |  |
+| story-02 | 3 | 2 | 3 | 7 | 2(1.1m) | 51.5k | 17 | 239 |  |
+| story-03 | 4 | 2 | 4 | 9 | 1(0.6m) | 48.7k | 58 | 170 |  |
+| story-04 | 5 | 5 | 3 | 7 | 1(0.6m) | 41.5k | 96 | 248 |  |
+| total | 13 | 14 | 12 | 32 | 6(3.4m) | 180.4k | 262 | 867 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- Stories 01 and 02 each ran a second verifier pass after a fix ("Re-verify story 01 after fix", "Re-verify story 02 final code"); Stories 03 and 04 passed on the first dispatch.
+- Story 04's session sat about three hours between its verifier finishing and update-design starting; the idle gap is excluded from the table's minutes.
+- No human questions appear in any of the four timelines; each session's only human turns were the implement prompt and "commit".
+- No deferred discoveries: the PLAN's Deferred section is empty.
+- All four story transcripts were found on this machine; the four sessions ran back to back within about two hours of active time.
+- The gate's kiosk review needed a hand-staged version beyond ~Scenarios.night_owl/0~ to show a finished-but-late kid, as Story 03's Plan note predicted; the scenario only stages cutoffs ahead of now.
+
+** Retro

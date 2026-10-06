@@ -189,9 +189,3 @@ Decisions for this initiative: [[file:../decisions.org]] (D132–D136 minted at 
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
-
-** [2026-10-05 Mon 17:59] §Data Model no longer says ~copy_day~ copies a whole day
-
-/Sections affected: §Data Model/
-
-This document said the existing ~copy_day~ in ~ScheduleLive~ "copies a whole day", so cutoffs would ride along untouched. It does not: it copies a fixed list of keys (the five times), and ~night_owl_cutoffs~ had to join that list. The old wording still reads as true because a card looks like one unit, but a later per-day field will not be copied unless it is added to ~copy_day~'s keys too. No D-entry: a corrected description of existing code, not a decision.
