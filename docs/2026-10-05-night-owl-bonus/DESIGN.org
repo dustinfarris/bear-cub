@@ -43,7 +43,7 @@ Canon this builds on, restated so the design reads cold:
 | ~schedule_versions~ | ~night_owl_bonus~   | integer, ≥ 0, default 0 | ~N~; ~0~ turns the Night Owl off           |
 | ~DayEntry~ (JSON)   | ~night_owl_cutoffs~ | ~embeds_many~           | ~[%{kid_id, cutoff}]~, at most one per kid |
 
-Per day entry because a late practice is a property of a day (SC-1's example), the cutoff is validated against that day's evening window which lives in the same embed, the admin layout is one card per day entry, and the existing ~copy_day~ in ~ScheduleLive~ copies a whole day, so "Copy to" carries cutoffs with no new branch.
+Per day entry because a late practice is a property of a day (SC-1's example), the cutoff is validated against that day's evening window which lives in the same embed, the admin layout is one card per day entry, and the existing ~copy_day~ in ~ScheduleLive~ copies a day's fields as one map, so "Copy to" carries cutoffs by adding ~night_owl_cutoffs~ to the keys it copies, with no new branch.
 
 ** Validation
 
@@ -189,3 +189,9 @@ Decisions for this initiative: [[file:../decisions.org]] (D132–D136 minted at 
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-10-05 Mon 17:59] §Data Model no longer says ~copy_day~ copies a whole day
+
+/Sections affected: §Data Model/
+
+This document said the existing ~copy_day~ in ~ScheduleLive~ "copies a whole day", so cutoffs would ride along untouched. It does not: it copies a fixed list of keys (the five times), and ~night_owl_cutoffs~ had to join that list. The old wording still reads as true because a card looks like one unit, but a later per-day field will not be copied unless it is added to ~copy_day~'s keys too. No D-entry: a corrected description of existing code, not a decision.

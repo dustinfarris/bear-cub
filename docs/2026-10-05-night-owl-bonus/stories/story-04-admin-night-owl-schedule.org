@@ -59,22 +59,74 @@ As a parent, I need to set the Night Owl bonus and every kid's cutoff for every 
 
 * Acceptance Criteria
 
-** [ ] The Bonuses row shows a Night owl bonus beside the routine bonus and the early bird bonus, hinted "0 turns it off". Saving a new amount records it in effect at once. (SC-2, SC-5)
-** [ ] Each day card has a Night owl group under the early bird cutoff. It holds one time input per kid, in the kids' display order, each labelled with a dot in the kid's color and the kid's name. (SC-1, SC-5)
-** [ ] Saving records each kid's cutoff for each day, in effect at once, so one kid's cutoff can differ on one day without touching the other kid's. (SC-1, SC-5)
-** [ ] A kid with no saved cutoff for a day shows a blank field, and the group's label says a blank means no Night Owl. Leaving a field blank and saving records no cutoff for that kid that day. (SC-1, SC-5)
-** [ ] A cutoff outside the evening window shows its error on that kid's field in that day card, and nothing is recorded. (SC-1, SC-5)
-** [ ] A day card whose cutoffs differ from Monday's carries the "custom" marker. (SC-1)
-** [ ] A day card's "Copy to" carries its cutoffs to the other cards, along with the rest of the day, in the unsaved form only. (SC-1, SC-5)
-** [ ] Saving an untouched form records nothing. (SC-5)
+** [X] The Bonuses row shows a Night owl bonus beside the routine bonus and the early bird bonus, hinted "0 turns it off". Saving a new amount records it in effect at once. (SC-2, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: ~ScheduleLive~ renders ~@form[:night_owl_bonus]~ in the Bonuses row with the hint. ~test/bear_cub_web/live/admin/schedule_live_test.exs~ test "the Bonuses row has a Night owl bonus beside R and E, saved in effect at once" asserts the input, submits 4 and asserts ~Schedules.current().night_owl_bonus == 4~. Visible in story-04-schedule-1280x800.png.
+:END:
+** [X] Each day card has a Night owl group under the early bird cutoff. It holds one time input per kid, in the kids' display order, each labelled with a dot in the kid's color and the kid's name. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: per-day ~<fieldset>~ with a ~type="time"~ input per kid from ~Chores.list_kids/0~, a ~data-dot~ in the kid's color and the name. Test "each card has one time input per kid in position order, with the kid's dot and name" (kids created in reverse id order, so position drives the order) over all seven cards.
+:END:
+** [X] Saving records each kid's cutoff for each day, in effect at once, so one kid's cutoff can differ on one day without touching the other kid's. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: test "a save records each kid's cutoff, one kid differing without touching the other" saves Friday for one kid and Saturday for both, asserts stored cutoffs, Monday empty, and the values on reload.
+:END:
+** [X] A kid with no saved cutoff for a day shows a blank field, and the group's label says a blank means no Night Owl. Leaving a field blank and saving records no cutoff for that kid that day. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: legend reads "Night owl (blank = no Night Owl)"; tests "a kid with no saved cutoff shows a blank field…" (no ~value~ attribute) and "a blank cutoff saves as no entry for that kid".
+:END:
+** [X] A cutoff outside the evening window shows its error on that kid's field in that day card, and nothing is recorded. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: test "a cutoff outside the evening window errors on that kid's field in that card" asserts the message only inside ~#day-card-3 [data-kid=…]~ for that kid, none on the other kid or cards 2 and 4, no new version, no Saved flash.
+:END:
+** [X] A day card whose cutoffs differ from Monday's carries the "custom" marker. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: ~custom?/2~ also compares cutoffs sorted by ~kid_id~. Test "a card whose cutoffs differ from Monday's is marked custom"; the 1280 × 800 screenshot shows Thursday marked custom with one kid's 20:45 cutoff.
+:END:
+** [X] A day card's "Copy to" carries its cutoffs to the other cards, along with the rest of the day, in the unsaved form only. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: ~copy_day~ takes ~night_owl_cutoffs~ with the time fields (one added key, not a new branch). Tests "Copy to carries cutoffs with the rest of the day, unsaved only" (versions unchanged until Save) and "Copy to overwrites the target's cutoff with a blank source field".
+:END:
+** [X] Saving an untouched form records nothing. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: tests "an untouched form with kids present saves nothing" (no version, no ~:schedule_changed~, "No changes to save") and "saving cutoffs then saving again untouched writes nothing more".
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: all eight acceptance criteria above are met; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: eleven new tests in the "Night Owl" describe block of ~test/bear_cub_web/live/admin/schedule_live_test.exs~ cover every acceptance criterion; all pass in the full run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Verifier pass: no CLAUDE.md style breach found; comments wrapped at 80, tests follow the file's existing conventions, new tests written red-first.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  ~mix precommit~ re-run without a pipe after the verifier pass: exit 0, 848 tests passed.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-05 Mon 14:47] \\
+  Viewed at 1280 × 800 in a state staged by a version insert through Tidewave ~project_eval~ (one kid's Thursday cutoff 20:45): story-04-schedule-1280x800.png, plus a 390 px phone-width capture story-04-schedule-390.png, both in the initiative directory. Night owl bonus, per-kid fields with dots, and the custom marker all render.
+:END:
 
 * Technical Notes
 
