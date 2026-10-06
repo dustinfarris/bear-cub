@@ -12,6 +12,7 @@ defmodule BearCubWeb.Admin.ScheduleLive do
   """
   use BearCubWeb, :live_view
 
+  alias BearCub.Chores
   alias BearCub.Schedules
 
   @weekdays ~w(Monday Tuesday Wednesday Thursday Friday Saturday Sunday)
@@ -21,11 +22,12 @@ defmodule BearCubWeb.Admin.ScheduleLive do
   @impl true
   def mount(_params, _session, socket) do
     current = Schedules.current()
-    params = params_for(current)
+    kids = Chores.list_kids()
+    params = params_for(current, kids)
 
     {:ok,
      socket
-     |> assign(page_title: "Schedule", current_id: current.id)
+     |> assign(page_title: "Schedule", current_id: current.id, kids: kids)
      |> assign_form(Schedules.change_version(params), params)}
   end
 
@@ -53,7 +55,7 @@ defmodule BearCubWeb.Admin.ScheduleLive do
     if id == socket.assigns.current_id do
       put_flash(socket, :info, "No changes to save")
     else
-      params = params_for(version)
+      params = params_for(version, socket.assigns.kids)
 
       socket
       |> assign(:current_id, id)
@@ -72,20 +74,37 @@ defmodule BearCubWeb.Admin.ScheduleLive do
 
   # The form params for a saved version: Monday to Sunday, so card `i`
   # always holds weekday `i + 1`, with times as the "HH:MM" a time input
-  # shows and sends.
-  defp params_for(version) do
+  # shows and sends. Each card also carries one Night Owl cutoff per kid, in
+  # kid order and keyed by that position, blank when the kid has none saved
+  # (D137): `Schedules` never queries kids, so the page supplies the list.
+  defp params_for(version, kids) do
     days =
       version.days
       |> Enum.sort_by(& &1.weekday)
       |> Enum.with_index()
       |> Map.new(fn {day, index} ->
         times = Map.new(@time_fields, &{to_string(&1), format_time(Map.fetch!(day, &1))})
-        {to_string(index), Map.put(times, "weekday", to_string(day.weekday))}
+
+        cutoffs = Map.new(day.night_owl_cutoffs, &{&1.kid_id, &1.cutoff})
+
+        night_owl =
+          kids
+          |> Enum.with_index()
+          |> Map.new(fn {kid, kid_index} ->
+            cutoff = if time = cutoffs[kid.id], do: format_time(time), else: ""
+            {to_string(kid_index), %{"kid_id" => to_string(kid.id), "cutoff" => cutoff}}
+          end)
+
+        {to_string(index),
+         times
+         |> Map.put("weekday", to_string(day.weekday))
+         |> Map.put("night_owl_cutoffs", night_owl)}
       end)
 
     %{
       "routine_bonus" => to_string(version.routine_bonus),
       "early_bird_bonus" => to_string(version.early_bird_bonus),
+      "night_owl_bonus" => to_string(version.night_owl_bonus),
       "days" => days
     }
   end
@@ -102,7 +121,7 @@ defmodule BearCubWeb.Admin.ScheduleLive do
   defp copy_day(params, from, targets) do
     days = params["days"]
     {_, source} = Enum.find(days, fn {_, day} -> day["weekday"] == from end)
-    timings = Map.take(source, Enum.map(@time_fields, &to_string/1))
+    timings = Map.take(source, ["night_owl_cutoffs" | Enum.map(@time_fields, &to_string/1)])
 
     days =
       Map.new(days, fn {index, day} ->
@@ -114,13 +133,42 @@ defmodule BearCubWeb.Admin.ScheduleLive do
     Map.put(params, "days", days)
   end
 
-  # A card is "custom" when any of its five times differs from Monday's in
-  # the current, possibly unsaved, form state.
+  # A card is "custom" when any of its five times, or any kid's Night Owl
+  # cutoff, differs from Monday's in the current, possibly unsaved, form
+  # state.
   defp custom?(_day, nil), do: false
 
   defp custom?(day, %{} = monday) do
     entry = Ecto.Changeset.apply_changes(day.source)
-    Enum.any?(@time_fields, &(Map.fetch!(entry, &1) != Map.fetch!(monday, &1)))
+
+    Enum.any?(@time_fields, &(Map.fetch!(entry, &1) != Map.fetch!(monday, &1))) or
+      sorted_cutoffs(entry) != sorted_cutoffs(monday)
+  end
+
+  defp sorted_cutoffs(entry),
+    do: entry.night_owl_cutoffs |> Enum.map(&{&1.kid_id, &1.cutoff}) |> Enum.sort()
+
+  # The typed "HH:MM" for one kid's field in one card, from the unsaved form.
+  defp cutoff_value(params, day_index, kid_index) do
+    params
+    |> get_in(["days", to_string(day_index), "night_owl_cutoffs", to_string(kid_index), "cutoff"])
+    |> time_value()
+    |> case do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  # The error on one kid's cutoff, once the form has been acted on. Errors
+  # sit on the nested entries, which only exist for kids with a cutoff typed.
+  defp cutoff_errors(%{source: %{action: nil}}, _kid), do: []
+
+  defp cutoff_errors(day, kid) do
+    day.source
+    |> Ecto.Changeset.get_embed(:night_owl_cutoffs, :changeset)
+    |> Enum.filter(&(Ecto.Changeset.get_field(&1, :kid_id) == kid.id))
+    |> Enum.flat_map(& &1.errors)
+    |> Enum.map(fn {_field, error} -> translate_error(error) end)
   end
 
   defp weekday_name(weekday), do: Enum.at(@weekdays, weekday - 1)
@@ -167,6 +215,10 @@ defmodule BearCubWeb.Admin.ScheduleLive do
               <.input field={@form[:early_bird_bonus]} type="number" min="0" label="Early bird bonus" />
               <p class="-mt-1 text-xs text-base-content/60">0 turns it off</p>
             </div>
+            <div>
+              <.input field={@form[:night_owl_bonus]} type="number" min="0" label="Night owl bonus" />
+              <p class="-mt-1 text-xs text-base-content/60">0 turns it off</p>
+            </div>
           </section>
 
           <.inputs_for :let={day} field={@form[:days]}>
@@ -195,6 +247,50 @@ defmodule BearCubWeb.Admin.ScheduleLive do
                 <.time_input field={day[:evening_end]} label="Evening end" />
                 <.time_input field={day[:early_bird_cutoff]} label="Early bird cutoff" />
               </div>
+
+              <fieldset class="mt-1">
+                <legend class="label mb-1">Night owl (blank = no Night Owl)</legend>
+                <div class="grid grid-cols-2 gap-x-3">
+                  <div
+                    :for={{kid, kid_index} <- Enum.with_index(@kids)}
+                    data-kid={kid.id}
+                    class="fieldset mb-2"
+                  >
+                    <input
+                      type="hidden"
+                      name={"#{day.name}[night_owl_cutoffs][#{kid_index}][kid_id]"}
+                      value={kid.id}
+                    />
+                    <label for={"#{day.id}_night_owl_#{kid.id}"}>
+                      <span class="label mb-1 gap-1.5">
+                        <span
+                          data-dot
+                          class="inline-block size-2.5 rounded-full"
+                          style={"background-color: #{kid.color}"}
+                        ></span>
+                        {kid.name}
+                      </span>
+                      <input
+                        type="time"
+                        id={"#{day.id}_night_owl_#{kid.id}"}
+                        name={"#{day.name}[night_owl_cutoffs][#{kid_index}][cutoff]"}
+                        value={cutoff_value(@params, day.index, kid_index)}
+                        class={[
+                          "w-full input",
+                          cutoff_errors(day, kid) != [] && "input-error"
+                        ]}
+                      />
+                    </label>
+                    <p
+                      :for={message <- cutoff_errors(day, kid)}
+                      class="mt-1.5 flex items-center gap-2 text-sm text-error"
+                    >
+                      <.icon name="hero-exclamation-circle" class="size-5" />
+                      {message}
+                    </p>
+                  </div>
+                </div>
+              </fieldset>
 
               <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span class="text-base-content/60">Copy to</span>

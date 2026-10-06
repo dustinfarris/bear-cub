@@ -3,6 +3,7 @@ defmodule BearCubWeb.Admin.ScheduleLiveTest do
 
   import Phoenix.LiveViewTest
 
+  import BearCub.ChoresFixtures
   import BearCub.SchedulesFixtures
 
   alias BearCub.Schedules
@@ -285,6 +286,253 @@ defmodule BearCubWeb.Admin.ScheduleLiveTest do
 
       assert versions() == before + 1
       assert Enum.all?(Schedules.current().days, &(&1.morning_start == ~T[08:00:00]))
+    end
+  end
+
+  describe "Night Owl (SC-1, SC-2, SC-5)" do
+    setup do
+      # Created in reverse id order so position, not id, drives the display order.
+      second = kid_fixture(%{name: "Second Kid", color: "#10b981", position: 1})
+      first = kid_fixture(%{name: "First Kid", color: "#f59e0b", position: 0})
+      %{first: first, second: second}
+    end
+
+    defp cutoff_input(weekday, kid),
+      do: "#day-card-#{weekday} [data-kid='#{kid.id}'] input[type='time']"
+
+    defp cutoffs(weekday, kid_ids \\ nil) do
+      day = Enum.find(Schedules.current().days, &(&1.weekday == weekday))
+
+      day.night_owl_cutoffs
+      |> Map.new(&{&1.kid_id, &1.cutoff})
+      |> then(&if(kid_ids, do: Map.take(&1, kid_ids), else: &1))
+    end
+
+    test "the Bonuses row has a Night owl bonus beside R and E, saved in effect at once",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/admin/schedule")
+
+      assert has_element?(view, "#bonuses input[name='schedule[night_owl_bonus]'][value='0']")
+      assert html =~ "Night owl bonus"
+
+      view |> submit_change(%{night_owl_bonus: "4"}) |> render_submit()
+
+      assert Schedules.current().night_owl_bonus == 4
+    end
+
+    test "each card has one time input per kid in position order, with the kid's dot and name",
+         %{conn: conn, first: first, second: second} do
+      {:ok, view, html} = live(conn, ~p"/admin/schedule")
+
+      for weekday <- 1..7, kid <- [first, second] do
+        assert has_element?(view, cutoff_input(weekday, kid))
+      end
+
+      assert has_element?(view, "#day-card-1 [data-kid='#{first.id}']", "First Kid")
+
+      assert has_element?(
+               view,
+               "#day-card-1 [data-kid='#{first.id}'] [data-dot][style*='#f59e0b']"
+             )
+
+      assert has_element?(
+               view,
+               "#day-card-1 [data-kid='#{second.id}'] [data-dot][style*='#10b981']"
+             )
+
+      [card_one | _] = String.split(html, ~s(id="day-card-2"))
+      assert :binary.match(card_one, "First Kid") < :binary.match(card_one, "Second Kid")
+    end
+
+    test "a kid with no saved cutoff shows a blank field and the label says blank means none",
+         %{conn: conn, first: first} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      assert has_element?(view, "#day-card-1", "blank = no Night Owl")
+      refute has_element?(view, "#{cutoff_input(1, first)}[value]")
+    end
+
+    test "a save records each kid's cutoff, one kid differing without touching the other",
+         %{conn: conn, first: first, second: second} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{
+            "4" => %{"night_owl_cutoffs" => %{"0" => %{"cutoff" => "20:30"}}},
+            "5" => %{
+              "night_owl_cutoffs" => %{
+                "0" => %{"cutoff" => "19:00"},
+                "1" => %{"cutoff" => "21:15"}
+              }
+            }
+          }
+        }
+      })
+
+      assert view |> form("#schedule-form") |> render_submit() =~ "Saved — in effect now"
+
+      assert cutoffs(5) == %{first.id => ~T[20:30:00]}
+      assert cutoffs(6) == %{first.id => ~T[19:00:00], second.id => ~T[21:15:00]}
+      assert cutoffs(1) == %{}
+
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+      assert has_element?(view, "#{cutoff_input(5, first)}[value='20:30']")
+      refute has_element?(view, "#{cutoff_input(5, second)}[value]")
+    end
+
+    test "a blank cutoff saves as no entry for that kid", %{
+      conn: conn,
+      first: first,
+      second: second
+    } do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{
+            "0" => %{
+              "night_owl_cutoffs" => %{"0" => %{"cutoff" => "20:00"}, "1" => %{"cutoff" => ""}}
+            }
+          }
+        }
+      })
+
+      view |> form("#schedule-form") |> render_submit()
+
+      assert cutoffs(1) == %{first.id => ~T[20:00:00]}
+      refute Map.has_key?(cutoffs(1), second.id)
+    end
+
+    test "a cutoff outside the evening window errors on that kid's field in that card",
+         %{conn: conn, first: first, second: second} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+      before = versions()
+
+      html =
+        view
+        |> form("#schedule-form")
+        |> render_submit(%{
+          "schedule" => %{
+            "days" => %{
+              "2" => %{"night_owl_cutoffs" => %{"1" => %{"cutoff" => "23:30"}}}
+            }
+          }
+        })
+
+      assert versions() == before
+      refute html =~ "Saved — in effect now"
+
+      assert has_element?(
+               view,
+               "#day-card-3 [data-kid='#{second.id}']",
+               "must fall inside the evening window"
+             )
+
+      refute has_element?(view, "#day-card-3 [data-kid='#{first.id}']", "must fall inside")
+      refute has_element?(view, "#day-card-2", "must fall inside")
+      refute has_element?(view, "#day-card-4", "must fall inside")
+    end
+
+    test "a card whose cutoffs differ from Monday's is marked custom",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+      refute has_element?(view, "[data-custom]")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{"2" => %{"night_owl_cutoffs" => %{"0" => %{"cutoff" => "20:00"}}}}
+        }
+      })
+
+      assert has_element?(view, "#day-card-3 [data-custom]")
+      refute has_element?(view, "#day-card-2 [data-custom]")
+      refute has_element?(view, "#day-card-1 [data-custom]")
+    end
+
+    test "Copy to carries cutoffs with the rest of the day, unsaved only",
+         %{conn: conn, first: first, second: second} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{
+            "5" => %{
+              "night_owl_cutoffs" => %{
+                "0" => %{"cutoff" => "20:00"},
+                "1" => %{"cutoff" => "21:00"}
+              }
+            }
+          }
+        }
+      })
+
+      before = versions()
+      view |> element("#copy-6-weekend") |> render_click()
+
+      assert has_element?(view, "#{cutoff_input(7, first)}[value='20:00']")
+      assert has_element?(view, "#{cutoff_input(7, second)}[value='21:00']")
+      refute has_element?(view, "#{cutoff_input(1, first)}[value]")
+      assert versions() == before
+
+      view |> form("#schedule-form") |> render_submit()
+      assert cutoffs(7) == %{first.id => ~T[20:00:00], second.id => ~T[21:00:00]}
+    end
+
+    test "Copy to overwrites the target's cutoff with a blank source field",
+         %{conn: conn, first: first} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{"6" => %{"night_owl_cutoffs" => %{"0" => %{"cutoff" => "20:00"}}}}
+        }
+      })
+
+      view |> element("#copy-1-all") |> render_click()
+
+      refute has_element?(view, "#{cutoff_input(7, first)}[value]")
+      refute has_element?(view, "[data-custom]")
+    end
+
+    test "an untouched form with kids present saves nothing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+      before = versions()
+      Schedules.subscribe()
+
+      assert view |> form("#schedule-form") |> render_submit() =~ "No changes to save"
+
+      assert versions() == before
+      refute_received :schedule_changed
+    end
+
+    test "saving cutoffs then saving again untouched writes nothing more",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin/schedule")
+
+      view
+      |> form("#schedule-form")
+      |> render_change(%{
+        "schedule" => %{
+          "days" => %{"0" => %{"night_owl_cutoffs" => %{"0" => %{"cutoff" => "20:00"}}}}
+        }
+      })
+
+      view |> form("#schedule-form") |> render_submit()
+      before = versions()
+
+      assert view |> form("#schedule-form") |> render_submit() =~ "No changes to save"
+      assert versions() == before
     end
   end
 
