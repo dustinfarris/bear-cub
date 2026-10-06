@@ -63,12 +63,14 @@ beamPackages.mixRelease {
   '';
 
   # mixRelease only links deps/<name> for store paths with a src/ subdir
-  # (buildMix outputs). These two are raw sources that assets.deploy reads:
+  # (buildMix outputs). These two are raw sources that assets.deploy reads
+  # (deps_nix 3.1 wraps heroicons in a derivation exposing the checkout at
+  # $out/src, hence the /src below):
   # app.css @plugins daisyui, and assets/vendor/heroicons.js resolves
   # ../../deps/heroicons/optimized. Full-repo fetches keep the same
   # subpaths the sparse checkouts expose in dev.
   postConfigure = ''
-    ln -sfn ${mixNixDeps.heroicons} deps/heroicons
+    ln -sfn ${mixNixDeps.heroicons}/src deps/heroicons
     ln -sfn ${daisyui} deps/daisyui
   '';
 
