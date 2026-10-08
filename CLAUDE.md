@@ -19,7 +19,7 @@ Verify command: `mix precommit`
 
 Local review: 1280 × 800 CSS px via `BearCub.Dev.Scenarios`
 
-If the Chrome MCP extension is not connected, the gate review runs through the Playwright MCP tools (`browser_resize` to 1280 × 800, then `browser_take_screenshot` into the initiative directory); a full-page screenshot catches the fixed bottom tab bar mid-image, which is expected.
+If the Chrome MCP extension is not connected, the gate review runs through the Playwright MCP tools (`browser_resize` to 1280 × 800, then `browser_take_screenshot` into the initiative directory); the first resize may not take effect on an already-loaded page (one measured 1200 × 817), so read `window.innerWidth` / `innerHeight` before capturing and check the file with `sips` afterwards; a full-page screenshot catches the fixed bottom tab bar mid-image, which is expected. Screenshots are committed to this public repo, so they carry no household data: no kid names and no calendar event text. Stage calendar events through `BearCub.Dev.Scenarios` (an events scenario is on the backlog) and never capture with the live dev cache in view, since it holds the family's real calendar [2026-10-08].
 
 ## Authoritative docs
 

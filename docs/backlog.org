@@ -115,6 +115,15 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 :CREATED:  [2026-10-04 Sun 22:16]
 :END:
 Considered during the routine-schedule design and kept out of that initiative ([[file:decisions.org::#d127][D127]]). Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (the in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections rather than deriving them on read (D10). The app already holds two append-only fact logs — ~completions~ and ~schedule_versions~ — which give derive-on-read the history it needs. Trigger: a concrete want for an audit trail of every parent and kid action, replaying history under new rules, or read models that derive-on-read cannot serve; make that case as its own PRD, not as a side effect of another feature.
+* TODO [#B] ~BearCub.Dev.Scenarios~ cannot stage calendar events, so kiosk screenshots show the live family calendar :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-10-08 Thu 13:36]
+:END:
+
+No scenario stages calendar events. The weather-indicator DESIGN's verification line asked for the worst-case column, five chores plus two events, and Story 05 staged the second event by writing into the dev VM's ~:bear_cub_calendar_instances~ ETS entry through ~project_eval~, with the real family calendar already in the cache. All seven story screenshots carried real event text and the unpushed history was rewritten after the gate. Add an ~events/2~ scenario (a kid, and a count or a list of placeholder titles such as "Event A") that puts placeholder instances for today into the calendar cache and broadcasts ~:calendars_changed~, so a column with two events is one call; ~Calendars.hydrate_cache/1~ already undoes it, so ~restore/0~ or a documented undo covers it. Add it to ~test/bear_cub/dev/scenarios_test.exs~, the moduledoc usage list and the CLAUDE.md scenario list. Pairs with the CLAUDE.md ruling that committed screenshots carry no household data: once this exists, an event strip in a screenshot is staged with it or not captured.
+
+Ruled [2026-10-08 Thu] at the weather-indicator Batch 1 retro ("The learning of the day before recurred the next morning").
+
 * TODO [#C] Early Bird pill shows at ~E = 0~, unlike the Night Owl at ~N = 0~
 :PROPERTIES:
 :CREATED:  [2026-10-05 Mon 13:49]
