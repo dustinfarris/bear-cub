@@ -206,3 +206,17 @@ Ruled [2026-10-04 Sun] at the effort-multiplier Batch 1 retro ("The Good Night g
 Claimed [2026-10-04 Sun] by the routine-schedule initiative (docs/2026-10-04-routine-schedule/): with routine timings moving into the database, the default pin becomes a schedule-version insert in the LiveView case's shared setup rather than a ~put_env~ ([[file:decisions.org::#d126][D126]]). Leaves this file when that initiative closes.
 
 Done [2026-10-05 Mon]: built in the routine-schedule initiative as a version insert rather than a ~put_env~ — ~BearCub.ScheduleHelpers.pin_default_schedule/0~ in ~BearCubWeb.ConnCase~'s setup, opted out with ~@tag :real_schedule~ ([[file:decisions.org::#d126][D126]], [[file:decisions.org::#d129][D129]]); the [2026-07-17] learnings entry now points at it. Swept at that initiative's Batch 1 gate.
+* DONE [#A] "night owl" bonus for completing evening routine early :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:03]
+:END:
+
+This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
+
+There should be a configurable bonus.
+
+A badge for earning the bonus similar to the Early Bird badge.
+
+Claimed [2026-10-05 Mon] by the night-owl-bonus initiative (docs/2026-10-05-night-owl-bonus/): per-kid, per-weekday cutoffs embedded in each schedule day entry and a family-wide bonus ~N~ on the version, priced like the Early Bird ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]]), with a =NIGHT OWL= pill under the moon ([[file:decisions.org::#d136][D136]]).
+
+Done [2026-10-07 Wed]: the night-owl-bonus initiative's Batch 1 gate closed; per-kid, per-weekday Night Owl cutoffs and the family-wide bonus ~N~ are set on the Schedule page, and the =NIGHT OWL= pill shows under the moon ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]], [[file:decisions.org::#d136][D136]]). Swept at that gate.

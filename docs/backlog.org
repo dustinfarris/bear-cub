@@ -7,24 +7,6 @@ Repo-level backlog, cumulative across initiatives. Items land here from PLAN Def
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
 
 Headings with no TODO keyword (at the end of the file) are watch-only seeds: considered and deliberately not scheduled, each with a trigger for acting on it. They carry no priority or size tag; promote one to a TODO when its trigger fires.
-* TODO [#A] "night owl" bonus for completing evening routine early :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:03]
-:END:
-
-This should be configurable per child.  e.g. Kid A might be 7:00 PM and Kid B might be 6:30 PM.
-
-There should be a configurable bonus.
-
-A badge for earning the bonus similar to the Early Bird badge.
-
-Claimed [2026-10-05 Mon] by the night-owl-bonus initiative (docs/2026-10-05-night-owl-bonus/): per-kid, per-weekday cutoffs embedded in each schedule day entry and a family-wide bonus ~N~ on the version, priced like the Early Bird ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]]), with a =NIGHT OWL= pill under the moon ([[file:decisions.org::#d136][D136]]). Leaves this file when that initiative closes.
-
-* TODO [#C] Early Bird pill shows at ~E = 0~, unlike the Night Owl at ~N = 0~
-:PROPERTIES:
-:CREATED:  [2026-10-05 Mon 13:49]
-:END:
-The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows the =EARLY= pill and earns nothing, while the admin hint says "0 turns it off". The night-owl-bonus initiative made ~N = 0~ turn the Night Owl off inside its verdict ([[file:decisions.org::#d134][D134]]) and left the morning alone, because its PRD keeps the morning as it is. Making the two consistent means adding ~early_bird_bonus > 0~ to the Early Bird verdict in ~Chores.resolve/4~; with ~E = 2~ in force nothing visible changes today. Trigger: a parent sets ~E = 0~, or the next initiative that touches the morning.
 * TODO [#A] Show the day's weather so the kid knows how to dress in the morning. :promote:
 :PROPERTIES:
 :CREATED:  [2026-10-04 Sun 19:02]
@@ -32,6 +14,14 @@ The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows
 
 An icon for hot/normal/cold and an icon for sunny or raining
 (i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
+* TODO [#B] Countdown for early bird and night owl :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-07 Wed 21:34]
+:END:
+
+Kids need to know when the clock is approaching the deadline for their routine extra bonus.  I'm thinking like 30 minutes out there's a big countdown display for each kid (since their deadlines may differ).
+
+Triage [2026-10-07 Wed]: promote, #B — a new kiosk capability, so it goes to ~/workflow-kit:create-prd~ first. Builds on the per-kid, per-weekday cutoffs the night-owl-bonus initiative added. Open questions for the PRD: morning and evening both or evening only, what the display does at zero, and live ticking versus minutes remaining. Kids' view visuals, so ~docs/design-language.org~ is binding. Folds in the Early Bird pill at ~E = 0~ entry below if the morning is touched.
 * TODO [#B] Admin chore form: moving a counted extra into a routine fails the save with no visible error :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-26 Sat 23:21]
@@ -106,6 +96,37 @@ Retriage [2026-09-06 Sun]: rewards/redemption shipped without claiming this — 
 :CREATED:  [2026-07-12 Sun 23:06]
 :END:
 Triage [2026-07-14 Tue]: oneshot — default in the changeset/form plus a test; too much code for a hand edit.
+* Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+Considered and deliberately not designed for in rewards/redemption (DESIGN.org "Out of Scope for This Design"): the app records that a redemption *happened*, not that the parent actually delivered it. At two-kid scale the verbal channel covers it, and deferral is structurally free — a nullable ~fulfilled_at~ marker plus one admin control later is a trivially additive oneshot. Act only if field evidence surfaces (a double-buy or a forgot-to-buy) that the verbal channel isn't catching.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section and DESIGN.org's Out of Scope section.
+* History pagination (D70) — backlog seed if the 50-row bound ever bites
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
+* Late-approval same-day balance-read characteristic (D72-class, narrowed by D73)
+:PROPERTIES:
+:CREATED:  [2026-07-25 Sat 22:40]
+:END:
+~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
+
+Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
+* Commanded (CQRS / event sourcing) for the whole domain — act if auditability, replay or projections are ever wanted
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 22:16]
+:END:
+Considered during the routine-schedule design and kept out of that initiative ([[file:decisions.org::#d127][D127]]). Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (the in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections rather than deriving them on read (D10). The app already holds two append-only fact logs — ~completions~ and ~schedule_versions~ — which give derive-on-read the history it needs. Trigger: a concrete want for an audit trail of every parent and kid action, replaying history under new rules, or read models that derive-on-read cannot serve; make that case as its own PRD, not as a side effect of another feature.
+* TODO [#C] Early Bird pill shows at ~E = 0~, unlike the Night Owl at ~N = 0~
+:PROPERTIES:
+:CREATED:  [2026-10-05 Mon 13:49]
+:END:
+The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows the =EARLY= pill and earns nothing, while the admin hint says "0 turns it off". The night-owl-bonus initiative made ~N = 0~ turn the Night Owl off inside its verdict ([[file:decisions.org::#d134][D134]]) and left the morning alone, because its PRD keeps the morning as it is. Making the two consistent means adding ~early_bird_bonus > 0~ to the Early Bird verdict in ~Chores.resolve/4~; with ~E = 2~ in force nothing visible changes today. Trigger: a parent sets ~E = 0~, or the next initiative that touches the morning.
 * TODO [#C] ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-21 Mon 06:57]
@@ -221,30 +242,3 @@ Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute f
 - Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
 
 What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
-
-* Fulfillment marker on redemptions — act if double-buy or forgot-to-buy occurs in family use
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-Considered and deliberately not designed for in rewards/redemption (DESIGN.org "Out of Scope for This Design"): the app records that a redemption *happened*, not that the parent actually delivered it. At two-kid scale the verbal channel covers it, and deferral is structurally free — a nullable ~fulfilled_at~ marker plus one admin control later is a trivially additive oneshot. Act only if field evidence surfaces (a double-buy or a forgot-to-buy) that the verbal channel isn't catching.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section and DESIGN.org's Out of Scope section.
-* History pagination (D70) — backlog seed if the 50-row bound ever bites
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-~Rewards.list_redemption_history/1~ (~/admin/rewards/history~) is bounded at a default ~limit~ of 50, with the bound stated on screen (D70) — a deliberate v1 simplicity choice, not an oversight. Act if the flat unpaginated list stops being enough at family scale.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section.
-* Late-approval same-day balance-read characteristic (D72-class, narrowed by D73)
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 22:40]
-:END:
-~Rewards.spend_totals_by_kid/1~ filters on a redemption row's ~local_date~ (request time) combined with its *current* ~approved_at~/~reversed_at~ state, not the state as of the date being queried, so a marker stamped after the fact changes what an earlier "as of" read reports — the same D10/D72-class characteristic as the roster-drift entry above, not a bug. D73's day-scoped ~check_open/2~ closes the original multi-day form (request day 1, an intermediate ~Points.balance~ read on day 2, approval on day 3 moving that day-2 read after the fact) — ~approve_redemption/3~ now refuses a request once its ~local_date~ is before today. What remains, still accepted under D72's reasoning: (a) the *same-day* case — a request and its approval both dated today, with an intermediate ~Points.balance~ read taken between the two, still moves after the fact, since ~check_open/2~ only excludes prior days, not same-day timing; (b) direct data manipulation (IEx, or any future admin action stamping ~approved_at~ outside the guarded write paths) can still produce a lapsed-then-approved row, bypassing the guard entirely.
-
-Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's Deferred section (Story 03 discovery, narrowed by D73).
-* Commanded (CQRS / event sourcing) for the whole domain — act if auditability, replay or projections are ever wanted
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 22:16]
-:END:
-Considered during the routine-schedule design and kept out of that initiative ([[file:decisions.org::#d127][D127]]). Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (the in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections rather than deriving them on read (D10). The app already holds two append-only fact logs — ~completions~ and ~schedule_versions~ — which give derive-on-read the history it needs. Trigger: a concrete want for an audit trail of every parent and kid action, replaying history under new rules, or read models that derive-on-read cannot serve; make that case as its own PRD, not as a side effect of another feature.
