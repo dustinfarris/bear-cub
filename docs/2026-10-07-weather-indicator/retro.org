@@ -1,0 +1,30 @@
+#+title: Retro — weather-indicator
+
+* Batch 1 — Weather indicator — 2026-10-08
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 2 | 2 | 3 | 5 | 1(0.7m) | 25.0k | 116 | 151 | also read story-03 |
+| story-02 | 2 | 2 | 10 | 3 | 1(0.7m) | 26.5k | 114 | 86 | also read story-03 |
+| story-03 | 5 | 2 | 7 | 6 | 1(0.7m) | 27.8k | 188 | 247 |  |
+| story-04 | 2 | 5 | 7 | 4 | 2(1.3m) | 27.3k | 41 | 142 |  |
+| story-05 | 6 | 6 | 6 | 9 | 2(1.9m) | 75.5k | 99 | 223 |  |
+| total | 17 | 17 | 33 | 27 | 7(5.3m) | 182.2k | 558 | 849 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- Stories 04 and 05 each ran a second verifier pass after a fix ("Re-verify story 04 after fix", "Re-verify story 05 after fixes"); Stories 01–03 passed on the first dispatch.
+- Update-design took about twice as much active time as implementation across the batch (33 min against 17). Story 02's pass was the longest stage of any story at 10 min; that pass minted D144. It also sat about 1 h 45 min between starting and the human's "continue", which the minutes exclude.
+- Story 04's session waited about 25 min between its re-verify and update-design, then about 45 min before "commit".
+- Note column, checked against git: Story 02's close-out commit ~df736c5~ edited ~story-03~ (2 lines); Story 01's ~c5a2c12~ did not touch it, so Story 01's reference was a read.
+- Story 05 used about 2.7× the output tokens of any other story (75.5k).
+- No human questions appear in any timeline; the human turns were the implement prompts, "commit", and one "continue" in Story 02.
+- No deferred discoveries: the PLAN's Deferred section is empty.
+- All five story transcripts were found on this machine.
+- Two of Story 05's committed screenshots (~story-05-cold-snow.png~, ~story-05-worst-case.png~) show calendar event text from the dev cache. The gate screenshot blanked the strip, as the night-owl gate did.
+
+** Retro

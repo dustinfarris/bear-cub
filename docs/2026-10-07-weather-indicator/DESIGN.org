@@ -242,7 +242,7 @@ Per MVP DESIGN §11, unit and LiveView layers both.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D138–D143.
+Decisions for this initiative: [[file:../decisions.org]] — D138–D144.
 
 * Advisories
 
@@ -252,12 +252,6 @@ Decisions for this initiative: [[file:../decisions.org]] — D138–D143.
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
-
-** [2026-10-08 Thu 12:50] §Key Behaviors (Testing) no longer names the weather group ~#chore-N-weather~
-
-/Sections affected: Key Behaviors (Testing)/
-
-The Testing bullet for the kiosk used to name the weather group's element ~#chore-N-weather~, with the chore id before the suffix. That contradicted this document's own heex in §Screens / Interfaces, ~id={"#{@dom}-weather-#{@chore.id}"}~, which renders ~chore-weather-N~ — the form every other per-row element in ~chore_row/1~ already takes (~chore-check-N~, ~chore-penalty-N~, ~chore-effort-N~). Story 05 built and tested ~chore-weather-N~. Don't reintroduce the suffix form when writing a new selector or test, even though "the row's id plus a suffix" reads naturally: it matches nothing. A repair, not a decision, so no D-entry.
 
 ** [2026-10-08 Thu 08:59] §Data Model no longer offers an environment file for the coordinates (D144)
 
