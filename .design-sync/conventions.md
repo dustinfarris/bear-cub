@@ -35,7 +35,7 @@ Link `styles.css` once. No provider, no wrapper. Light theme is the default and 
 
 Full text and rationale: `guidelines/guides/design-language.md` — read it before proposing a change to anything it covers, and say so explicitly when a design departs from it.
 
-- Pre-reader first: signal with color, scale, count and glyph. The kids' banner carries one word (`EARLY`); the stake bar and standing band carry none.
+- Pre-reader first: signal with color, scale, count and glyph. The kids' banner carries two words, the `EARLY` and `NIGHT OWL` pills; the stake bar and standing band carry none.
 - Routine chores never show a per-chore number; a routine pays one `+R`. Only extras carry `+N` / `−N` chips.
 - Pending routine row = dashed slot, whole `h-24` row is the tap target, nothing in the right column. Done row = kid-color fill, `h-20`, white disc with the check in the kid's color; done rows sink below pending ones.
 - Extras (optional chores, shown once the morning routine is done) sit in a `gap-2 p-2.5` group. Pending extra = dashed slot in the kid's color, `h-24 rounded-xl border-[3px] border-dashed`, no ownership border. Done extras rise to the top as one joined kid-color mass (`h-20` rows, `border-white/35` hairlines, `rounded-xl` outer corners), newest first, each with `×N` (if counted), the `+N` chip and the check disc; an undo returns the row to its authored place.
