@@ -126,7 +126,7 @@ No threshold page (PRD out of scope), no weather readout in admin, and the chore
 - *temp* — the daily ~temperature_2m_max~ (°F): ~≥ hot_at~ → ~:hot~; ~< cold_below~ → ~:cold~; else ~:normal~.
 - *precip* — the hourly rows stamped *09:00 through 15:00 inclusive*. ~precipitation_probability~ describes the preceding hour, so the 09:00 row covers 8–9 AM and the 15:00 row 2–3 PM; together they are exactly 8 AM–3 PM. Keep the rows whose ~precipitation_probability ≥ precip_chance_at~. Any kept row with a snow ~weather_code~ (71, 73, 75, 77, 85, 86) → ~:snow~; else any kept row → ~:rain~; else ~:none~.
 - The chance gates and the code only types. ~precipitation_probability~ is the share of about 30 ensemble runs with more than 0.1 mm in the hour; ~weather_code~ (WMO) is the single deterministic run's condition and carries no probability. A row under the threshold never counts, whatever its code; a code never makes it rain on its own. A kept row whose code shows no precipitation still counts as rain — the chance cleared the threshold, and the chance is what the PRD judges by.
-- Whether ~weather_code~ is aggregated over the preceding hour like the chance is not confirmed; it matters only to rain-versus-snow at the window's edges. The implementing story checks it against the Open-Meteo docs and records the answer.
+- ~weather_code~ is an instant, not aggregated like the chance: it is the condition at the row's stamp, the close of the hour that row's chance covers. Each row is typed by its own code, so the 09:00 row's 8–9 AM chance is typed by the 09:00 condition. This matters only to rain versus snow at the window's edges, and the window stays the seven rows 09:00–15:00 ([[file:../decisions.org::#d143][D143]]).
 - A missing high, or any of the seven window rows missing either field → ~nil~. Absent, never a guess.
 - The reading's ~date~ comes from the response's ~daily.time~, never from the clock at fetch time.
 
@@ -242,7 +242,7 @@ Per MVP DESIGN §11, unit and LiveView layers both.
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] — D138–D142.
+Decisions for this initiative: [[file:../decisions.org]] — D138–D143.
 
 * Advisories
 
@@ -252,3 +252,9 @@ Decisions for this initiative: [[file:../decisions.org]] — D138–D142.
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-10-08 Thu 08:51] §Key Behaviors no longer leaves ~weather_code~'s time basis open (D143)
+
+/Sections affected: Key Behaviors (Derivation)/
+
+This document used to say it was not confirmed whether ~weather_code~ is aggregated over the preceding hour like ~precipitation_probability~, and left that for the implementing story to check. It is not aggregated. Open-Meteo marks it "Instant", so it describes the stamped moment, not the hour before it. Don't reason as if a row's code summarises the same hour as its chance, even though the two arrive on the same row and the symmetry is tempting. Don't re-key the window to fix that either: D143 keeps each row typed by its own code. Rationale: [[file:../decisions.org::#d143][D143]].

@@ -18,7 +18,11 @@ Design: [[file:DESIGN.org]]
 # each dressing chore) and moving the backlog entry to completed.org belong to the gate and the
 # deploy, not to a story.
 
-** TODO [[file:stories/story-01-weather-reading.org][Story 01 — Deriving the weather reading from a forecast]]
+** DONE [[file:stories/story-01-weather-reading.org][Story 01 — Deriving the weather reading from a forecast]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:51] \\
+  Plan note (weather_code check, 2026-10-08): the Open-Meteo forecast docs list hourly ~weather_code~ with valid time "Instant" ("Weather condition as a numeric code. Follow WMO weather interpretation codes"), whereas ~precipitation_probability~ is "Preceding hour probability" ("Probability of precipitation with more than 0.1 mm of the preceding hour"). So the code is *not* aggregated over the preceding hour: the 09:00 row's code is the condition at 09:00, and the 15:00 row's at 15:00. Consequence for edge hours: a snow code on the 09:00 row that qualifies by chance describes the instant at the end of the 8–9 AM hour the chance covers, and a snow code at 15:00 the instant at the end of the 2–3 PM hour — the type is a point sample at the hour's close, not a summary of it. This is acceptable under D140 (the chance gates, the code only types); ~derive/2~ is unchanged and the window stays 09:00–15:00 inclusive ([[file:../decisions.org::#d143][D143]]).
+:END:
 ** TODO [[file:stories/story-02-weather-config.org][Story 02 — Weather thresholds and location set once in the NixOS module]]
 ** TODO [[file:stories/story-03-weather-fetch-and-refresh.org][Story 03 — Fetching and holding today's forecast]]
 ** TODO [[file:stories/story-04-shows-weather-flag.org][Story 04 — Flagging the dressing chore in admin]]

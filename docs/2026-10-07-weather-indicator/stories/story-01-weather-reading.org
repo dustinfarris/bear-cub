@@ -52,19 +52,59 @@ As a kid getting dressed, I need the day's forecast boiled down to hot, normal o
 
 * Acceptance Criteria
 
-** [ ] A forecast whose day's high is at or above the hot threshold reads hot; one below the cold threshold reads cold; anything between, including a high exactly at the cold threshold, reads normal. (SC-1, SC-2)
-** [ ] Precipitation is judged only on the forecast hours that together cover 8 AM to 3 PM: an hour whose chance of precipitation is at or above the chance threshold counts, an hour under it never counts whatever its condition, and hours outside the window are ignored. (SC-1, SC-2)
-** [ ] When any counting hour's condition is snow, the reading is snow, even if other counting hours are rain. When hours count but none is snow, the reading is rain, even if their condition shows no precipitation. When no hour counts, the reading is no rain. (SC-1)
-** [ ] A forecast missing the day's high, or missing the chance or the condition for any hour in the window, gives no reading at all rather than a guess. (SC-3)
-** [ ] A reading carries only the day, the temperature band and the precipitation type — no degrees and no percentages — and its day is the forecast's own date, not the clock's. (SC-1)
-** [ ] Whether the forecast's condition code describes the preceding hour, as the chance does, has been checked against the Open-Meteo documentation and the answer recorded in this story's Plan note. (SC-1)
+** [X] A forecast whose day's high is at or above the hot threshold reads hot; one below the cold threshold reads cold; anything between, including a high exactly at the cold threshold, reads normal. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~temp/2~ at ~lib/bear_cub/weather.ex:56-58~; tests "high at hot_at reads hot", "high just under hot_at reads normal", "high at cold_below reads normal", "one degree under cold_below reads cold" in ~test/bear_cub/weather_test.exs~; all pass.
+:END:
+** [X] Precipitation is judged only on the forecast hours that together cover 8 AM to 3 PM: an hour whose chance of precipitation is at or above the chance threshold counts, an hour under it never counts whatever its condition, and hours outside the window are ignored. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~@window_hours 9..15~ with rows selected by the hour parsed from ~hourly.time~ (~weather.ex:13, 60-91~), chance gate in ~precip/2~; tests for exactly-at-threshold, 5% row with rain code, 09:00/15:00 inside, 08:00/16:00 ignored, and stamped-hour (reversed list) selection; all pass.
+:END:
+** [X] When any counting hour's condition is snow, the reading is snow, even if other counting hours are rain. When hours count but none is snow, the reading is rain, even if their condition shows no precipitation. When no hour counts, the reading is no rain. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~precip/2~ (~weather.ex:94-97~) returns none, snow or rain; tests cover all six snow codes, rain+snow reads snow, snow code in a non-qualifying row is not snow, qualifying row with a no-precipitation code reads rain, all-under-threshold reads none; all pass.
+:END:
+** [X] A forecast missing the day's high, or missing the chance or the condition for any hour in the window, gives no reading at all rather than a guess. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~high/1~ and ~window_rows/1~ require numeric values and exactly seven window rows, falling to ~nil~ via the ~with~ else; tests for missing high, chance, code, fewer than seven rows, and nils outside the window being ignored; all pass.
+:END:
+** [X] A reading carries only the day, the temperature band and the precipitation type — no degrees and no percentages — and its day is the forecast's own date, not the clock's. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~BearCub.Weather.Reading~ has exactly ~date~, ~temp~, ~precip~; the test building a 2031-01-02 forecast asserts exact struct equality, so the date comes from ~daily.time~, not the clock.
+:END:
+** [X] Whether the forecast's condition code describes the preceding hour, as the chance does, has been checked against the Open-Meteo documentation and the answer recorded in this story's Plan note. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified: Open-Meteo docs (open-meteo.com/en/docs, fetched in session) list hourly ~weather_code~ as valid time "Instant" versus ~precipitation_probability~ "Preceding hour probability"; the answer and its edge-hour consequence are recorded in the Plan note under Story 01 in ~PLAN.org~.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: all six Acceptance Criteria met, none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: 20 tests in ~test/bear_cub/weather_test.exs~ pass, covering every bullet of the Testing excerpt.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: format and ~--warnings-as-errors~ compile clean; no reference to ~BearCub.Chores~ or ~BearCub.Calendars~; window and snow codes are module attributes; date taken from the forecast.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:49] \\
+  Verified by story-verifier: ~mix precommit~ ran once, 868 tests passed; ~mix format --check-formatted~ confirmed separately.
+:END:
 
 * Technical Notes
 

@@ -617,3 +617,10 @@ From a Claude Design round against the [[#d115][D115]] mirror (handoff bundle =W
 :END:
 
 A display-only boolean on ~chores~ (~NOT NULL DEFAULT false~) marks the routine chore that carries the weather. Flagging survives renames, and chore names are data, so matching a label such as "Get dressed" is rejected. ~Chore.changeset/2~ forces the flag to ~false~ whenever the chore is not a morning routine chore, since a flag anywhere else could never render. Refusing it with a changeset error is rejected because it would recreate the open backlog defect where moving a counted extra into a routine fails the save on a field the form does not show: once a parent picks Evening the checkbox is hidden, and an error on it would be invisible. The flag does not enter points, the reclassification lock ignores it, and a kid with no flagged chore sees no weather, accepted. → weather-indicator/Data Model, weather-indicator/Screens / Interfaces (admin).
+
+* D143 (2026-10-08) — ~weather_code~ is an instant at the row's stamp, and the window's edge rows keep their own code
+:PROPERTIES:
+:CUSTOM_ID: d143
+:END:
+
+Settles the question [[#d140][D140]]'s design left open. Open-Meteo's forecast docs list hourly ~weather_code~ with valid time "Instant", while ~precipitation_probability~ is "Preceding hour probability". So a 09:00 row's chance covers 8–9 AM, but its code is the condition at 09:00, the hour's close. ~derive/2~ keeps pairing each row's chance with that same row's code, so at the window's edges rain versus snow is judged by a sample at the end of the hour the chance describes. Accepted, because the chance gates and the code only types (D140), and a code flipping between rain and snow inside one hour matters only near freezing. Rejected — typing a row by the code stamped at its hour's start (the previous row's code), or by either bracketing instant: either reaches outside the seven-row window to 08:00 for the first hour, which adds a missing-data case for a difference that rarely shows. Settles weather-indicator/SC-1. → weather-indicator/Key Behaviors (derivation).
