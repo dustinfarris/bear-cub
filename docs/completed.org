@@ -220,3 +220,14 @@ A badge for earning the bonus similar to the Early Bird badge.
 Claimed [2026-10-05 Mon] by the night-owl-bonus initiative (docs/2026-10-05-night-owl-bonus/): per-kid, per-weekday cutoffs embedded in each schedule day entry and a family-wide bonus ~N~ on the version, priced like the Early Bird ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]]), with a =NIGHT OWL= pill under the moon ([[file:decisions.org::#d136][D136]]).
 
 Done [2026-10-07 Wed]: the night-owl-bonus initiative's Batch 1 gate closed; per-kid, per-weekday Night Owl cutoffs and the family-wide bonus ~N~ are set on the Schedule page, and the =NIGHT OWL= pill shows under the moon ([[file:decisions.org::#d132][D132]], [[file:decisions.org::#d133][D133]], [[file:decisions.org::#d136][D136]]). Swept at that gate.
+* DONE [#A] Show the day's weather so the kid knows how to dress in the morning. :promote:
+:PROPERTIES:
+:CREATED:  [2026-10-04 Sun 19:02]
+:END:
+
+An icon for hot/normal/cold and an icon for sunny or raining
+(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
+
+Claimed [2026-10-07 Wed] by the weather-indicator initiative (docs/2026-10-07-weather-indicator/): a pure derivation of the day's high and the 8 AM–3 PM precipitation chance into hot/normal/cold and none/rain/snow ([[file:decisions.org::#d140][D140]]), held in memory and refreshed from Open-Meteo ([[file:decisions.org::#d138][D138]]), with thresholds and location set in the NixOS module ([[file:decisions.org::#d139][D139]]), shown as two emoji on each kid's flagged morning chore ([[file:decisions.org::#d141][D141]], [[file:decisions.org::#d142][D142]]).
+
+Done [2026-10-08 Thu]: the weather-indicator initiative's Batch 1 gate closed. Deploy still needs ~services.bear-cub.weather.latitude~ / ~longitude~ in the host config and a parent flagging each kid's dressing chore in admin ([[file:decisions.org::#d144][D144]]). Swept at that gate.

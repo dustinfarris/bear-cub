@@ -7,13 +7,6 @@ Repo-level backlog, cumulative across initiatives. Items land here from PLAN Def
 Size tags: oneshot (compiled single-session prompt), hand (inert edit, no session), promote (candidate for initiative-scale work). Untagged means untriaged — sizing happens at review or pull time, not capture time.
 
 Headings with no TODO keyword (at the end of the file) are watch-only seeds: considered and deliberately not scheduled, each with a trigger for acting on it. They carry no priority or size tag; promote one to a TODO when its trigger fires.
-* TODO [#A] Show the day's weather so the kid knows how to dress in the morning. :promote:
-:PROPERTIES:
-:CREATED:  [2026-10-04 Sun 19:02]
-:END:
-
-An icon for hot/normal/cold and an icon for sunny or raining
-(i.e. the kid knows shorts or pants, short-sleeve or long-sleeve, shoes or rain boots)
 * TODO [#B] Countdown for early bird and night owl :promote:
 :PROPERTIES:
 :CREATED:  [2026-10-07 Wed 21:34]
