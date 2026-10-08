@@ -39,6 +39,10 @@ defmodule BearCub.Chores.Chore do
     # into the unit_rate/unit_max pair in the changeset, exactly as
     # `shows_in` collapses into `routine`/`recurring?`.
     field :counts_units?, :boolean, virtual: true
+    # display-only: this morning chore carries today's weather on the
+    # kiosk. Only a morning routine chore may hold true (D142); the
+    # changeset clears it elsewhere rather than refusing it.
+    field :shows_weather, :boolean, default: false
 
     belongs_to :kid, BearCub.Chores.Kid
 
@@ -57,7 +61,8 @@ defmodule BearCub.Chores.Chore do
       :notify_on_complete?,
       :counts_units?,
       :unit_rate,
-      :unit_max
+      :unit_max,
+      :shows_weather
     ])
     |> validate_required([:name, :icon])
     |> validate_inclusion(:shows_in, @shows_in_values)
@@ -66,6 +71,7 @@ defmodule BearCub.Chores.Chore do
     # defence in depth for the create path, which sets `routine` directly
     # rather than through `shows_in` (D83)
     |> force_non_recurring_when_routine_present()
+    |> clear_shows_weather_off_morning()
     |> apply_counts_units()
     |> validate_counted_extra()
     |> check_immutability_locks(chore)
@@ -114,6 +120,16 @@ defmodule BearCub.Chores.Chore do
     case get_field(changeset, :routine) do
       nil -> changeset
       _ -> put_change(changeset, :recurring?, false)
+    end
+  end
+
+  # Cleared, not refused: the admin form hides the checkbox off the
+  # morning routine, so an error on it would be invisible (D142).
+  defp clear_shows_weather_off_morning(changeset) do
+    if get_field(changeset, :routine) == "morning" do
+      changeset
+    else
+      put_change(changeset, :shows_weather, false)
     end
   end
 

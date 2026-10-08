@@ -92,6 +92,15 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
     form[:shows_in].value in ~w(extra extra_daily)
   end
 
+  # Morning chores only. A form whose routine the URL fixed has no
+  # `shows_in` select, so its routine comes from the chore itself.
+  defp show_weather_checkbox?(form, %Chore{routine: routine}) do
+    case form[:shows_in].value do
+      nil -> routine == "morning"
+      shows_in -> shows_in == "morning"
+    end
+  end
+
   defp counted_form?(form) do
     Phoenix.HTML.Form.normalize_value("checkbox", form[:counts_units?].value)
   end
@@ -161,6 +170,13 @@ defmodule BearCubWeb.Admin.ChoreLive.Form do
             <.input field={@form[:unit_rate]} type="number" label="Per unit" />
             <.input field={@form[:unit_max]} type="number" label="Max" />
           </div>
+
+          <.input
+            :if={show_weather_checkbox?(@form, @chore)}
+            field={@form[:shows_weather]}
+            type="checkbox"
+            label="Shows today's weather"
+          />
 
           <.input
             field={@form[:notify_on_complete?]}

@@ -682,4 +682,80 @@ defmodule BearCubWeb.Admin.ChoreLiveTest do
       assert reloaded.unit_max == 10
     end
   end
+
+  describe "shows-weather checkbox (Story 04)" do
+    test "appears for a morning chore's edit form, absent for evening and extras",
+         %{conn: conn, kid_a: kid_a} do
+      morning = chore_fixture(kid_a, %{name: "Dress", icon: "👕", shows_in: "morning"})
+      evening = chore_fixture(kid_a, %{name: "Pajamas", icon: "🌙", shows_in: "evening"})
+      extra = chore_fixture(kid_a, %{name: "Rake", icon: "🍂", shows_in: "extra"})
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{morning.id}/edit")
+      assert has_element?(view, "input[type=checkbox][name='chore[shows_weather]']")
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{evening.id}/edit")
+      refute has_element?(view, "input[name='chore[shows_weather]']")
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{extra.id}/edit")
+      refute has_element?(view, "input[name='chore[shows_weather]']")
+    end
+
+    test "appears on the new-morning-chore link, absent on the evening link",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=morning")
+      assert has_element?(view, "input[name='chore[shows_weather]']")
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}&routine=evening")
+      refute has_element?(view, "input[name='chore[shows_weather]']")
+    end
+
+    test "choosing Morning reveals it without a save", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _} = live(conn, ~p"/admin/chores/new?kid=#{kid_a.id}")
+      refute has_element?(view, "input[name='chore[shows_weather]']")
+
+      view |> form("#chore-form", chore: %{shows_in: "morning"}) |> render_change()
+      assert has_element?(view, "input[name='chore[shows_weather]']")
+
+      view |> form("#chore-form", chore: %{shows_in: "evening"}) |> render_change()
+      refute has_element?(view, "input[name='chore[shows_weather]']")
+    end
+
+    test "saves, shows checked on edit, and the chore list does not mark it",
+         %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Dress", icon: "👕", shows_in: "morning"})
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view |> form("#chore-form", chore: %{shows_weather: true}) |> render_submit()
+      assert Chores.get_chore!(chore.id).shows_weather == true
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+      assert has_element?(view, "input[name='chore[shows_weather]'][checked]")
+
+      {:ok, _view, html} = live(conn, ~p"/admin/chores?kid=#{kid_a.id}")
+      refute html =~ "weather"
+    end
+
+    test "a move to evening clears the flag with no error", %{conn: conn, kid_a: kid_a} do
+      chore =
+        chore_fixture(kid_a, %{name: "Dress", icon: "👕", shows_in: "morning", shows_weather: true})
+
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view |> form("#chore-form", chore: %{shows_in: "evening"}) |> render_submit()
+
+      updated = Chores.get_chore!(chore.id)
+      assert updated.routine == "evening"
+      assert updated.shows_weather == false
+    end
+
+    test "can be set on a chore with completions", %{conn: conn, kid_a: kid_a} do
+      chore = chore_fixture(kid_a, %{name: "Dress", icon: "👕", shows_in: "morning"})
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "admin")
+      {:ok, view, _} = live(conn, ~p"/admin/chores/#{chore.id}/edit")
+
+      view |> form("#chore-form", chore: %{shows_weather: true}) |> render_submit()
+
+      assert Chores.get_chore!(chore.id).shows_weather == true
+    end
+  end
 end
