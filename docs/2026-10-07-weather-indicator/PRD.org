@@ -1,0 +1,32 @@
+#+title: PRD — Weather indicator
+#+date: 2026-10-07
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The kids get dressed during the morning routine without knowing the day's weather, so they come down in shorts on a cold day or sneakers on a rainy one and are sent back to change, costing time and friction on those mornings. A parent checking a phone fixes the outfit but keeps the parent as the one deciding; the kids should be able to make the call themselves, the same independence the chore routines build.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. In the morning, a kid at the kiosk sees today's weather as icons — hot, normal, or cold, judged by the day's high, and no rain, rain, or snow, judged by the chance of each between 8 AM and 3 PM — and can make the shorts-or-pants, sleeves, and shoes, rain boots, or snow boots call without asking a parent.
+2. Where hot, normal, cold, rain, and snow begin is set once by a parent as fixed values, and every reading the kiosk shows matches those values.
+3. When today's forecast cannot be fetched, the weather indicator is absent and the kiosk otherwise looks and behaves exactly as it does without it.
+
+* Out of Scope
+
+- Temperatures in degrees, hourly detail, or multi-day forecasts.
+- Tomorrow's weather, or anything shown for the evening routine.
+- Telling the kid what to wear; the kiosk shows the weather and the kid decides.
+- Snow already on the ground; only snow forecast for the day counts.
+- Per-kid thresholds.
+- Changing thresholds from the admin UI.
+- A stale reading or an "unavailable" marker when the forecast is missing.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)

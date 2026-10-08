@@ -1,0 +1,9 @@
+#+title: SKETCH — Weather indicator
+#+date: 2026-10-07
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Example thresholds floated: cold below 60°F, hot above 80°F, rain at 40% or higher chance; set in config, not the admin UI.
+- Degrade the way the calendar overlay does: a fetch failure hides the indicator and never touches chore display.
+- Open question for design: whether the indicator hides outside the morning routine window or stays up all day.
+- Mixed rain-and-snow day still shows one precipitation reading; which wins is a design call.
