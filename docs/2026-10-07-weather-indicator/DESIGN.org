@@ -1,0 +1,254 @@
+#+title: DESIGN — weather-indicator
+#+date: 2026-10-08
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+The kids get dressed during the morning routine without knowing the day's weather, come down in shorts on a cold day or sneakers on a rainy one, and are sent back to change. A parent checking a phone fixes the outfit but keeps the parent as the one deciding; the kids should make the call themselves.
+
+On a weekday morning a kid walks up to the kiosk, still in pajamas. Their pending *Get dressed* row carries two large emoji at its right end: 🥶 ❄️. Cold, snowing. They go put on pants, long sleeves and snow boots without asking anyone. When they tap the row the weather goes with it and the check disc lands as usual. If the forecast could not be fetched, the row looks exactly as it does today.
+
+The whole feature is *one outside fetch held in memory, one pure derivation, and two emoji on one chore row*. No new table: the forecast never touches the database, and the only schema change is a display flag on ~chores~. Three properties organise the design, one per PRD Success Criterion:
+
+1. *Weather as icons, judged the PRD's way* (SC-1). Temperature by the day's high: hot, normal, cold. Precipitation by the chance between 8 AM and 3 PM: none, rain, snow. Two glyphs, no words, no numbers ([[file:../decisions.org::#d140][D140]], [[file:../decisions.org::#d141][D141]]).
+2. *Fixed, parent-set thresholds* (SC-2). Runtime config set once in the NixOS module; every reading is a pure function of the forecast and those values ([[file:../decisions.org::#d139][D139]]).
+3. *Absent on failure, kiosk otherwise unchanged* (SC-3). A ~nil~ reading renders nothing — no placeholder, no reserved width — and weather trouble cannot reach the chore path ([[file:../decisions.org::#d138][D138]]).
+
+Morning only: outside an active routine window the kiosk shows the night screen, and the PRD rules out anything for the evening routine, so the indicator renders only while the morning routine is active.
+
+Canon this builds on, restated so the design reads cold:
+
+- *D8 / [[file:../decisions.org::#d120][D120]] — routines are app constants.* ~:morning~ / ~:evening~; their windows come from the schedule version in force. ~Routines.current/2~ returns ~{:active, slug}~ inside a window and ~{:upcoming, slug}~ in a gap; the kiosk shows the night screen whenever the state is ~:upcoming~.
+- *D10 — day state is derived, never stored.* Unchanged. Nothing about weather is stored per day.
+- *The calendar overlay — a degradable overlay.* ~BearCub.Chores~ never depends on ~BearCub.Calendars~; a fetch failure serves the cached payload and never affects chore display; a GenServer ~Refresher~ is the scheduler and the context holds the logic. Weather follows the same fence and the same split.
+- *[[file:../decisions.org::#d103][D103]] — glyphs outside the emoji set ship as inline SVG.* Every weather glyph is an emoji, so D103 is not engaged.
+- *[[file:../decisions.org::#d105][D105]] — pending routine rows are dashed slots with nothing in the right-hand column*; the whole ~h-24~ row is the tap target. The done row carries a white ~size-9~ disc with ~hero-check~ in the kid's color. This design carves the one exception.
+- *[[file:../decisions.org::#d106][D106]] / [[file:../decisions.org::#d107][D107]] — the settle beat and the sink.* A kiosk tap fills the slot in place for ~@settle_delay_ms~ (150 ms), then the row sinks on a 300 ms clock with ghosts; the check disc springs in (~animate-pop~) on the /landing/ row, not during the beat. An undo grows the row back into its authored place among the pending rows.
+- *[[file:../decisions.org::#d115][D115]] — Claude Design holds a tokens-only mirror; design flows back only through a handoff recreated in the token block* under D105's adaptation rules.
+- *Kids' view invariant — ~hero-sun-solid~ means the morning routine* (stake bar icon, banner completion icon). The weather's sun is never that icon.
+- *Kiosk fit budget* — five chores plus two events fit a column at 1280 × 800 with no scroll; the worst-case column has 4 px to spare, so no new row can be added.
+- *Local time* — all time logic takes a local datetime argument in the configured timezone (~BearCub.LocalTime~); no ~DateTime.utc_now()~ in domain code.
+
+* Data Model
+
+** Configuration (SC-2)
+
+Runtime config, read in ~config/runtime.exs~ from env vars that new ~services.bear-cub.weather.*~ options in ~nix/module.nix~ set — the same path as the timezone ([[file:../decisions.org::#d139][D139]]).
+
+| Key                         | Env var                             | Default | Meaning                                         |
+|-----------------------------+-------------------------------------+---------+-------------------------------------------------|
+| ~:weather_latitude~         | =BEAR_CUB_WEATHER_LATITUDE=         | unset   | Either unset turns weather off                  |
+| ~:weather_longitude~        | =BEAR_CUB_WEATHER_LONGITUDE=        | unset   |                                                 |
+| ~:weather_hot_at~           | =BEAR_CUB_WEATHER_HOT_AT=           | 80      | Day's high ≥ this °F → hot                      |
+| ~:weather_cold_below~       | =BEAR_CUB_WEATHER_COLD_BELOW=       | 60      | Day's high < this °F → cold; otherwise normal   |
+| ~:weather_precip_chance_at~ | =BEAR_CUB_WEATHER_PRECIP_CHANCE_AT= | 40      | An hourly chance ≥ this % in the window counts  |
+
+~runtime.exs~ raises at boot when ~cold_below > hot_at~ or the chance is outside 0–100. The 8 AM–3 PM window is a code constant, not config — the PRD fixes it.
+
+Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private, or in an environment file outside the store.
+
+** The reading
+
+#+begin_src elixir
+%BearCub.Weather.Reading{
+  date: Date.t(),
+  temp: :hot | :normal | :cold,
+  precip: :none | :rain | :snow
+}
+#+end_src
+
+It carries no degrees and no percentages, so the kiosk structurally cannot show more than the PRD allows. It lives in memory only (~:persistent_term~ or a one-row ETS table, as the calendar instances do); nothing about weather is written to the database ([[file:../decisions.org::#d138][D138]]).
+
+** ~chores.shows_weather~
+
+A migration adds ~shows_weather boolean NOT NULL DEFAULT false~ to ~chores~ ([[file:../decisions.org::#d142][D142]]). ~Chore.changeset/2~ casts it and forces it to ~false~ whenever the chore is not a morning routine chore — cleared, not refused with an error, because the admin form hides the checkbox off the morning routine and an error on a hidden field is invisible. Invariant: only a morning routine chore ever has ~shows_weather = true~.
+
+The flag is display-only: it does not enter points, the reclassification lock ignores it, and it stays editable on a chore with completion history. A kid with no flagged chore sees no weather.
+
+* Screens / Interfaces
+
+** Kiosk — the weather on the Get dressed row (SC-1, SC-3)
+
+The weather sits on the one chore it informs and leaves with it ([[file:../decisions.org::#d141][D141]], Claude Design card 3a). It lives inside the row's existing ~h-24~, so the fit budget is untouched and its absence moves nothing. It repeats per kid: each kid with a pending flagged chore sees the same household reading.
+
+The pending slot is unchanged — ~h-24 rounded-xl border-[3px] border-dashed px-3.5 gap-4~, routine-morning tint and edge, the emoji and the ~text-2xl font-bold~ label. The weather group is the row's last child:
+
+#+begin_src heex
+<span :if={@show_weather?} id={"#{@dom}-weather-#{@chore.id}"}
+      class="ml-auto flex shrink-0 items-center gap-3 pr-1.5" aria-hidden="true">
+  <span class="text-[46px] leading-none">{temp_glyph(@weather.temp)}</span>
+  <span class="text-[46px] leading-none">{precip_glyph(@weather.precip)}</span>
+</span>
+#+end_src
+
+Bare on the routine tint — no pill, no background, no token color (the emoji carry their own; the routine-morning color means time of day, not weather). Not a tap target of its own: the whole row stays the target. No animation on the weather itself — it renders or it does not. The group is ~shrink-0~ (about 110 px of a ~616 px column): a long label gives way, never the glyphs. The pending row's label does not truncate today, so a long name wraps within the ~h-24~.
+
+Accepted risk: large glyphs at the row's end may invite a tap there. The whole row is the target, so a pre-reader poking 🥶 completes Get dressed and the weather vanishes; an undo brings it back.
+
+*Glyphs.* Order is always temperature then precipitation: two glyphs, nine combinations.
+
+| Reading        | Glyph | Code points   |
+|----------------+-------+---------------|
+| temp ~:hot~    | 🥵    | U+1F975       |
+| temp ~:normal~ | 🙂    | U+1F642       |
+| temp ~:cold~   | 🥶    | U+1F976       |
+| precip ~:none~ | ☀️    | U+2600 U+FE0F |
+| precip ~:rain~ | ☔    | U+2614        |
+| precip ~:snow~ | ❄️    | U+2744 U+FE0F |
+
+The helpers ~temp_glyph/1~ and ~precip_glyph/1~ live in ~BearCubWeb.KioskComponents~ and spell out the variation selector for ☀️ and ❄️, whose default presentation is text; ☔ presents as emoji by default. The weather sun is the color emoji, never ~hero-sun-solid~. ☔ is accepted as a rain glyph, not as outfit advice.
+
+*Design-language amendment.* ~docs/design-language.org~ gains this ruling, written by the story that lands it:
+
+#+begin_quote
+Weather on the weather chore [2026-10-08]: on a morning with a forecast, the pending routine row flagged ~shows_weather~ carries two emoji at its right end — temperature (🥵 / 🙂 / 🥶, by the day's high) then precipitation (☀️ / ☔ / ❄️, snow wins) — at ~text-[46px]~, bare on the routine tint, ~aria-hidden~, not a target of its own; the whole row stays the tap target. It is the one exception to D105's empty right column. A tap removes it; the check disc lands as D107 rules; done, failed and ghost rows never carry it. No forecast renders nothing. The weather sun is the color emoji, never ~hero-sun-solid~. The glyphs describe the weather, never the outfit; ☔ is accepted as a rain glyph. Rationale: D141.
+#+end_quote
+
+** Admin — the chore form
+
+~Admin.ChoreLive.Form~ gains one checkbox, rendered only when the chore is in the morning routine — the form's ~shows_in~ is =morning=, or the new-chore link fixed the routine to morning. It follows ~phx-change~, so choosing Morning reveals it ([[file:../decisions.org::#d142][D142]]).
+
+#+begin_src heex
+<.input type="checkbox" field={@form[:shows_weather]} label="Shows today's weather" />
+#+end_src
+
+No threshold page (PRD out of scope), no weather readout in admin, and the chore list does not mark the flagged chore; the edit form shows it.
+
+* Key Behaviors
+
+** Derivation (SC-1, SC-2)
+
+~Weather.derive(forecast, thresholds)~ is pure and returns a ~%Weather.Reading{}~ or ~nil~ ([[file:../decisions.org::#d140][D140]]).
+
+- *temp* — the daily ~temperature_2m_max~ (°F): ~≥ hot_at~ → ~:hot~; ~< cold_below~ → ~:cold~; else ~:normal~.
+- *precip* — the hourly rows stamped *09:00 through 15:00 inclusive*. ~precipitation_probability~ describes the preceding hour, so the 09:00 row covers 8–9 AM and the 15:00 row 2–3 PM; together they are exactly 8 AM–3 PM. Keep the rows whose ~precipitation_probability ≥ precip_chance_at~. Any kept row with a snow ~weather_code~ (71, 73, 75, 77, 85, 86) → ~:snow~; else any kept row → ~:rain~; else ~:none~.
+- The chance gates and the code only types. ~precipitation_probability~ is the share of about 30 ensemble runs with more than 0.1 mm in the hour; ~weather_code~ (WMO) is the single deterministic run's condition and carries no probability. A row under the threshold never counts, whatever its code; a code never makes it rain on its own. A kept row whose code shows no precipitation still counts as rain — the chance cleared the threshold, and the chance is what the PRD judges by.
+- Whether ~weather_code~ is aggregated over the preceding hour like the chance is not confirmed; it matters only to rain-versus-snow at the window's edges. The implementing story checks it against the Open-Meteo docs and records the answer.
+- A missing high, or any of the seven window rows missing either field → ~nil~. Absent, never a guess.
+- The reading's ~date~ comes from the response's ~daily.time~, never from the clock at fetch time.
+
+** Fetch and refresh (SC-3)
+
+*~BearCub.Weather~* (context) depends on neither ~Chores~ nor ~Calendars~; neither depends on it ([[file:../decisions.org::#d138][D138]]).
+
+- ~current(local_today)~ → the held ~%Reading{}~ when its ~date == local_today~, else ~nil~. A reading from yesterday is never shown, even if no fetch has succeeded since midnight.
+- ~refresh(local_now)~ → ~Weather.Client.fetch/1~; on success with a non-~nil~ derivation, store it and broadcast ~:weather_changed~ on a ="weather"= topic only when the reading changed. A ~nil~ derivation is a failed fetch. On any failure (transport error, non-200, malformed JSON, missing fields, ~nil~ derivation) log a warning without coordinates and keep the held reading when it is for today — it is still today's forecast, not a stale one in the PRD's sense — otherwise clear it.
+- ~subscribe/0~ → the ="weather"= topic.
+
+*~Weather.Client~* makes one ~Req~ request:
+
+#+begin_example
+GET https://api.open-meteo.com/v1/forecast
+  ?latitude=<2 dp>&longitude=<2 dp>
+  &daily=temperature_2m_max
+  &hourly=precipitation_probability,weather_code
+  &temperature_unit=fahrenheit
+  &timezone=<configured tz>
+  &forecast_days=1
+#+end_example
+
+A 10 s receive timeout, no retries — the next tick is the retry. No API key. Tests stub it with ~Req.Test~.
+
+*~Weather.Refresher~* — a GenServer like ~Calendars.Refresher~: refresh on init, then every 30 minutes. Disabled in test by config; not started at all when the coordinates are unset. 48 calls a day against a free tier of 10,000.
+
+*Midnight* — the kiosk already re-renders at midnight; ~current/1~ with the new date returns ~nil~ until the new day's first fetch lands, well before any morning window opens.
+
+** When the kiosk renders the weather
+
+~KioskLive.load/3~ assigns ~:weather~ = ~Weather.current(today)~ when the routine state is ~{:active, :morning}~, else ~nil~ — the one place that makes the indicator morning-only. ~mount_kiosk~ subscribes to ~Weather.subscribe()~; ~handle_info(:weather_changed, …)~ is a plain ~load/2~, as ~:calendars_changed~ is.
+
+The routine slot group passes ~@weather~ to ~chore_row/1~ (new ~attr :weather, :map, default: nil~) for rows whose ~chore.shows_weather~ is true. The row renders the group when:
+
+#+begin_src elixir
+show_weather? =
+  weather != nil and not done? and not failed? and not ghost? and not extra?
+#+end_src
+
+| Row state                                           | Weather                                                    |
+|-----------------------------------------------------+------------------------------------------------------------|
+| pending, flagged, morning active, reading for today | shown                                                      |
+| the settle beat after a kiosk tap (~done?~)         | gone at the tap; the disc pops on landing per D107         |
+| done / sunk                                         | never                                                      |
+| undo                                                | the row grows back pending, so it returns                  |
+| ghost, either direction                             | never                                                      |
+| failed and not redone                               | never; the warning triangle owns the right column          |
+| collapsed band                                      | no rows, nothing                                           |
+| completion from admin                               | plain re-render, no weather on the done row                |
+| no flagged chore for a kid                          | that kid sees no weather                                   |
+
+** Failure modes (SC-3)
+
+| Situation                                  | Result                                                                |
+|--------------------------------------------+-----------------------------------------------------------------------|
+| No coordinates configured                  | Refresher not started; ~current/1~ → ~nil~; kiosk identical to today  |
+| Fetch fails, a reading for today is held   | It keeps showing — still today's forecast                             |
+| Fetch fails, no reading for today          | ~nil~ → absent                                                        |
+| Response missing the high or any 09–15 row | Treated as a failed fetch                                             |
+| Thresholds invalid at boot                 | The app refuses to start                                              |
+| Refresher crashes                          | Supervisor restarts it; the kiosk path never calls the network        |
+| Kiosk socket drops                         | Catches up on reconnect through ~load~, like every other assign       |
+
+~BearCub.Chores~ never depends on ~BearCub.Weather~; they meet only in ~KioskLive.load/3~. Weather trouble structurally cannot reach chore state.
+
+** Dev scenario
+
+~BearCub.Dev.Scenarios.weather/1~ puts a reading straight into the store and broadcasts ~:weather_changed~ — ~weather({:cold, :snow})~ and the like for any of the nine combinations, ~weather(nil)~ for the absent state — so the gate reviews every state at 1280 × 800 with no network. A companion flags the first morning routine chore of each kid (or a named one) ~shows_weather~. Paired with ~open(:morning)~. Added to the CLAUDE.md scenario list by the story that lands it.
+
+** Testing
+
+Per MVP DESIGN §11, unit and LiveView layers both.
+
+*Unit*
+
+- ~Weather.derive/2~ (pure, hand-built forecasts). Temperature boundaries: ~high == hot_at~ → hot; ~high == cold_below~ → normal; one degree under → cold. Precipitation: all rows under the threshold → none; one row exactly at it → rain; a 5% row with a rain code → none; a snow code in a qualifying row → snow; rain and snow rows both qualifying → snow; a snow code only in a non-qualifying row → not snow; qualifying rows stamped 08:00 or 16:00 → ignored. A missing high or window row → ~nil~. The reading's date comes from ~daily.time~.
+- ~Weather.refresh/1~ with ~Req.Test~: success stores and broadcasts; an unchanged reading does not broadcast; a failure keeps today's reading and drops yesterday's; a ~nil~ derivation is a failure; 500, timeout and malformed JSON are failures; ~capture_log~ never contains the coordinates.
+- ~Weather.current/1~ returns a reading only for its own date.
+- Config validation: inverted thresholds and an out-of-range chance raise.
+- ~Chore.changeset/2~: the flag casts on a morning chore and is cleared on a move to evening or extras.
+- ~Weather.Refresher~ under ~start_supervised!~: refreshes on init and on ~:refresh~; not started when coordinates are unset.
+
+*LiveView — kiosk* (element ids, per the repo's Phoenix rules)
+
+- A flagged pending morning row has ~#chore-N-weather~ with the right two glyphs — all nine combinations in one parameterised test.
+- Absent for: an unflagged row, a done row, a failed row, an extra, the evening routine, the night screen, a ~nil~ reading.
+- With a ~nil~ reading the column renders the same as with the feature off (SC-3 against a baseline).
+- A tap removes the weather at once; an undo restores it.
+- ~:weather_changed~ re-renders an open kiosk with the new reading.
+
+*LiveView — admin*: the checkbox shows only for a morning chore, saves, and is cleared by a move to evening.
+
+*Verification beyond ~mix precommit~:* the local kiosk review at 1280 × 800 via ~BearCub.Dev.Scenarios~ is the gate — one screenshot per precipitation type, each with a different temperature; the no-forecast state; the settle beat on the flagged row; the worst-case five-chores-plus-two-events column still fitting; a flagged chore with a long label, wrapping inside the ~h-24~ without pushing the glyphs.
+
+** Documents this initiative updates
+
+- ~docs/design-language.org~ — the weather ruling above, by the story that lands the row.
+- ~CLAUDE.md~ — the ~weather/1~ scenario in the scenario list, by the story that adds it.
+- ~docs/backlog.org~ — the weather entry (=TODO [#A]=) is claimed by this initiative and moves to ~docs/completed.org~ at close.
+- Deploy: set ~services.bear-cub.weather.latitude~ / ~longitude~ in the host config, or the feature stays off; and a parent flags each kid's dressing chore ~shows_weather~ in admin, or no kid sees weather.
+
+* Out of Scope for This Design
+
+- Degrees, hourly detail, multi-day forecasts, tomorrow's weather, anything in the evening (PRD).
+- Telling the kid what to wear (PRD); ☔ is accepted as a weather glyph, not advice.
+- Snow on the ground; only snow forecast for the day counts (PRD).
+- Per-kid thresholds; changing thresholds from the admin UI (PRD).
+- A stale reading or an "unavailable" marker (PRD).
+- A weather readout in admin; persisting the forecast across restarts ([[file:../decisions.org::#d138][D138]]).
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]] — D138–D142.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
