@@ -36,5 +36,9 @@ config :phoenix,
 config :bear_cub, :calendar_refresher_enabled, false
 config :bear_cub, :calendars_req_options, plug: {Req.Test, BearCub.Calendars.Refresher}
 
+# Weather is driven the same way: no supervised refresher, Req stubbed.
+config :bear_cub, :weather_refresher_enabled, false
+config :bear_cub, :weather_req_options, plug: {Req.Test, BearCub.Weather}
+
 # ntfy pushes are stubbed the same way; the topic URL itself is set per test.
 config :bear_cub, :notifications_req_options, plug: {Req.Test, BearCub.Notifications}

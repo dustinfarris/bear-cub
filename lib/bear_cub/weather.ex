@@ -5,7 +5,14 @@ defmodule BearCub.Weather do
   `BearCub.Chores` or `BearCub.Calendars`, nor they on it.
   """
 
+  require Logger
+
+  alias BearCub.LocalTime
+  alias BearCub.Weather.Client
   alias BearCub.Weather.Reading
+
+  @topic "weather"
+  @store {__MODULE__, :reading}
 
   # `precipitation_probability` describes the preceding hour, so the
   # 09:00 row covers 8-9 AM and the 15:00 row 2-3 PM: together exactly
@@ -18,6 +25,88 @@ defmodule BearCub.Weather do
           cold_below: number(),
           precip_chance_at: number()
         }
+
+  @doc "Subscribes the caller to `:weather_changed` broadcasts."
+  def subscribe, do: Phoenix.PubSub.subscribe(BearCub.PubSub, @topic)
+
+  @doc "True when both coordinates are configured."
+  def configured? do
+    Application.get_env(:bear_cub, :weather_latitude) != nil and
+      Application.get_env(:bear_cub, :weather_longitude) != nil
+  end
+
+  @doc """
+  The held reading when it is for `local_today`, else `nil`: yesterday's
+  reading is never offered.
+  """
+  @spec current(Date.t()) :: Reading.t() | nil
+  def current(%Date{} = local_today) do
+    case :persistent_term.get(@store, nil) do
+      %Reading{date: ^local_today} = reading -> reading
+      _ -> nil
+    end
+  end
+
+  @doc "Clears the held reading (tests)."
+  def reset, do: :persistent_term.erase(@store)
+
+  @doc """
+  Fetches the forecast and stores the derived reading, broadcasting
+  `:weather_changed` only when it changed. Any failure (including a `nil`
+  derivation) logs a warning without coordinates, keeps a reading held for
+  today and otherwise clears it.
+  """
+  @spec refresh(DateTime.t()) :: :ok
+  def refresh(%DateTime{} = local_now) do
+    today = DateTime.to_date(local_now)
+
+    case fetch_reading() do
+      {:ok, reading} -> store(reading)
+      {:error, reason} -> fail(reason, today)
+    end
+
+    :ok
+  end
+
+  defp fetch_reading do
+    request = %{
+      latitude: Application.get_env(:bear_cub, :weather_latitude),
+      longitude: Application.get_env(:bear_cub, :weather_longitude),
+      timezone: LocalTime.timezone()
+    }
+
+    with {:ok, forecast} <- Client.fetch(request) do
+      case derive(forecast, thresholds()) do
+        nil -> {:error, :incomplete_forecast}
+        reading -> {:ok, reading}
+      end
+    end
+  end
+
+  defp thresholds do
+    %{
+      hot_at: Application.fetch_env!(:bear_cub, :weather_hot_at),
+      cold_below: Application.fetch_env!(:bear_cub, :weather_cold_below),
+      precip_chance_at: Application.fetch_env!(:bear_cub, :weather_precip_chance_at)
+    }
+  end
+
+  # persistent_term writes trigger a global GC: write only on change.
+  defp store(reading) do
+    if :persistent_term.get(@store, nil) != reading do
+      :persistent_term.put(@store, reading)
+      Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :weather_changed)
+    end
+  end
+
+  defp fail(reason, today) do
+    Logger.warning("weather fetch failed: #{inspect(reason)}")
+
+    case :persistent_term.get(@store, nil) do
+      %Reading{date: ^today} -> :ok
+      _ -> reset()
+    end
+  end
 
   @doc """
   Derives a reading from a decoded Open-Meteo forecast (string keys,

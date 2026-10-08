@@ -18,6 +18,7 @@ defmodule BearCub.Application do
         {Task.Supervisor, name: BearCub.TaskSupervisor}
       ] ++
         calendar_refresher_children() ++
+        weather_refresher_children() ++
         [
           # Start to serve requests, typically the last entry
           BearCubWeb.Endpoint
@@ -47,6 +48,17 @@ defmodule BearCub.Application do
   defp calendar_refresher_children do
     if Application.get_env(:bear_cub, :calendar_refresher_enabled, true) do
       [BearCub.Calendars.Refresher]
+    else
+      []
+    end
+  end
+
+  # Disabled in test (config/test.exs); the Refresher itself returns :ignore
+  # when the coordinates are unset.
+  defp weather_refresher_children do
+    if Application.get_env(:bear_cub, :weather_refresher_enabled, true) and
+         BearCub.Weather.configured?() do
+      [BearCub.Weather.Refresher]
     else
       []
     end
