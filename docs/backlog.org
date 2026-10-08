@@ -231,23 +231,3 @@ From the extras initiative (docs/2026-07-11-extras/), story 02, 2026-07-12:
 covered by tests, but is a slightly unusual pattern — change
 ~next_position/2~'s signature to take a bare ~kid_id~ instead and update
 callers and tests.
-* TODO [#C] On-device gate for the good-standing band and ring is still owed :hand:
-:PROPERTIES:
-:CREATED:  [2026-09-06 Sun 09:08]
-:END:
-
-Swept [2026-09-06 Sun 09:08] from the good-standing Batch 1 gate, where the human ruled it a documented deferral. Story 05's AC8 stays ~[-]~: the tablet cannot be exercised without a deploy, so nothing on this machine can close it.
-
-Still owed, on the tablet in Fully Kiosk, during the morning window, for a kid in good standing:
-
-1. band and ring render as designed;
-2. *both* read from across the room — the ring is a 4px inset ring against ~bg-base-100~ and read as a thin line in the desktop spot-check, so it needs the legibility check as much as the band does;
-3. band plus five manually re-expanded done morning chore rows fit without scrolling;
-4. band and ring disappear at 17:00 without anyone touching the tablet;
-5. standing still renders correctly after sleep/wake reconnect.
-
-Local dev recipe, verified [2026-09-06 Sun 09:07] — it does *not* substitute for the tablet, but it makes items 3 and 4 checkable before a deploy, which is what was missing:
-
-- Raise the band without backdating anything: use a kid whose *evening* roster is empty. An empty roster is vacuously satisfied ([[file:decisions.org::#d92][D92]]), so last night's half passes for free and simply completing today's morning chores on the kiosk is enough. Any other kid needs yesterday-dated evening completions inserted by hand in IEx.
-
-What the recipe cannot cover, and why the tablet items survive it: Fully Kiosk's Android WebView rendering, across-the-room legibility, and sleep/wake reconnect. Desktop Chrome at a tablet viewport approximates item 3 only.
