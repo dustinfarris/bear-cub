@@ -28,7 +28,11 @@ Design: [[file:DESIGN.org]]
 - Note taken on [2026-10-08 Thu 08:59] \\
   Implementation notes for Story 03 and the deploy. Validation lives in ~BearCub.Weather.Config.from_env/1~, which takes an env map and returns the five keys; ~config/runtime.exs~ calls it with ~System.get_env()~ in every environment and writes each as ~:weather_<key>~. A non-numeric value also refuses boot, and errors name the variable, never the value. ~from_env/1~ returns a lone coordinate as set, so "either unset turns weather off" is Story 03's check on ~:weather_latitude~ / ~:weather_longitude~. The module's coordinate options are ~lib.types.float~, so the host config must write a whole-degree value as =40.0=, not =40=. The Elixir side accepts float thresholds, while the Nix options are ints. D144 settles that the coordinates are plain module options.
 :END:
-** TODO [[file:stories/story-03-weather-fetch-and-refresh.org][Story 03 — Fetching and holding today's forecast]]
+** DONE [[file:stories/story-03-weather-fetch-and-refresh.org][Story 03 — Fetching and holding today's forecast]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:58] \\
+  Implementation notes for Story 05. The held reading is in ~:persistent_term~ (the DESIGN allowed it or a one-row ETS table), written only when the reading changes. ~BearCub.Weather~ exposes ~current/1~, ~subscribe/0~ (topic =weather=, message ~:weather_changed~), ~refresh/1~, ~configured?/0~ and a public ~reset/0~ that exists so tests can clear the global store. Any test that stores a reading must be ~async: false~ and call ~Weather.reset/0~ in setup and ~on_exit~. The ~Req.Test~ stub name is ~BearCub.Weather~ (~:weather_req_options~ in ~config/test.exs~). A failure that clears a reading from an earlier day does not broadcast, because ~current/1~ already returns ~nil~ for it. "Not started when coordinates are unset" is enforced twice: ~weather_refresher_children/0~ in ~application.ex~ skips it, and ~Refresher.start_link/1~ returns ~:ignore~. ~Refresher.init/1~ fetches synchronously, as ~Calendars.Refresher~ does, so a hung request can hold up boot for at most the 10 s receive timeout.
+:END:
 ** TODO [[file:stories/story-04-shows-weather-flag.org][Story 04 — Flagging the dressing chore in admin]]
 ** TODO [[file:stories/story-05-kiosk-weather-row.org][Story 05 — The weather on the Get dressed row]]
 

@@ -84,19 +84,59 @@ As a parent, I need the server to fetch today's forecast on its own, keep it cur
 
 * Acceptance Criteria
 
-** [ ] With a location configured, the server fetches the day's forecast when it starts and again every 30 minutes, and holds the resulting reading for today. (SC-1, SC-3)
-** [ ] A new reading that differs from the one held is announced to listeners; a fetch that yields the same reading announces nothing. (SC-1)
-** [ ] A failed fetch — no connection, an error response, a timeout, an unreadable response, or a forecast missing what the reading needs — keeps today's reading if one is held, and otherwise leaves no reading. (SC-3)
-** [ ] A reading is only ever offered for its own date: once the day turns, yesterday's reading is never offered, whether or not a fetch has succeeded since. (SC-3)
-** [ ] With no location configured, nothing is fetched and no reading is ever offered. (SC-3)
-** [ ] A failed fetch is logged as a warning naming the failure, and no log line contains the coordinates. (SC-3)
+** [X] With a location configured, the server fetches the day's forecast when it starts and again every 30 minutes, and holds the resulting reading for today. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified by the story-verifier pass. ~Weather.Refresher~ (~lib/bear_cub/weather/refresher.ex~) calls ~Weather.refresh(LocalTime.now())~ in ~init/1~ and on ~:refresh~, rescheduling every 30 minutes; ~application.ex~ ~weather_refresher_children/0~ supervises it. Tests: ~refresher_test.exs~ "refreshes on init and again on :refresh"; ~weather_refresh_test.exs~ "success stores the reading and broadcasts". The 30-minute interval is read from code, not asserted.
+:END:
+** [X] A new reading that differs from the one held is announced to listeners; a fetch that yields the same reading announces nothing. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified: ~store/1~ in ~lib/bear_cub/weather.ex~ writes and broadcasts ~:weather_changed~ on the =weather= topic only when the reading differs. Tests "an unchanged reading does not broadcast again" and "a changed reading broadcasts again" pass.
+:END:
+** [X] A failed fetch — no connection, an error response, a timeout, an unreadable response, or a forecast missing what the reading needs — keeps today's reading if one is held, and otherwise leaves no reading. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified: ~fail/2~ keeps a reading dated today and otherwise resets; a ~nil~ derivation becomes ~:incomplete_forecast~. Tests cover http_500, transport error, bad_json and missing fields (each keeps today's reading, no broadcast), plus "a failure on the next day drops yesterday's reading" and "a failure with nothing held leaves no reading". The timeout is simulated with ~Req.Test.transport_error~, not a real 10 s wait.
+:END:
+** [X] A reading is only ever offered for its own date: once the day turns, yesterday's reading is never offered, whether or not a fetch has succeeded since. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified: ~current/1~ pattern-matches ~date: ^local_today~. Test "current/1 offers a reading only for its own date" checks both neighbours; the day-turn case is covered by the next-day failure test.
+:END:
+** [X] With no location configured, nothing is fetched and no reading is ever offered. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified: ~Refresher.start_link/1~ returns ~:ignore~ and ~application.ex~ skips it when ~Weather.configured?/0~ is false. Tests "does not start when the coordinates are unset" and "current/1 is nil before any fetch" pass.
+:END:
+** [X] A failed fetch is logged as a warning naming the failure, and no log line contains the coordinates. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified: the only ~Logger~ call is ~Logger.warning("weather fetch failed: ...")~ with ~{:status, n}~, ~{:transport, msg}~, ~:malformed_json~ or ~:incomplete_forecast~; the URL is never logged. Test "a failure never logs the coordinates" refutes 47.60621, -122.33207 and the rounded 47.61, -122.33 across 500, transport and bad-JSON failures; failure tests assert =[warning]=.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  All six Acceptance Criteria verified met by the story-verifier pass; none deferred or removed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  ~test/bear_cub/weather_refresh_test.exs~ and ~test/bear_cub/weather/refresher_test.exs~ written test-first (red run confirmed ~Weather.reset/0~ undefined before implementation) and passing within the 891-test suite.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  Verified by the story-verifier pass: docs wrap at 80 columns, local datetime passed in with no ~DateTime.utc_now()~, ~Req~ as HTTP client, fence holds (no ~Chores~/~Calendars~ code references either way), global store reset around tests.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 10:55] \\
+  ~mix precommit~ run by the story-verifier: =Result: 891 passed=, no errors or warnings.
+:END:
 
 * Technical Notes
 
