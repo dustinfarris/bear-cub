@@ -24,3 +24,37 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - The gate's kiosk review needed a hand-staged version beyond ~Scenarios.night_owl/0~ to show a finished-but-late kid, as Story 03's Plan note predicted; the scenario only stages cutoffs ahead of now.
 
 ** Retro
+
+Rulings recorded 2026-10-07. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** This batch is the baseline
+
+Four stories in 13 minutes of implementation, 14 of close-out and 12 of update-design, 180k output tokens, and not one human question: every session's human turns were the implement prompt and "commit". Per story that is 45k tokens against ~106k on routine-schedule and ~156k on the two batches before it. One fork reached the human (the prefill, below); the chain carried everything else, including its own two wrong claims about existing code — ~copy_day~ "copies a whole day" (it copies a fixed key list) and the per-kid group "is a nested ~inputs_for~" (it cannot be, since the changeset drops blank entries and an ~inputs_for~ over them renders no field) — at the cost of one Plan note and one advisory, withdrawn at the gate, because Story 04's note said to verify rather than assume. The SKETCH's first line, a countdown, was ruled out of scope by the PRD and came back as a #B promote two days after deploy, which is the out-of-scope line doing its job: ship the bonus, let use decide whether the chase needs a clock.
+
+The closeout-cost design's three checks, re-run: close-out under 7 minutes, met (5, 2, 2, 5); no DoD tick without a pass over the final code, met; one dispatch per clean story, met. Stories 03 and 04 ran one. The re-dispatches on 01 and 02 were both the fix loop as written, each 0.5–0.6 minutes: 01 re-wrapped comments to 80 columns; 02's first pass found three no-Night-Owl cases without the ~routine_day_pricing~ assertion AC 10 names, the session added them, re-ran ~mix precommit~ and dispatched again. That settles what the routine-schedule addendum left open: fix loops, not the two-dispatch habit. But only the transcript says so. Story 02's AC 10 entry records the assertions that exist, not the pass that found them missing, and Story 01's DoD entry says "after a rewrap" and no more, so neither the addendum nor this retro could tell a fix loop from a habit without reading the session.
+
+Ruling: evidence for the cut, plus one clause of ceremony. A LOGBOOK entry for an item the fix loop touched names the finding it fixed, so the files show the loop. Lands in the kit as a story-closeout wording change, and as the closing line of the addendum on ~docs/2026-10-04-closeout-cost-design.org~, since that design asked.
+
+*** The prefill was reversed before a line of code
+
+D135, from the design conversation, prefilled each kid's cutoff at the evening's end minus an hour. D137 reversed it after the user-stories pass: on the first load after deploy the prefill filled every kid on every day, so an untouched Save differed from the version in force and wrote one, against D125's no-op rule, and a guessed cutoff could be saved unseen and start paying. Both entries landed in the promote commit and Story 04 was written against D137; cost to the batch, zero. The conflict was between two D-entries cited in one DESIGN, which is what a skeptic review exists to catch, and personal-mvp skips that review. It was caught because the human read the stories cold.
+
+Ruling: evidence, not a change. At personal-mvp the human's cold read at the user-stories handoff is the skeptic review, and it worked at zero cost. Not proposed: a narrowed canon-conflict check at promotion. One catch is not a pattern; the trigger is a conflict that reaches code before a ruling. Lands here.
+
+*** The scenario could not stage the gate's own screenshot
+
+DESIGN asked the gate for "one kid earned, one not" and, a page earlier, designed ~night_owl/1~ to move every kid's cutoff after now, which stages earned or unfinished and never finished-but-late. Story 03's note predicted it, and the gate did what the note said: a version insert through ~project_eval~ moving Kid B's cutoff behind now, then both evenings finished. CLAUDE.md says to stage states rather than hand-poke the database, and the gate's staging was the hand-poke. The screenshot and the scenario were specified in the same document and never checked against each other.
+
+Ruling: the scenario stages the state the gate names. ~night_owl/1~ takes the late kid (a ~late:~ option putting that kid's cutoff behind now), so "one earned, one not" is one call plus taps. Lands in ~docs/backlog.org~ as a oneshot. The general form, that a verification line naming a staged state is checked against the scenario that stages it, lands in ~docs/learnings.org~.
+
+*** Tablet checks are owed to nobody
+
+Since the 2026-09-06 ruling the tablet is a post-deploy verification, not a gate. Three gates since have each written what the tablet still owes into their gate record: good-standing (the band and ring), routine-schedule (kiosk totals identical before and after deploy), this one (the wider pill inside the banner). No record anywhere says any of them was run. Only good-standing's went to the backlog, as a ~:hand:~ entry, and it is still open a month later. A gate record is written before the deploy, so it cannot record the check, and nothing after the deploy writes anything.
+
+Ruling, the human's: the tablet check is optional. The gate is the pre-deploy check on localhost, the 1280 × 800 review through ~Scenarios~, and it already is; nothing after deploy is owed to a record. A gate record may note what only the tablet could confirm, but lists nothing as "still to run", and no backlog entry is made for it. Rejected: a per-batch ~:hand:~ ledger in the backlog, since a ledger for optional checks is ceremony, and the one such entry (good-standing's) sat open a month. Lands in CLAUDE.md's gate-close paragraph, which still calls the Android checklist a post-deploy verification; a human edit, not actioned from this retro.
+
+*** The deps bump broke the deploy build eight hours later
+
+The morning's bump of every dependency regenerated ~nix/deps.nix~ with deps_nix 3.1, which wraps heroicons in a derivation exposing the checkout at =$out/src=; ~package.nix~ still linked the derivation root, so the first Nix build, the deploy after the gate, failed in ~assets.deploy~, and the fix landed twelve minutes after the gate record. ~mix precommit~ cannot see ~nix/~, so the batch ran green all day on top of a broken deploy. The 2026-07-10 learnings entry already covers one variant of this shape, a ~mix.lock~ change surfacing late inside ~nixos-rebuild~; this is the second.
+
+Ruling: a commit that regenerates ~nix/deps.nix~ is verified by a build on the target box before feature work stacks on it, either deployed alone or through the ~nix-build~ loop the entry already describes. Lands in ~docs/learnings.org~ as a revision of that Nix deploy entry, with the deps_nix layout variant recorded beside the hash-bump one.
