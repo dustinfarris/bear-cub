@@ -45,19 +45,59 @@ As a parent, I need to mark which of each kid's morning chores is the one where 
 
 * Acceptance Criteria
 
-** [ ] On the chore form, a "Shows today's weather" checkbox appears when the chore is in the morning routine — whether chosen in the form, already saved there, or fixed by the new-morning-chore link — and choosing Morning reveals it without a save. (SC-1)
-** [ ] The checkbox is absent for an evening chore or an extra. (SC-1)
-** [ ] A morning chore saved with the box checked keeps the flag, and its edit form shows it checked; the chore list does not mark it. (SC-1)
-** [ ] Moving a flagged chore to the evening routine or to extras clears the flag on save, with no error shown. (SC-1)
-** [ ] The flag can be set or cleared on a chore that already has completions, and doing so changes no kid's points. (SC-1)
+** [X] On the chore form, a "Shows today's weather" checkbox appears when the chore is in the morning routine — whether chosen in the form, already saved there, or fixed by the new-morning-chore link — and choosing Morning reveals it without a save. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified by story-verifier pass over the final code. ~show_weather_checkbox?/2~ (~lib/bear_cub_web/live/admin/chore_live/form.ex~) reads the form's ~shows_in~, falling back to the chore's routine when the new-chore link fixed it. Tests in ~test/bear_cub_web/live/admin/chore_live_test.exs~ "shows-weather checkbox (Story 04)": "appears for a morning chore's edit form…", "appears on the new-morning-chore link…", "choosing Morning reveals it without a save" (~render_change~). ~mix precommit~: 904 passed.
+:END:
+** [X] The checkbox is absent for an evening chore or an extra. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: the same describe block refutes the checkbox on evening and extra edit forms, on the evening link, and after switching ~shows_in~ to evening.
+:END:
+** [X] A morning chore saved with the box checked keeps the flag, and its edit form shows it checked; the chore list does not mark it. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: test "saves, shows checked on edit, and the chore list does not mark it" asserts the stored flag is true, the reloaded edit form has the checkbox ~[checked]~, and the chore list HTML has no "weather". The list code is unchanged.
+:END:
+** [X] Moving a flagged chore to the evening routine or to extras clears the flag on save, with no error shown. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: ~clear_shows_weather_off_morning/1~ (~lib/bear_cub/chores/chore.ex~) uses ~put_change~ after the routine collapse, never ~add_error~. ~test/bear_cub/chores/chore_test.exs~: "is cleared, without an error, on a move to evening", "…on a move to extras", and the cleared-when-set-on-evening/extra cases. LiveView test "a move to evening clears the flag with no error" asserts routine evening and flag false. Verifier noted it does not assert absence of error text in the HTML; a successful save implies none.
+:END:
+** [X] The flag can be set or cleared on a chore that already has completions, and doing so changes no kid's points. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: ~chore_test.exs~ "can be set and cleared on a chore with completions without changing points" asserts ~Points.total/2~ unchanged after set and after clear; LiveView test "can be set on a chore with completions" saves via the form.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: all five Acceptance Criteria met by the second verifier pass; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: new ~test/bear_cub/chores/chore_test.exs~ (7 tests) and 6 LiveView tests in the Story 04 describe block, all within the 904-pass run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: ~mix precommit~ (format, compile, tests) clean; diff follows CLAUDE.md comment and naming conventions. Migration is ~null: false, default: false~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: ~mix precommit~ run once by the verifier, 904 passed.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 11:14] \\
+  Verified: first verifier pass found the screenshot was 1200×817 (the Playwright viewport resize had not taken effect); finding answered by re-resizing to a confirmed 1280×800 (~window.innerWidth/innerHeight~) and re-capturing. Second pass: ~sips~ reports 1280×800; ~docs/2026-10-07-weather-indicator/story-04-chore-form.png~ shows the morning chore edit form with the "Shows today's weather" checkbox, staged on the dev server.
+:END:
 
 * Technical Notes
 
