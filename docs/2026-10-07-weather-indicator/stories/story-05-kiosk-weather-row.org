@@ -131,24 +131,84 @@ As a kid getting dressed in the morning, I need my Get dressed chore to show tod
 
 * Acceptance Criteria
 
-** [ ] During the morning routine, a kid's pending flagged chore shows two emoji at its right end, temperature then precipitation, matching today's reading. Each of the nine combinations shows its own pair: 🥵 / 🙂 / 🥶 then ☀️ / ☔ / ❄️. (SC-1, SC-2)
-** [ ] Every kid with a pending flagged chore sees the same reading, and a kid with no flagged chore sees no weather. (SC-1)
-** [ ] The weather is bare on the row's morning tint, with no pill, background or added color. It sits inside the row's existing height, and a long chore name wraps beside it without pushing the glyphs. Tapping anywhere on the row, glyphs included, completes the chore as before. (SC-1)
-** [ ] Tapping the chore removes the weather at once, and the check disc lands as it does on any other row. Undoing the chore brings the weather back. A done, sunk, ghost or failed row never shows it, and neither does a row completed from admin. (SC-1)
-** [ ] An unflagged row, an extra, the evening routine and the night screen never show weather. (SC-1)
-** [ ] With no reading for today, the kiosk renders exactly as it does with the feature off: nothing in the row's place, no placeholder and no shift. (SC-3)
-** [ ] A new reading reaches an open kiosk with no reload, and a kiosk that reconnects shows the current one. (SC-1, SC-3)
-** [ ] The worst-case column of five chores plus two events still fits at 1280 × 800 with a flagged chore showing weather. (SC-1, SC-3)
-** [ ] ~docs/design-language.org~ carries the "Weather on the weather chore" ruling as the Design excerpt words it. (SC-1)
-** [ ] A dev scenario stages any of the nine readings, or none, on an open kiosk with no network. A companion flags each kid's first morning chore, or a named one. Both are listed in CLAUDE.md's scenario list. (SC-1, SC-3)
+** [X] During the morning routine, a kid's pending flagged chore shows two emoji at its right end, temperature then precipitation, matching today's reading. Each of the nine combinations shows its own pair: 🥵 / 🙂 / 🥶 then ☀️ / ☔ / ❄️. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified by the story-verifier pass over the final code: nine generated tests in ~test/bear_cub_web/live/kiosk_weather_test.exs~ (one per temp/precip pair) assert ~#chore-weather-N~ holds exactly the two glyphs, temperature first; a helper test asserts the exact strings including U+FE0F; ~story-05-cold-snow.png~ and ~story-05-hot-rain.png~ at 1280 × 800 show the pairs on the flagged row.
+:END:
+** [X] Every kid with a pending flagged chore sees the same reading, and a kid with no flagged chore sees no weather. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: tests "every kid with a flagged chore sees the same reading" and "a kid with no flagged chore sees no weather"; ~KioskLive~ passes ~weather={if(chore.shows_weather, do: @weather)}~; both kids show the reading in the screenshots.
+:END:
+** [X] The weather is bare on the row's morning tint, with no pill, background or added color. It sits inside the row's existing height, and a long chore name wraps beside it without pushing the glyphs. Tapping anywhere on the row, glyphs included, completes the chore as before. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: the group in ~kiosk_components.ex~ is ~ml-auto flex shrink-0 items-center gap-3 pr-1.5~ with no pill, background or color token and no handler of its own; live measurement showed flagged rows at 96 px like unflagged ones; ~story-05-long-label.png~ shows a long name wrapping inside the row with the glyphs unmoved.
+:END:
+** [X] Tapping the chore removes the weather at once, and the check disc lands as it does on any other row. Undoing the chore brings the weather back. A done, sunk, ghost or failed row never shows it, and neither does a row completed from admin. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: tests "a tap removes the weather and an undo restores it", "a chore completed from admin shows no weather" and "a failed row shows no weather"; ~show_weather?~ excludes done, ghost, failed and extra rows; ~story-05-settle-beat.png~ shows the tapped row filled with the check disc and no weather.
+:END:
+** [X] An unflagged row, an extra, the evening routine and the night screen never show weather. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: tests for an unflagged row, an extra, the evening routine and the night screen; the weather assign in ~load/3~ is non-nil only for ~{:active, :morning}~.
+:END:
+** [X] With no reading for today, the kiosk renders exactly as it does with the feature off: nothing in the row's place, no placeholder and no shift. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: test "no reading renders the same as the feature off" compares the kid column HTML (nil reading vs. chore unflagged) and finds it equal; ~story-05-no-forecast.png~ shows no placeholder and no shift.
+:END:
+** [X] A new reading reaches an open kiosk with no reload, and a kiosk that reconnects shows the current one. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: test ":weather_changed re-renders an open kiosk"; ~mount_kiosk~ calls ~Weather.subscribe()~ and ~handle_info(:weather_changed, …)~ is a plain ~load/2~; reconnect re-reads ~Weather.current/1~ through ~load~ (by construction, no dedicated reconnect test).
+:END:
+** [X] The worst-case column of five chores plus two events still fits at 1280 × 800 with a flagged chore showing weather. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: ~story-05-worst-case.png~ at 1280 × 800 — Kid A with two events (Kumon, Soccer practice), the stake bar and five chores with the flagged row showing weather; the last row ends at about y=746 of a 783 column, no clipping or scroll. Earlier pass was unmet for lack of this screenshot; the fix was staging a second event in the dev VM's calendar cache and capturing it.
+:END:
+** [X] ~docs/design-language.org~ carries the "Weather on the weather chore" ruling as the Design excerpt words it. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: ~docs/design-language.org~ carries "Weather on the weather chore [2026-10-08]" with the excerpt's wording; the rationale line additionally cites D105 as the Technical Notes ask.
+:END:
+** [X] A dev scenario stages any of the nine readings, or none, on an open kiosk with no network. A companion flags each kid's first morning chore, or a named one. Both are listed in CLAUDE.md's scenario list. (SC-1, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: ~Scenarios.weather/1~ (nine readings and ~nil~) and ~weather_chore/0,1~ in ~dev/bear_cub/dev/scenarios.ex~; four new tests in ~test/bear_cub/dev/scenarios_test.exs~; moduledoc usage list and CLAUDE.md scenario list updated.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified by the final verifier pass: ACs 1–10 all met, none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: new ~kiosk_weather_test.exs~ and additions to ~scenarios_test.exs~ pass within the full suite run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: verifier read the diff for style; one finding (the ~precip_glyph/1~ doc comment sat between ~temp_glyph/1~ clauses and its own ~@doc~) was fixed by moving it into a ~@doc~ heredoc, and the full check re-run afterward.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: ~mix precommit~ ran by the verifier on the final code, 929 tests passing.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 12:48] \\
+  Verified: seven 1280 × 800 screenshots in the initiative directory (cold-snow, hot-rain, normal-none, no-forecast, long-label, settle-beat, worst-case), each staged through ~BearCub.Dev.Scenarios~ on the dev server. An earlier pass was unmet for the missing worst-case and settle-beat shots; both were captured and the verifier viewed them.
+:END:
 
 * Technical Notes
 
