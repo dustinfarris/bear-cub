@@ -25,6 +25,6 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - No human questions appear in any timeline; the human turns were the implement prompts, "commit", and one "continue" in Story 02.
 - No deferred discoveries: the PLAN's Deferred section is empty.
 - All five story transcripts were found on this machine.
-- Two of Story 05's committed screenshots (~story-05-cold-snow.png~, ~story-05-worst-case.png~) show calendar event text from the dev cache. The gate screenshot blanked the strip, as the night-owl gate did.
+- All seven of Story 05's screenshots were captured with real calendar event text from the dev cache in view. The gate screenshot blanked the strip, as the night-owl gate did. After the gate, the event strip was painted over in all seven and the local, unpushed commits were rewritten so the original images never reached the remote.
 
 ** Retro
