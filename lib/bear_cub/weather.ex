@@ -61,7 +61,7 @@ defmodule BearCub.Weather do
     today = DateTime.to_date(local_now)
 
     case fetch_reading() do
-      {:ok, reading} -> store(reading)
+      {:ok, reading} -> put(reading)
       {:error, reason} -> fail(reason, today)
     end
 
@@ -91,12 +91,19 @@ defmodule BearCub.Weather do
     }
   end
 
-  # persistent_term writes trigger a global GC: write only on change.
-  defp store(reading) do
+  @doc """
+  Holds `reading` and broadcasts `:weather_changed` when it differs from
+  the one held. persistent_term writes trigger a global GC, so an
+  unchanged reading is not written.
+  """
+  @spec put(Reading.t()) :: :ok
+  def put(%Reading{} = reading) do
     if :persistent_term.get(@store, nil) != reading do
       :persistent_term.put(@store, reading)
       Phoenix.PubSub.broadcast(BearCub.PubSub, @topic, :weather_changed)
     end
+
+    :ok
   end
 
   defp fail(reason, today) do

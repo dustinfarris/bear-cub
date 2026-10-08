@@ -24,6 +24,8 @@ defmodule BearCub.Dev.Scenarios do
       BearCub.Dev.Scenarios.open(:morning)   # review a morning state at night
       BearCub.Dev.Scenarios.cutoff(~T[23:00:00])   # taps made now count as early
       BearCub.Dev.Scenarios.slow_weekend()   # /admin/schedule with a "custom" weekend
+      BearCub.Dev.Scenarios.weather_chore()  # flag each kid's first morning chore
+      BearCub.Dev.Scenarios.weather({:cold, :snow})   # any of nine readings; nil for none
       BearCub.Dev.Scenarios.restore()        # the schedule from before open/cutoff/slow_weekend
       BearCub.Dev.Scenarios.reset()
 
@@ -42,6 +44,8 @@ defmodule BearCub.Dev.Scenarios do
   alias BearCub.Repo
   alias BearCub.Schedules
   alias BearCub.Schedules.ScheduleVersion
+  alias BearCub.Weather
+  alias BearCub.Weather.Reading
 
   @stash {__MODULE__, :displaced}
 
@@ -215,6 +219,50 @@ defmodule BearCub.Dev.Scenarios do
       day ->
         day
     end)
+  end
+
+  @doc """
+  Puts today's weather reading `{temp, precip}` straight into the store and
+  broadcasts `:weather_changed`, so an open kiosk shows it with no network:
+  temp is `:hot | :normal | :cold`, precip `:none | :rain | :snow`. `nil`
+  clears the reading (the absent state). The Refresher overwrites a staged
+  reading on its next tick when coordinates are configured; re-run this.
+  Pair it with `open(:morning)` and `weather_chore/0`.
+  """
+  def weather(nil) do
+    Weather.reset()
+    Phoenix.PubSub.broadcast(BearCub.PubSub, "weather", :weather_changed)
+  end
+
+  def weather({temp, precip})
+      when temp in [:hot, :normal, :cold] and precip in [:none, :rain, :snow] do
+    Weather.put(%Reading{date: DateTime.to_date(LocalTime.now()), temp: temp, precip: precip})
+  end
+
+  @doc """
+  Flags morning chores `shows_weather`: with no argument each kid's first
+  by position, or every morning chore called `name`. Returns the flagged
+  chores. Goes through `Chores.update_chore/2`, so it broadcasts.
+  """
+  def weather_chore(name \\ nil) do
+    seed_if_empty()
+
+    chores =
+      if name do
+        for kid <- Chores.list_kids(),
+            chore <- Chores.list_chores(kid, "morning"),
+            chore.name == name,
+            do: chore
+      else
+        for kid <- Chores.list_kids(),
+            [first | _] <- [Chores.list_chores(kid, "morning")],
+            do: first
+      end
+
+    for chore <- chores do
+      {:ok, chore} = Chores.update_chore(chore, %{shows_weather: true})
+      chore
+    end
   end
 
   @doc """

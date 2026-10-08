@@ -10,6 +10,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Rewards
   alias BearCub.Routines
   alias BearCub.Schedules
+  alias BearCub.Weather
 
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
   # chore completing and the routine list collapsing, so that chore's own
@@ -55,6 +56,7 @@ defmodule BearCubWeb.KioskLive do
     if connected?(socket) do
       Chores.subscribe()
       Calendars.subscribe()
+      Weather.subscribe()
       Rewards.subscribe()
       Schedules.subscribe()
     end
@@ -306,6 +308,10 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
+  def handle_info(:weather_changed, socket) do
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
   # Story 04, D71: a redemption (any of Rewards' write paths) changes a
   # kid's balance — the points badge (D43) must reflect it live. The
   # reward view / banner button / card states this topic also feeds are
@@ -420,6 +426,9 @@ defmodule BearCubWeb.KioskLive do
     night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
 
+    # The one place that makes the indicator morning-only (D141).
+    weather = if {routine_state, auto} == {:active, :morning}, do: Weather.current(today)
+
     # done today? — derived, never stored (design §2)
     completions = Chores.current_completions(today)
     # A first-ever load (mount) has nothing to diff against — treat it as
@@ -502,6 +511,7 @@ defmodule BearCubWeb.KioskLive do
       completions: completions,
       expanded: still_expanded,
       night?: night?,
+      weather: weather,
       pending_collapse: pending_collapse,
       counting: still_counting,
       calendars_stale?: Calendars.any_stale?(local_now)
@@ -1039,6 +1049,7 @@ defmodule BearCubWeb.KioskLive do
                       slot?={true}
                       ghost?={ghost?}
                       grow?={grow?}
+                      weather={if(chore.shows_weather, do: @weather)}
                     />
                   </ul>
                   <ul :if={done != []} class="flex flex-col">

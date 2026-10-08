@@ -161,4 +161,62 @@ defmodule BearCub.Dev.ScenariosTest do
     assert Enum.sort_by(Schedules.current().days, & &1.weekday) ==
              Enum.sort_by(original.days, & &1.weekday)
   end
+
+  describe "weather" do
+    alias BearCub.Weather
+    alias BearCub.Weather.Reading
+
+    setup do
+      Weather.reset()
+      Weather.subscribe()
+      on_exit(&Weather.reset/0)
+    end
+
+    test "weather/1 holds today's reading and broadcasts" do
+      Scenarios.weather({:cold, :snow})
+
+      assert %Reading{temp: :cold, precip: :snow} = Weather.current(today())
+      assert_received :weather_changed
+    end
+
+    test "weather(nil) clears the reading and broadcasts" do
+      Scenarios.weather({:hot, :none})
+      flush_mailbox()
+
+      Scenarios.weather(nil)
+
+      assert Weather.current(today()) == nil
+      assert_received :weather_changed
+    end
+
+    test "weather_chore/0 flags each kid's first morning chore" do
+      [kid_a, kid_b | _] = Scenarios.reset(now())
+
+      assert [_ | _] = flagged = Scenarios.weather_chore()
+
+      for kid <- [kid_a, kid_b] do
+        [first | rest] = Chores.list_chores(kid, "morning")
+        assert first.shows_weather
+        refute Enum.any?(rest, & &1.shows_weather)
+        assert first.id in Enum.map(flagged, & &1.id)
+      end
+    end
+
+    test "weather_chore/1 flags the named chore" do
+      [kid | _] = Scenarios.reset(now())
+      [_first, second | _] = Chores.list_chores(kid, "morning")
+
+      Scenarios.weather_chore(second.name)
+
+      assert Chores.get_chore!(second.id).shows_weather
+    end
+  end
+
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
+    end
+  end
 end

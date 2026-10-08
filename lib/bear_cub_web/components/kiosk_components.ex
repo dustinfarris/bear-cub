@@ -314,6 +314,19 @@ defmodule BearCubWeb.KioskComponents do
     """
   end
 
+  @doc "The temperature band's emoji (D141)."
+  def temp_glyph(:hot), do: "\u{1F975}"
+  def temp_glyph(:normal), do: "\u{1F642}"
+  def temp_glyph(:cold), do: "\u{1F976}"
+
+  @doc """
+  The precipitation type's emoji (D141); snow wins over rain upstream. ☀ and
+  ❄ default to text presentation, so U+FE0F is spelled out.
+  """
+  def precip_glyph(:none), do: "\u2600\uFE0F"
+  def precip_glyph(:rain), do: "\u2614"
+  def precip_glyph(:snow), do: "\u2744\uFE0F"
+
   attr :chore, :map, required: true
   attr :done?, :boolean, required: true
   attr :failed?, :boolean, default: false
@@ -347,6 +360,9 @@ defmodule BearCubWeb.KioskComponents do
   # it is plain `chore.points`, unchanged from before this story.
   attr :effort_count, :integer, default: nil
   attr :value, :integer, default: nil
+  # Today's household reading (D141), passed only to flagged routine rows
+  # while the morning is active; the row decides whether it still shows.
+  attr :weather, :map, default: nil
 
   @doc """
   Shared row markup for both routine chores and extras (D34 technical
@@ -362,6 +378,14 @@ defmodule BearCubWeb.KioskComponents do
     # carries takes its own prefix — `#chore-N` stays the real row's, the
     # one LiveView relocates into the done stack.
     assigns = assign(assigns, :dom, if(assigns.ghost?, do: "ghost", else: "chore"))
+
+    assigns =
+      assign(
+        assigns,
+        :show_weather?,
+        assigns.weather != nil and not assigns.done? and not assigns.failed? and
+          not assigns.ghost? and not assigns.extra?
+      )
 
     ~H"""
     <li
@@ -576,6 +600,15 @@ defmodule BearCubWeb.KioskComponents do
         >
           <.icon name="hero-exclamation-triangle" class="size-8" />
           <span class="font-reward text-2xl font-black">−{@value}</span>
+        </span>
+        <span
+          :if={@show_weather?}
+          id={"#{@dom}-weather-#{@chore.id}"}
+          class="ml-auto flex shrink-0 items-center gap-3 pr-1.5"
+          aria-hidden="true"
+        >
+          <span class="text-[46px] leading-none">{temp_glyph(@weather.temp)}</span>
+          <span class="text-[46px] leading-none">{precip_glyph(@weather.precip)}</span>
         </span>
       <% end %>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollIntoView">
