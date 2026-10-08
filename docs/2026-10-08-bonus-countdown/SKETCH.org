@@ -1,0 +1,7 @@
+#+title: SKETCH — Bonus countdown
+#+date: [2026-10-08 Thu]
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Lead time is one app-wide value set in boot-time config (runtime/app env), default 30 minutes; not in the admin UI, not per routine.
+- Display switches from whole minutes to live mm:ss for the final stretch; 5 minutes floated as the switch point.

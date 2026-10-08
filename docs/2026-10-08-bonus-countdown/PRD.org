@@ -1,0 +1,31 @@
+#+title: PRD — Bonus countdown
+#+date: 2026-10-08
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The Early Bird and the Night Owl each pay only before a cutoff, and a cutoff time on a clock does not feel urgent to the kids: they drift past it, and a parent ends up calling out the time. The Early Bird cutoff is shared, but each kid has their own Night Owl cutoff, and each kid races only while their own routine is unfinished. A speaker announcement or a kitchen timer is one moment for the whole room, not a pressure that builds, and it cannot track two kids racing two different deadlines. The urgency has to live per kid, on the kiosk they are already tapping.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. When a kid's Early Bird or Night Owl cutoff is within a set lead time, the kiosk shows that kid a big countdown to the cutoff that applies to them, independent of the other kid's.
+2. The countdown shows whole minutes at first and switches to live ticking seconds for the final stretch.
+3. The countdown shows only while that kid can still earn the bonus: a kid who has finished the routine, or whose bonus is turned off (an amount of 0), sees none, and finishing in time removes it, the existing badge being the reward.
+4. At the cutoff, an unfinished kid's countdown disappears quietly, with no "missed it" moment.
+
+* Out of Scope
+
+- Any change to how bonuses are earned or priced.
+- Sound or spoken announcements.
+- Notifications to parents.
+- Setting the lead time from the admin UI.
+- Countdowns for anything other than the two routine bonuses (e.g. a routine window closing).
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
