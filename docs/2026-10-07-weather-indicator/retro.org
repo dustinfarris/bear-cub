@@ -28,3 +28,39 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - All seven of Story 05's screenshots were captured with real calendar event text from the dev cache in view. The gate screenshot blanked the strip, as the night-owl gate did. After the gate, the event strip was painted over in all seven and the local, unpushed commits were rewritten so the original images never reached the remote.
 
 ** Retro
+
+Rulings recorded 2026-10-08. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** The learning of the day before recurred the next morning
+
+The DESIGN's verification line asked the gate for the worst-case column, five chores and two events, and its Dev scenario section stages weather readings only. Nothing stages calendar events, so Story 05 put a second event into the dev VM's ~:bear_cub_calendar_instances~ ETS entry through ~project_eval~, the hand-poke CLAUDE.md says scenarios exist to replace, and the live cache is the family's real calendar. That is why all seven of the story's screenshots carried real event text and the unpushed history was rewritten after the gate. The 2026-10-07 learning says exactly this — read a verification line against the scenario meant to stage it — and it landed in ~docs/learnings.org~ one commit before the promote. Nothing in the chain reads that file: promote-design reads the brainstorm, the PRD and the weight class, and at personal-mvp the human's cold read is the only other chance. Second instance of the shape, one day apart.
+
+Ruling: a scenario stages placeholder events for a kid, and screenshots never show the live dev cache. Lands in ~docs/backlog.org~ as a oneshot (an events scenario, with ~Calendars.hydrate_cache/1~ as the undo), in CLAUDE.md as one line — committed screenshots carry no household data, calendar text included — and in ~docs/learnings.org~ as a revision of the 2026-10-07 entry recording the recurrence. Kit: promote-design reads ~docs/learnings.org~ with the PRD, so the lessons file reaches the stage it is written for.
+
+*** D144 was decided by user-stories
+
+At promotion the DESIGN said the coordinates live in the host configuration "or in an environment file outside the store". Story 02's first AC already read "no environment-file option is added" in the user-stories commit (354a999). The implementation followed the AC, and update-design minted D144 afterwards to record the choice as a narrowing, at 10 minutes the longest update-design pass of the batch. The night-owl retro named the trigger for acting on the user-stories handoff: a conflict that reaches code before a ruling. An open alternative reached code before a ruling, and the ruling that followed was the session's. The AC drift guard covers a design that is silent, and this design was not silent, it offered two. D143 is the contrast: the DESIGN said to check how ~weather_code~ is stamped, Story 01 checked, and the chain recorded it the normal way.
+
+Ruling: an alternative the excerpt leaves open is a gap like silence — the AC is written at the design's level or the choice is surfaced with a =# GAP:= comment, never resolved in the AC. Lands in the kit's user-stories AC drift guard, a verbatim block, released by the human at this retro ("2. fine"). D144 itself stands.
+
+*** Plan notes addressed to later stories were not read by them
+
+Every story wrote a Plan LOGBOOK entry, four of them "for Story N" or "for the gate". Stories 03, 04 and 05 read PLAN.org only during their own update-design pass, never while implementing; the gate read every note and confirmed both recorded divergences (~put/1~ public, ~:weather~ as a socket assign) through them. Nothing broke from the unread notes. Update-design was the longest stage: 33 active minutes against 17 for implementation and 17 for close-out, where night-owl ran 12, 13 and 14.
+
+Ruling: the notes stay, since the gate reads them, and the story template points its implementer at them — Technical Notes tell the session to read earlier stories' Plan LOGBOOK entries before starting. One line in the kit's user-stories skill. Not proposed: cutting the "for Story N" addressing; one batch of unread notes is not the two-or-three-project bar.
+
+*** Dev knowledge parked where it dies with the chain
+
+Three things only this PLAN's LOGBOOK knows: Playwright's first ~browser_resize~ to 1280 × 800 did not take (the page measured 1200 × 817, Story 04's fix loop); the settle beat is frozen for a screenshot by ~liveSocket.disconnect()~ about 40 ms after the tap; ~Calendars.hydrate_cache/1~ undoes a staged calendar cache. The routine-schedule retro moved a Tailwind watcher note out of a PLAN for the same reason.
+
+Ruling: move them. Lands in ~docs/learnings.org~ as one dev-environment entry and in CLAUDE.md's Playwright paragraph as the ~window.innerWidth~ check. The kit backlog's governance-file reconciliation item gains this as evidence; not built from here.
+
+*** The Decision Log pointer range rotted inside the batch
+
+The DESIGN's pointer read D138–D143; Story 02 minted D144 and nothing updated it; the gate repaired it. The kit convention is a pointer with no range, and decisions.org entries are chain-qualified, so the range is a second place that rots and buys no lookup.
+
+Ruling: drop the range. A hand edit to this DESIGN's pointer; nothing in the kit.
+
+*** Evidence, not changes
+
+The closeout-cost design's three checks, re-run: one dispatch per clean story, met (01–03 one each); close-out under 7 minutes, met (2, 2, 2, 5, 6); no tick without a pass over the final code, met. The second dispatches on 04 and 05 were fix loops (a 1200 × 817 screenshot; two missing screenshots and a misplaced doc comment), and for the first time the story files say so — 0.8.10's clause, working. The gate record lists nothing owed to the tablet, as the 2026-10-07 ruling asks. Story 02's 1 h 45 min gap was an API connection lost mid-response, not a question; "continue" resumed it. Story 05's 75.5k output tokens are the DESIGN's gate screenshot list, which user-stories copied into the story's Technical Notes, so the story took seven screenshots and the gate took one: the same work, earlier, and the fix loop that found two of them missing was the verifier reading that list. The worst-case screenshot shows weather on Brush Teeth, because ~weather_chore/0~ defaults to each kid's first morning chore; cosmetic. Not deployed at this writing: 17 commits ahead of origin after the rewrite, and SC-1 is unobserved until the host config carries coordinates and a parent flags each dressing chore.
