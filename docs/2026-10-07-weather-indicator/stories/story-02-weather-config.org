@@ -1,0 +1,72 @@
+#+title: Story 02 — Weather thresholds and location set once in the NixOS module
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model / Configuration, the SC-2 property of §Overview, the "Thresholds invalid at boot" row of §Key Behaviors / Failure modes, and the config-validation bullet of §Key Behaviors / Testing.
+
+From §Overview (verbatim):
+
+#+begin_quote
+2. *Fixed, parent-set thresholds* (SC-2). Runtime config set once in the NixOS module; every reading is a pure function of the forecast and those values ([[file:../decisions.org::#d139][D139]]).
+#+end_quote
+
+From §Data Model / Configuration (verbatim):
+
+#+begin_quote
+  ** Configuration (SC-2)
+
+Runtime config, read in ~config/runtime.exs~ from env vars that new ~services.bear-cub.weather.*~ options in ~nix/module.nix~ set — the same path as the timezone ([[file:../decisions.org::#d139][D139]]).
+
+| Key                         | Env var                             | Default | Meaning                                         |
+|-----------------------------+-------------------------------------+---------+-------------------------------------------------|
+| ~:weather_latitude~         | =BEAR_CUB_WEATHER_LATITUDE=         | unset   | Either unset turns weather off                  |
+| ~:weather_longitude~        | =BEAR_CUB_WEATHER_LONGITUDE=        | unset   |                                                 |
+| ~:weather_hot_at~           | =BEAR_CUB_WEATHER_HOT_AT=           | 80      | Day's high ≥ this °F → hot                      |
+| ~:weather_cold_below~       | =BEAR_CUB_WEATHER_COLD_BELOW=       | 60      | Day's high < this °F → cold; otherwise normal   |
+| ~:weather_precip_chance_at~ | =BEAR_CUB_WEATHER_PRECIP_CHANCE_AT= | 40      | An hourly chance ≥ this % in the window counts  |
+
+~runtime.exs~ raises at boot when ~cold_below > hot_at~ or the chance is outside 0–100. The 8 AM–3 PM window is a code constant, not config — the PRD fixes it.
+
+Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private, or in an environment file outside the store.
+#+end_quote
+
+From §Key Behaviors / Failure modes (verbatim row):
+
+#+begin_quote
+| Thresholds invalid at boot                 | The app refuses to start                                              |
+#+end_quote
+
+From §Key Behaviors / Testing, Unit (verbatim):
+
+#+begin_quote
+- Config validation: inverted thresholds and an out-of-range chance raise.
+#+end_quote
+
+* User Story
+
+As a parent, I need to set where we live and where hot, cold and rain begin once, in the server's configuration, so that every reading the kiosk shows follows the household's own values and a mistaken setting is caught before the kids ever see it.
+
+* Acceptance Criteria
+
+** [ ] The hot, cold and precipitation-chance thresholds and the latitude and longitude are settable through new ~services.bear-cub.weather.*~ NixOS module options, which reach the app as its weather configuration. The coordinates are set as plain ~latitude~ / ~longitude~ options in the private host config; no environment-file option is added. (SC-2)
+** [ ] Left unset, the thresholds are 80 °F for hot, 60 °F for cold and a 40 % chance for precipitation, and with no latitude or no longitude the weather is off. (SC-2)
+** [ ] A cold threshold above the hot one, or a precipitation chance outside 0–100, stops the app from starting rather than letting it run with values a parent did not mean. (SC-2)
+** [ ] No coordinates are written into this repository — not in the module's defaults, examples, config files or tests. (SC-2)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Independent of Story 01 in code; it follows it so the thresholds it validates have a consumer to name. Story 03 reads ~:weather_latitude~ / ~:weather_longitude~ to decide whether the Refresher starts and ~derive/2~'s thresholds from the three threshold keys.
+- Follow the timezone's path exactly: ~config/runtime.exs~ line 24 reads =BEAR_CUB_TIMEZONE= with a default; ~nix/module.nix~ declares ~timezone~ with ~lib.mkOption~ (line 26) and sets the env var in the service's ~environment~ block (line 68). The weather options nest under ~weather~ (~services.bear-cub.weather.hotAt~ etc. — match the module's camelCase option naming), with ~latitude~ / ~longitude~ nullable and their env vars set only when non-null.
+- The threshold reads and checks are not under ~if config_env() == :prod~ — dev and test take the defaults. Put the validation in a function the tests can call with values (e.g. a ~BearCub.Weather.Config~ or a ~validate_thresholds!/1~ on the context) and have ~runtime.exs~ call it, so "raises at boot" is unit-testable without booting. ~runtime.exs~ can only call modules compiled before it runs; the app's own modules are available there in a release and in ~mix~, but keep the function free of dependencies on running processes.
+- Parse the env vars to numbers in ~runtime.exs~; a non-numeric value should also stop boot rather than fall back silently.
+- Evidence for the module-options AC: ~mix test~ cannot exercise ~nix/module.nix~. The closeout shows it by reading the module's options and ~environment~ entries beside the ~runtime.exs~ reads, or by evaluating the module (~nix eval~ / ~nix flake check~) if the repo's flake supports it.
+- Coordinates are household data (CLAUDE.md "Kid names never enter git"): tests use distinctive fake values (e.g. =12.3456= / =-65.4321=) so Story 03's log assertions mean something, and nothing here logs them.

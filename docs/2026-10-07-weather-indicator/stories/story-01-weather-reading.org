@@ -1,0 +1,77 @@
+#+title: Story 01 — Deriving the weather reading from a forecast
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model / The reading, the window sentence of §Data Model / Configuration, §Key Behaviors / Derivation, and the ~Weather.derive/2~ bullet of §Key Behaviors / Testing.
+
+From §Data Model / Configuration (verbatim):
+
+#+begin_quote
+The 8 AM–3 PM window is a code constant, not config — the PRD fixes it.
+#+end_quote
+
+From §Data Model / The reading (verbatim):
+
+#+begin_src elixir
+%BearCub.Weather.Reading{
+  date: Date.t(),
+  temp: :hot | :normal | :cold,
+  precip: :none | :rain | :snow
+}
+#+end_src
+
+#+begin_quote
+It carries no degrees and no percentages, so the kiosk structurally cannot show more than the PRD allows. It lives in memory only (~:persistent_term~ or a one-row ETS table, as the calendar instances do); nothing about weather is written to the database ([[file:../decisions.org::#d138][D138]]).
+#+end_quote
+
+From §Key Behaviors / Derivation (verbatim):
+
+#+begin_quote
+  ** Derivation (SC-1, SC-2)
+
+~Weather.derive(forecast, thresholds)~ is pure and returns a ~%Weather.Reading{}~ or ~nil~ ([[file:../decisions.org::#d140][D140]]).
+
+- *temp* — the daily ~temperature_2m_max~ (°F): ~≥ hot_at~ → ~:hot~; ~< cold_below~ → ~:cold~; else ~:normal~.
+- *precip* — the hourly rows stamped *09:00 through 15:00 inclusive*. ~precipitation_probability~ describes the preceding hour, so the 09:00 row covers 8–9 AM and the 15:00 row 2–3 PM; together they are exactly 8 AM–3 PM. Keep the rows whose ~precipitation_probability ≥ precip_chance_at~. Any kept row with a snow ~weather_code~ (71, 73, 75, 77, 85, 86) → ~:snow~; else any kept row → ~:rain~; else ~:none~.
+- The chance gates and the code only types. ~precipitation_probability~ is the share of about 30 ensemble runs with more than 0.1 mm in the hour; ~weather_code~ (WMO) is the single deterministic run's condition and carries no probability. A row under the threshold never counts, whatever its code; a code never makes it rain on its own. A kept row whose code shows no precipitation still counts as rain — the chance cleared the threshold, and the chance is what the PRD judges by.
+- Whether ~weather_code~ is aggregated over the preceding hour like the chance is not confirmed; it matters only to rain-versus-snow at the window's edges. The implementing story checks it against the Open-Meteo docs and records the answer.
+- A missing high, or any of the seven window rows missing either field → ~nil~. Absent, never a guess.
+- The reading's ~date~ comes from the response's ~daily.time~, never from the clock at fetch time.
+#+end_quote
+
+From §Key Behaviors / Testing, Unit (verbatim):
+
+#+begin_quote
+- ~Weather.derive/2~ (pure, hand-built forecasts). Temperature boundaries: ~high == hot_at~ → hot; ~high == cold_below~ → normal; one degree under → cold. Precipitation: all rows under the threshold → none; one row exactly at it → rain; a 5% row with a rain code → none; a snow code in a qualifying row → snow; rain and snow rows both qualifying → snow; a snow code only in a non-qualifying row → not snow; qualifying rows stamped 08:00 or 16:00 → ignored. A missing high or window row → ~nil~. The reading's date comes from ~daily.time~.
+#+end_quote
+
+* User Story
+
+As a kid getting dressed, I need the day's forecast boiled down to hot, normal or cold and to no rain, rain or snow, judged the way my parent set, so that what the kiosk shows me is simple enough to act on and always matches the household's rules.
+
+* Acceptance Criteria
+
+** [ ] A forecast whose day's high is at or above the hot threshold reads hot; one below the cold threshold reads cold; anything between, including a high exactly at the cold threshold, reads normal. (SC-1, SC-2)
+** [ ] Precipitation is judged only on the forecast hours that together cover 8 AM to 3 PM: an hour whose chance of precipitation is at or above the chance threshold counts, an hour under it never counts whatever its condition, and hours outside the window are ignored. (SC-1, SC-2)
+** [ ] When any counting hour's condition is snow, the reading is snow, even if other counting hours are rain. When hours count but none is snow, the reading is rain, even if their condition shows no precipitation. When no hour counts, the reading is no rain. (SC-1)
+** [ ] A forecast missing the day's high, or missing the chance or the condition for any hour in the window, gives no reading at all rather than a guess. (SC-3)
+** [ ] A reading carries only the day, the temperature band and the precipitation type — no degrees and no percentages — and its day is the forecast's own date, not the clock's. (SC-1)
+** [ ] Whether the forecast's condition code describes the preceding hour, as the chance does, has been checked against the Open-Meteo documentation and the answer recorded in this story's Plan note. (SC-1)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- No dependencies: this is the first story, pure code with nothing reading it yet. Story 03 calls ~derive/2~ from ~refresh/1~ and Story 02 supplies the thresholds from config; here they are plain arguments (a map or keyword of ~hot_at~, ~cold_below~, ~precip_chance_at~), so the tests need no config.
+- New context module ~lib/bear_cub/weather.ex~ (~BearCub.Weather~) with ~derive/2~, and ~lib/bear_cub/weather/reading.ex~ for the struct. There is no generator for a context without a schema; follow ~BearCub.Calendars~ for shape. The context must not alias or call ~BearCub.Chores~ or ~BearCub.Calendars~ (D138), and neither of them calls it.
+- ~derive/2~ takes the decoded Open-Meteo JSON (string keys): ~daily.time~ and ~daily.temperature_2m_max~ are one-element lists (~forecast_days=1~); ~hourly.time~ is a list of local ISO strings (=2026-10-08T09:00=) parallel to ~hourly.precipitation_probability~ and ~hourly.weather_code~. Select the window rows by the hour in ~hourly.time~ (09 through 15), not by list index. A ~nil~ in either hourly list at a window row, or fewer than seven window rows, is missing.
+- The 09:00–15:00 window and the snow code set (71, 73, 75, 77, 85, 86) are module attributes, not config.
+- Unit tests go in ~test/bear_cub/weather_test.exs~ with hand-built forecast maps; a small builder that takes per-hour ~{chance, code}~ overrides keeps the boundary cases readable. Cover every bullet in the Testing excerpt.
+- The ~weather_code~ check: Open-Meteo's forecast API docs describe the hourly variables. Record what they say, and what that means for an edge-hour snow row, in the Plan note for this story.

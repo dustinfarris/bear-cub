@@ -1,0 +1,29 @@
+#+title: PLAN — weather-indicator
+#+date: 2026-10-08
+
+# Mutability: execution state. Story status and implementation observations are recorded here as LOGBOOK entries per the workflow-kit org-conventions skill. By phase close, this file should read as an accurate record of what was actually built.
+
+Design: [[file:DESIGN.org]]
+
+* Batch 1 — Weather indicator
+
+# Stories in this batch nest below as org TODOs, listed in implementation order; status updates get LOGBOOK entries under the story heading. At phase-close the gate record for this batch lands here as a LOGBOOK entry on the batch heading — its presence marks the batch closed. At most one batch is open (has no gate record) at a time; new batches are appended by later user-stories runs, never over an open one.
+
+# Order: the pure derivation comes first, since nothing reads it yet and it holds most of the
+# SC-1 and SC-2 logic. Next is the parent-set config, whose thresholds feed it. Then the fetch,
+# store and Refresher, which need both and are fenced from Chores and Calendars. The shows_weather
+# flag is plain chore data and depends on none of these, so it could move earlier. It sits fourth
+# so that it lands right before the kiosk row, which depends on Stories 03 and 04 and carries the
+# design-language ruling and the dev scenario. Deploy steps (host coordinates, a parent flagging
+# each dressing chore) and moving the backlog entry to completed.org belong to the gate and the
+# deploy, not to a story.
+
+** TODO [[file:stories/story-01-weather-reading.org][Story 01 — Deriving the weather reading from a forecast]]
+** TODO [[file:stories/story-02-weather-config.org][Story 02 — Weather thresholds and location set once in the NixOS module]]
+** TODO [[file:stories/story-03-weather-fetch-and-refresh.org][Story 03 — Fetching and holding today's forecast]]
+** TODO [[file:stories/story-04-shows-weather-flag.org][Story 04 — Flagging the dressing chore in admin]]
+** TODO [[file:stories/story-05-kiosk-weather-row.org][Story 05 — The weather on the Get dressed row]]
+
+* Deferred
+
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.

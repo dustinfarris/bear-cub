@@ -1,0 +1,164 @@
+#+title: Story 05 — The weather on the Get dressed row
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — the morning-only paragraph and the D105, D106/D107, D115, ~hero-sun-solid~, fit-budget and D103 bullets of §Overview's canon list, §Screens / Interfaces / Kiosk — the weather on the Get dressed row, §Key Behaviors / When the kiosk renders the weather, the kiosk-socket row of §Key Behaviors / Failure modes, §Key Behaviors / Dev scenario, the LiveView-kiosk bullets and verification line of §Key Behaviors / Testing, and the design-language and CLAUDE.md bullets of §Key Behaviors / Documents this initiative updates.
+
+From §Overview (verbatim):
+
+#+begin_quote
+Morning only: outside an active routine window the kiosk shows the night screen, and the PRD rules out anything for the evening routine, so the indicator renders only while the morning routine is active.
+
+- *[[file:../decisions.org::#d103][D103]] — glyphs outside the emoji set ship as inline SVG.* Every weather glyph is an emoji, so D103 is not engaged.
+- *[[file:../decisions.org::#d105][D105]] — pending routine rows are dashed slots with nothing in the right-hand column*; the whole ~h-24~ row is the tap target. The done row carries a white ~size-9~ disc with ~hero-check~ in the kid's color. This design carves the one exception.
+- *[[file:../decisions.org::#d106][D106]] / [[file:../decisions.org::#d107][D107]] — the settle beat and the sink.* A kiosk tap fills the slot in place for ~@settle_delay_ms~ (150 ms), then the row sinks on a 300 ms clock with ghosts; the check disc springs in (~animate-pop~) on the /landing/ row, not during the beat. An undo grows the row back into its authored place among the pending rows.
+- *[[file:../decisions.org::#d115][D115]] — Claude Design holds a tokens-only mirror; design flows back only through a handoff recreated in the token block* under D105's adaptation rules.
+- *Kids' view invariant — ~hero-sun-solid~ means the morning routine* (stake bar icon, banner completion icon). The weather's sun is never that icon.
+- *Kiosk fit budget* — five chores plus two events fit a column at 1280 × 800 with no scroll; the worst-case column has 4 px to spare, so no new row can be added.
+#+end_quote
+
+From §Screens / Interfaces (verbatim):
+
+#+begin_quote
+  ** Kiosk — the weather on the Get dressed row (SC-1, SC-3)
+
+The weather sits on the one chore it informs and leaves with it ([[file:../decisions.org::#d141][D141]], Claude Design card 3a). It lives inside the row's existing ~h-24~, so the fit budget is untouched and its absence moves nothing. It repeats per kid: each kid with a pending flagged chore sees the same household reading.
+
+The pending slot is unchanged — ~h-24 rounded-xl border-[3px] border-dashed px-3.5 gap-4~, routine-morning tint and edge, the emoji and the ~text-2xl font-bold~ label. The weather group is the row's last child:
+#+end_quote
+
+#+begin_src heex
+<span :if={@show_weather?} id={"#{@dom}-weather-#{@chore.id}"}
+      class="ml-auto flex shrink-0 items-center gap-3 pr-1.5" aria-hidden="true">
+  <span class="text-[46px] leading-none">{temp_glyph(@weather.temp)}</span>
+  <span class="text-[46px] leading-none">{precip_glyph(@weather.precip)}</span>
+</span>
+#+end_src
+
+#+begin_quote
+Bare on the routine tint — no pill, no background, no token color (the emoji carry their own; the routine-morning color means time of day, not weather). Not a tap target of its own: the whole row stays the target. No animation on the weather itself — it renders or it does not. The group is ~shrink-0~ (about 110 px of a ~616 px column): a long label gives way, never the glyphs. The pending row's label does not truncate today, so a long name wraps within the ~h-24~.
+
+Accepted risk: large glyphs at the row's end may invite a tap there. The whole row is the target, so a pre-reader poking 🥶 completes Get dressed and the weather vanishes; an undo brings it back.
+
+*Glyphs.* Order is always temperature then precipitation: two glyphs, nine combinations.
+
+| Reading        | Glyph | Code points   |
+|----------------+-------+---------------|
+| temp ~:hot~    | 🥵    | U+1F975       |
+| temp ~:normal~ | 🙂    | U+1F642       |
+| temp ~:cold~   | 🥶    | U+1F976       |
+| precip ~:none~ | ☀️    | U+2600 U+FE0F |
+| precip ~:rain~ | ☔    | U+2614        |
+| precip ~:snow~ | ❄️    | U+2744 U+FE0F |
+
+The helpers ~temp_glyph/1~ and ~precip_glyph/1~ live in ~BearCubWeb.KioskComponents~ and spell out the variation selector for ☀️ and ❄️, whose default presentation is text; ☔ presents as emoji by default. The weather sun is the color emoji, never ~hero-sun-solid~. ☔ is accepted as a rain glyph, not as outfit advice.
+
+*Design-language amendment.* ~docs/design-language.org~ gains this ruling, written by the story that lands it:
+#+end_quote
+
+#+begin_quote
+Weather on the weather chore [2026-10-08]: on a morning with a forecast, the pending routine row flagged ~shows_weather~ carries two emoji at its right end — temperature (🥵 / 🙂 / 🥶, by the day's high) then precipitation (☀️ / ☔ / ❄️, snow wins) — at ~text-[46px]~, bare on the routine tint, ~aria-hidden~, not a target of its own; the whole row stays the tap target. It is the one exception to D105's empty right column. A tap removes it; the check disc lands as D107 rules; done, failed and ghost rows never carry it. No forecast renders nothing. The weather sun is the color emoji, never ~hero-sun-solid~. The glyphs describe the weather, never the outfit; ☔ is accepted as a rain glyph. Rationale: D141.
+#+end_quote
+
+From §Key Behaviors / When the kiosk renders the weather (verbatim):
+
+#+begin_quote
+  ** When the kiosk renders the weather
+
+~KioskLive.load/3~ assigns ~:weather~ = ~Weather.current(today)~ when the routine state is ~{:active, :morning}~, else ~nil~ — the one place that makes the indicator morning-only. ~mount_kiosk~ subscribes to ~Weather.subscribe()~; ~handle_info(:weather_changed, …)~ is a plain ~load/2~, as ~:calendars_changed~ is.
+
+The routine slot group passes ~@weather~ to ~chore_row/1~ (new ~attr :weather, :map, default: nil~) for rows whose ~chore.shows_weather~ is true. The row renders the group when:
+#+end_quote
+
+#+begin_src elixir
+show_weather? =
+  weather != nil and not done? and not failed? and not ghost? and not extra?
+#+end_src
+
+#+begin_quote
+| Row state                                           | Weather                                                    |
+|-----------------------------------------------------+------------------------------------------------------------|
+| pending, flagged, morning active, reading for today | shown                                                      |
+| the settle beat after a kiosk tap (~done?~)         | gone at the tap; the disc pops on landing per D107         |
+| done / sunk                                         | never                                                      |
+| undo                                                | the row grows back pending, so it returns                  |
+| ghost, either direction                             | never                                                      |
+| failed and not redone                               | never; the warning triangle owns the right column          |
+| collapsed band                                      | no rows, nothing                                           |
+| completion from admin                               | plain re-render, no weather on the done row                |
+| no flagged chore for a kid                          | that kid sees no weather                                   |
+#+end_quote
+
+From §Key Behaviors / Failure modes (verbatim rows and closing line):
+
+#+begin_quote
+| Kiosk socket drops                         | Catches up on reconnect through ~load~, like every other assign       |
+
+~BearCub.Chores~ never depends on ~BearCub.Weather~; they meet only in ~KioskLive.load/3~. Weather trouble structurally cannot reach chore state.
+#+end_quote
+
+From §Key Behaviors / Dev scenario (verbatim):
+
+#+begin_quote
+~BearCub.Dev.Scenarios.weather/1~ puts a reading straight into the store and broadcasts ~:weather_changed~ — ~weather({:cold, :snow})~ and the like for any of the nine combinations, ~weather(nil)~ for the absent state — so the gate reviews every state at 1280 × 800 with no network. A companion flags the first morning routine chore of each kid (or a named one) ~shows_weather~. Paired with ~open(:morning)~. Added to the CLAUDE.md scenario list by the story that lands it.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+*LiveView — kiosk* (element ids, per the repo's Phoenix rules)
+
+- A flagged pending morning row has ~#chore-N-weather~ with the right two glyphs — all nine combinations in one parameterised test.
+- Absent for: an unflagged row, a done row, a failed row, an extra, the evening routine, the night screen, a ~nil~ reading.
+- With a ~nil~ reading the column renders the same as with the feature off (SC-3 against a baseline).
+- A tap removes the weather at once; an undo restores it.
+- ~:weather_changed~ re-renders an open kiosk with the new reading.
+
+*Verification beyond ~mix precommit~:* the local kiosk review at 1280 × 800 via ~BearCub.Dev.Scenarios~ is the gate — one screenshot per precipitation type, each with a different temperature; the no-forecast state; the settle beat on the flagged row; the worst-case five-chores-plus-two-events column still fitting; a flagged chore with a long label, wrapping inside the ~h-24~ without pushing the glyphs.
+#+end_quote
+
+From §Key Behaviors / Documents this initiative updates (verbatim):
+
+#+begin_quote
+- ~docs/design-language.org~ — the weather ruling above, by the story that lands the row.
+- ~CLAUDE.md~ — the ~weather/1~ scenario in the scenario list, by the story that adds it.
+#+end_quote
+
+* User Story
+
+As a kid getting dressed in the morning, I need my Get dressed chore to show today's weather as two pictures, so that I can pick shorts or pants, sleeves, and shoes, rain boots or snow boots myself without asking a parent.
+
+* Acceptance Criteria
+
+** [ ] During the morning routine, a kid's pending flagged chore shows two emoji at its right end, temperature then precipitation, matching today's reading. Each of the nine combinations shows its own pair: 🥵 / 🙂 / 🥶 then ☀️ / ☔ / ❄️. (SC-1, SC-2)
+** [ ] Every kid with a pending flagged chore sees the same reading, and a kid with no flagged chore sees no weather. (SC-1)
+** [ ] The weather is bare on the row's morning tint, with no pill, background or added color. It sits inside the row's existing height, and a long chore name wraps beside it without pushing the glyphs. Tapping anywhere on the row, glyphs included, completes the chore as before. (SC-1)
+** [ ] Tapping the chore removes the weather at once, and the check disc lands as it does on any other row. Undoing the chore brings the weather back. A done, sunk, ghost or failed row never shows it, and neither does a row completed from admin. (SC-1)
+** [ ] An unflagged row, an extra, the evening routine and the night screen never show weather. (SC-1)
+** [ ] With no reading for today, the kiosk renders exactly as it does with the feature off: nothing in the row's place, no placeholder and no shift. (SC-3)
+** [ ] A new reading reaches an open kiosk with no reload, and a kiosk that reconnects shows the current one. (SC-1, SC-3)
+** [ ] The worst-case column of five chores plus two events still fits at 1280 × 800 with a flagged chore showing weather. (SC-1, SC-3)
+** [ ] ~docs/design-language.org~ carries the "Weather on the weather chore" ruling as the Design excerpt words it. (SC-1)
+** [ ] A dev scenario stages any of the nine readings, or none, on an open kiosk with no network. A companion flags each kid's first morning chore, or a named one. Both are listed in CLAUDE.md's scenario list. (SC-1, SC-3)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- This story depends on Story 03 because the kiosk reads ~Weather.current/1~ and subscribes to ~Weather.subscribe/0~. It depends on Story 04 because rows are chosen by ~chore.shows_weather~. Through Story 03 it also depends on Story 01's ~%Reading{}~.
+- Read ~docs/design-language.org~ before touching the row (CLAUDE.md). The ruling goes in as a new dated entry, verbatim from the excerpt's quote, citing D141 and D105.
+- ~KioskLive~ (~lib/bear_cub_web/live/kiosk_live.ex~): add ~Weather.subscribe()~ beside ~Calendars.subscribe()~ (line 57), and add ~handle_info(:weather_changed, socket)~ shaped like the ~:calendars_changed~ clause (line 305). In ~load/3~ (line 409), ~routine_state~ and ~auto~ are computed at lines 417–418. The weather is ~Weather.current(today)~ only when ~{routine_state, auto} == {:active, :morning}~. Thread it through ~build_column~ to the routine slot group, then to ~chore_row/1~ for flagged rows only.
+- ~chore_row/1~ (~lib/bear_cub_web/components/kiosk_components.ex~, line 360) already has ~done?~, ~failed?~, ~extra?~ and ~ghost?~ attrs (lines 317–333). Add ~attr :weather, :map, default: nil~, compute ~show_weather?~ as the excerpt specifies, and render the group as the row's last child. ~@dom~ (line 364) is ="chore"= or ="ghost"=, so the id is ~chore-N-weather~ on a live row. The failed row's warning triangle is at lines 568–573. Check the group does not land beside it.
+- ~temp_glyph/1~ and ~precip_glyph/1~ are public functions in ~KioskComponents~. Write the variation selector as an explicit escape (~"☀️"~, ~"❄️"~) so an editor cannot strip it. Assert the exact strings in the test.
+- The scenario: ~weather/1~ in ~dev/bear_cub/dev/scenarios.ex~ writes into the store Story 03 built and broadcasts ~:weather_changed~. ~weather({temp, precip})~ builds a ~%Reading{}~ for today's local date, and ~weather(nil)~ clears it. The companion (for example ~weather_chore/0,1~) sets ~shows_weather~ through ~Chores~ or the changeset, not raw SQL. It defaults to each kid's first morning chore by position. Add tests in ~test/bear_cub/dev/scenarios_test.exs~ and extend the moduledoc's usage list.
+- The Refresher overwrites a staged reading on its next tick when coordinates are configured in dev. Stage with coordinates unset (the default), or re-run ~weather/1~.
+- Kiosk LiveView tests use the real clock with version pins (D119). Stage the morning with the schedule helpers and put readings into the store directly. Read the [2026-07-17] entry in ~docs/learnings.org~ for the date/cutoff flakes. For the "same as feature off" AC, render the column with a ~nil~ reading and with no flagged chore, and compare the column's HTML.
+- Gate screenshots to prepare (DESIGN verification line), staged with ~open(:morning)~, the flag companion and ~weather/1~: one per precipitation type, each with a different temperature; the no-forecast state; the settle beat on the flagged row; the worst-case five-chores-plus-two-events column; a flagged chore with a long label. Run ~Scenarios.restore/0~ and ~weather(nil)~ afterwards.

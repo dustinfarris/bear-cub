@@ -1,0 +1,69 @@
+#+title: Story 04 — Flagging the dressing chore in admin
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model / ~chores.shows_weather~, §Screens / Interfaces / Admin — the chore form, and the ~Chore.changeset/2~ and admin LiveView bullets of §Key Behaviors / Testing.
+
+From §Data Model (verbatim):
+
+#+begin_quote
+  ** ~chores.shows_weather~
+
+A migration adds ~shows_weather boolean NOT NULL DEFAULT false~ to ~chores~ ([[file:../decisions.org::#d142][D142]]). ~Chore.changeset/2~ casts it and forces it to ~false~ whenever the chore is not a morning routine chore — cleared, not refused with an error, because the admin form hides the checkbox off the morning routine and an error on a hidden field is invisible. Invariant: only a morning routine chore ever has ~shows_weather = true~.
+
+The flag is display-only: it does not enter points, the reclassification lock ignores it, and it stays editable on a chore with completion history. A kid with no flagged chore sees no weather.
+#+end_quote
+
+From §Screens / Interfaces (verbatim):
+
+#+begin_quote
+  ** Admin — the chore form
+
+~Admin.ChoreLive.Form~ gains one checkbox, rendered only when the chore is in the morning routine — the form's ~shows_in~ is =morning=, or the new-chore link fixed the routine to morning. It follows ~phx-change~, so choosing Morning reveals it ([[file:../decisions.org::#d142][D142]]).
+#+end_quote
+
+#+begin_src heex
+<.input type="checkbox" field={@form[:shows_weather]} label="Shows today's weather" />
+#+end_src
+
+#+begin_quote
+No threshold page (PRD out of scope), no weather readout in admin, and the chore list does not mark the flagged chore; the edit form shows it.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim):
+
+#+begin_quote
+- ~Chore.changeset/2~: the flag casts on a morning chore and is cleared on a move to evening or extras.
+
+*LiveView — admin*: the checkbox shows only for a morning chore, saves, and is cleared by a move to evening.
+#+end_quote
+
+* User Story
+
+As a parent, I need to mark which of each kid's morning chores is the one where they get dressed, so that the weather appears on that chore and nowhere it would be meaningless.
+
+* Acceptance Criteria
+
+** [ ] On the chore form, a "Shows today's weather" checkbox appears when the chore is in the morning routine — whether chosen in the form, already saved there, or fixed by the new-morning-chore link — and choosing Morning reveals it without a save. (SC-1)
+** [ ] The checkbox is absent for an evening chore or an extra. (SC-1)
+** [ ] A morning chore saved with the box checked keeps the flag, and its edit form shows it checked; the chore list does not mark it. (SC-1)
+** [ ] Moving a flagged chore to the evening routine or to extras clears the flag on save, with no error shown. (SC-1)
+** [ ] The flag can be set or cleared on a chore that already has completions, and doing so changes no kid's points. (SC-1)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- No dependency on Stories 01–03: the flag is plain chore data. It sits fourth so it lands just before Story 05, which reads it, but it can be built in any order.
+- Migration via ~mix ecto.gen.migration add_shows_weather_to_chores~; add ~field :shows_weather, :boolean, default: false~ to ~BearCub.Chores.Chore~ (~lib/bear_cub/chores/chore.ex~). In ~changeset/2~ (line 49), cast it alongside ~:shows_in~ and clear it after ~apply_shows_in()~ (line 64) has collapsed ~shows_in~ into ~routine~ — the check is on the resulting ~routine~ being ~:morning~ (and the chore not an extra), so it holds whichever way the routine was set (D83's direct ~routine~ path included).
+- Check the reclassification lock and the points path in ~BearCub.Chores~ do not read the new field; they compare specific fields, so this should hold by construction — the "changes no kid's points" AC confirms it with a test on a chore with completion history.
+- The form is ~lib/bear_cub_web/live/admin/chore_live/form.ex~. ~show_shows_in?~ (lines 19, 28) is false when the new-chore link fixed the routine (~params["routine"]~), so the checkbox's condition reads the effective routine: ~socket.assigns.chore.routine == "morning"~ (or the atom, as stored) when the select is hidden, else the form's ~shows_in~ value — mirror the existing helper at line 92 that reads ~form[:shows_in].value~. The forged-param guard at lines 52–59 already pins the routine for a fixed-routine form; leave it as is.
+- What the visual review looks at: the edit form of a morning chore with the box showing.
