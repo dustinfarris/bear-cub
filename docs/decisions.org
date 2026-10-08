@@ -631,3 +631,59 @@ Settles the question [[#d140][D140]]'s design left open. Open-Meteo's forecast d
 :END:
 
 ~services.bear-cub.weather.latitude~ / ~longitude~ are nullable float options that the module writes into the service's ~environment~ only when set, beside the thresholds and the same way as the timezone. The module adds no option for an environment file. This narrows the design's earlier "host configuration, or an environment file outside the store" to the first, matching what [[#d139][D139]] itself says. The consequence, accepted: values in a unit's ~environment~ land in the host's Nix store, which any local user can read. On a single-household home server that exposes the coordinates to no one who doesn't already know where the house is. Rejected — an ~environmentFile~ option read through systemd ~EnvironmentFile~. It would keep the coordinates out of the store, but it adds a second, hand-placed secret path for data that is not a credential, and the module so far places no application secret by hand. Settles weather-indicator/SC-2. → weather-indicator/Data Model (configuration).
+
+* D145 (2026-10-08) — The bonus countdown ticks on the server, as more edges on the one boundary timer
+:PROPERTIES:
+:CUSTOM_ID: d145
+:END:
+
+A pure ~BearCub.Countdown~ computes each kid's countdown state and its next display edge from the cutoff, the local now, the lead time and the seconds switch. ~KioskLive.schedule_boundary/2~ arms for the earliest of the window/midnight boundary and every column's next countdown edge, so the kiosk still holds one timer reference, cancelled before every re-arm ([[#d124][D124]]). A countdown edge sends ~:countdown_tick~, which recomputes the countdown assigns from cached per-column inputs with no database query; window edges and midnight keep sending ~:boundary~ and the full reload. Edges are measured back from the cutoff (~cutoff − k·60 s~, ~cutoff − k·1 s~), so ticks never drift, and a countdown edge takes a floor of about 50 ms instead of ~:boundary~'s 1 s, which would skip seconds. The server's clock is the one that decides the bonus ([[#d133][D133]]), so the display reaching zero is the moment the verdict turns, and every state is testable in ExUnit by sending messages. Rejected — a colocated JS hook ticking from a server-sent cutoff: smoother under a network hiccup, but it trusts the tablet's clock (needing a skew correction), puts the minutes/seconds/dial logic in JavaScript this repo has no tests for, and lets the tablet show seconds left after the server has ruled the kid late. Rejected — a hybrid (server for minutes and transitions, client for the seconds stretch): two renderers for one widget; kept as the fallback if server ticks visibly stutter on the tablet. Settles bonus-countdown/SC-2, bonus-countdown/SC-4. → bonus-countdown/Key Behaviors (Countdown, Ticking).
+
+* D146 (2026-10-08) — Countdown eligibility reads the version in force now: window active, bonus amount above 0 with a cutoff, routine neither complete nor failed
+:PROPERTIES:
+:CUSTOM_ID: d146
+:END:
+
+A kid's countdown runs only while they can still earn the bonus: the routine window is active, the bonus is on (morning ~E > 0~; evening ~N > 0~ and a cutoff for this kid today), and the routine is neither complete nor failed — a fail forfeits the bonus, so nothing is left to race for. Cutoff and amount come from the version in force now, the one the live stake chip shows, not the version at the last tap that prices the bonus ([[#d121][D121]]): the countdown looks forward, and a schedule save mid-race should move or remove it at once. At ~E = 0~ the countdown hides although the =EARLY= pill still shows on a timely finish, because the Early Bird verdict ignores ~E~ ([[#d134][D134]]). Rejected — folding the backlog fix (~early_bird_bonus > 0~ in the verdict) into this initiative: it changes how the bonus is earned, which the PRD puts out of scope; the pill quirk stays its own backlog item. Settles bonus-countdown/SC-1, bonus-countdown/SC-3. → bonus-countdown/Key Behaviors (Eligibility).
+
+* D147 (2026-10-08) — Lead time and seconds switch are boot-time runtime config, 30 and 5 minutes by default
+:PROPERTIES:
+:CUSTOM_ID: d147
+:END:
+
+~config :bear_cub, :bonus_countdown, lead_minutes:, seconds_minutes:~ is read in ~config/runtime.exs~ from env vars that new ~services.bear-cub~ module options set, the same path as the timezone and the weather settings ([[#d139][D139]]). Boot refuses unless both are positive integers and lead > seconds. One value each for the whole app, as the human set out during the PRD conversation. Rejected — an admin setting: the PRD rules out setting the lead time from the admin UI. Rejected — per-routine values: no one asked for the morning and evening to differ, and it would double the config for no observed need. Settles bonus-countdown/SC-1, bonus-countdown/SC-2. → bonus-countdown/Data Model (configuration).
+
+* D148 (2026-10-08) — The countdown is a dial and the time in the banner's left slot, where the reward lands — supersedes D136's "no target time, no countdown"
+:PROPERTIES:
+:CUSTOM_ID: d148
+:END:
+
+From a Claude Design round against the [[#d115][D115]] mirror (handoff "Bonus countdown design exploration", direction 4a, chosen by the human), recreated in ~KioskComponents~ with tokens. The banner's left slot shows exactly one of nothing, the countdown or the reward: a glass pill with a draining dial, the bird or bear and whole minutes, escalating at the switch to a solid routine-colour pill with a refilling dial, a beating glyph and ticking ~m:ss~. The time is on the system sans ([[#d105][D105]]'s Nunito rule holds); no bonus amount is ever shown, so [[#d136][D136]]'s "no hint of ~N~ before the finish" stands while its "no target time, no countdown" is superseded by the PRD. The banner adds no height, so the five-chore no-scroll budget is untouched, and it sits above the reward shop, so the race stays visible while a kid shops. Rejected — a full-width countdown strip under the stake bar: the boldest read, but about 76 px of height breaks the no-scroll budget with five pending chores. Rejected — a countdown chip in the stake bar beside ~+R~: D105 forbids text or a second chip there, and it would be the smallest of the three. Settles bonus-countdown/SC-1 to bonus-countdown/SC-4. → bonus-countdown/Screens / Interfaces (banner left slot).
+
+* D149 (2026-10-08) — The reward pill reads EARLY BIRD / SLEEPY BEAR with the bird or bear peeking out of it — supersedes D104's "no bird at all"
+:PROPERTIES:
+:CUSTOM_ID: d149
+:END:
+
+The completion icon is rebuilt to the handoff: a 56 px sun or moon, the ~R + E~ / ~R + N~ badge beside it as today, and a white pill reading =EARLY BIRD= or =SLEEPY BEAR= with the bird or bear peeking out behind its top-right corner. Pill and glyph are one signal and are forfeited together. The glyph on the countdown dial is the glyph on the reward, so a kid sees what they were racing for land in the same slot. The badge and its forfeit rule are unchanged, which is how this reads the PRD's "the existing badge being the reward": no countdown-specific reward is added. Supersedes [[#d104][D104]]'s "no bird at all" and the =EARLY= / =NIGHT OWL= pill text of D104 and [[#d136][D136]]; more words on the banner, accepted knowingly as both did. Rejected — keeping the text-only pill: the human chose the handoff look. → bonus-countdown/Screens / Interfaces (reward).
+
+* D150 (2026-10-08) — The evening bonus is displayed as Sleepy Bear; code and schema keep ~night_owl_*~
+:PROPERTIES:
+:CUSTOM_ID: d150
+:END:
+
+Everything a person reads says Sleepy Bear — the kiosk pill, the admin Schedule page labels, ~docs/design-language.org~ — while module, function, field, column and element-id names stay ~night_owl_*~, and historical D-entries keep their wording. The locked bonus-countdown PRD's "Night Owl" is this bonus under its new display name; the rename contradicts no FR or SC. Rejected — kiosk only: parents and kids would use two names for one thing. Rejected — renaming code and schema now: a column rename plus a rewrite of the embedded JSON key across the append-only ~schedule_versions~ history, inside an initiative about a countdown; recorded as a backlog entry with its trigger. → bonus-countdown/Screens / Interfaces (admin), bonus-countdown/Key Behaviors (rename).
+
+* D151 (2026-10-08) — The bird is vectordoodle's CC BY 4.0 glyph, credited in code and the README; the bear is CC0
+:PROPERTIES:
+:CUSTOM_ID: d151
+:END:
+
+Both glyphs come from SVG Repo and ship as inline SVG ([[#d103][D103]]). The bird (author vectordoodle) is CC BY 4.0: a comment beside the SVG and a README credits line name the author, link the licence and say it was cropped and re-stroked for Bear Cub. The bear is CC0, cropped and thickened with a same-colour stroke. Rejected — a CC0 "bird and worm" glyph from SVG Repo, offered to avoid attribution: re-stroked to the same line weight as the handoff glyphs (about 7 % of glyph width) it matched, but its wide flat silhouette read small at the dial sizes, and the human preferred the handoff bird. → bonus-countdown/Screens / Interfaces (glyphs).
+
+* D152 (2026-10-08) — The seconds-mode beat is the kiosk's first animation that does not answer a tap; the fade plays on every exit
+:PROPERTIES:
+:CUSTOM_ID: d152
+:END:
+
+Three CSS animations: ~cd-grow~ (420 ms spring) as the seconds pill mounts, ~cd-beat~ (1 s, infinite) on the seconds-mode glyph, and ~cd-fade~ (600 ms) through ~phx-remove~ whenever a pill leaves. The beat is the first kiosk motion not triggered by the kiosk's own tap; it is allowed in seconds mode only, as the escalation. All three are skipped under ~prefers-reduced-motion~. The fade runs on every exit — the cutoff (the PRD's quiet disappearance), a schedule save or fail, and a finish, where it cross-fades with the reward. Rejected — telling a finish apart from the cutoff to skip the fade on finishing: it needs extra state to tell the two apart, and the cross-fade reads fine. Settles bonus-countdown/SC-2, bonus-countdown/SC-4. → bonus-countdown/Key Behaviors (motion).

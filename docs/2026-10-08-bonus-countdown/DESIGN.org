@@ -1,0 +1,232 @@
+#+title: DESIGN — bonus-countdown
+#+date: 2026-10-08
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+The Early Bird and the evening bonus each pay only before a cutoff, and a cutoff on a clock does not feel urgent to the kids; a parent ends up calling out the time. This design puts the urgency on the kiosk, per kid: while a kid can still earn their bonus and the cutoff is within a set lead time, the left slot of that kid's banner shows a dial and the time left. Whole minutes first, then live ticking seconds for the final stretch. Finishing swaps the countdown for the reward in the same slot; reaching the cutoff unfinished fades it away with nothing in its place.
+
+The whole feature is *one pure module, one more edge on the existing timer, and one banner slot*. No schema change and no new table: the cutoffs and amounts are already data in ~schedule_versions~. Four properties organise the design, one per PRD Success Criterion:
+
+1. *Per kid, to the cutoff that applies to them* (SC-1). The morning uses the one shared Early Bird cutoff, the evening each kid's own cutoff; each column computes its own countdown ([[file:../decisions.org::#d146][D146]], [[file:../decisions.org::#d148][D148]]).
+2. *Minutes, then seconds* (SC-2). ~:minutes~ mode above a configured switch point, ~:seconds~ mode at or below it, ticked by the server on the one boundary timer ([[file:../decisions.org::#d145][D145]], [[file:../decisions.org::#d147][D147]]).
+3. *Only while the bonus can still be earned* (SC-3). Not finished, not failed, amount above 0, a cutoff present; finishing removes the countdown and the existing badge is the reward ([[file:../decisions.org::#d146][D146]], [[file:../decisions.org::#d149][D149]]).
+4. *A quiet end* (SC-4). At the cutoff the state is ~nil~ and the pill fades out; no message, no colour change, no "missed it" ([[file:../decisions.org::#d152][D152]]).
+
+Two changes ride along, settled with the human during design: the evening bonus is *displayed* as *Sleepy Bear* instead of Night Owl, while code and schema keep ~night_owl_*~ ([[file:../decisions.org::#d150][D150]]); and the reward pill is rebuilt to read =EARLY BIRD= / =SLEEPY BEAR= with the bird or bear peeking out of it, so the glyph on the countdown dial is the glyph on the reward ([[file:../decisions.org::#d149][D149]], [[file:../decisions.org::#d151][D151]]). Throughout this document "Sleepy Bear" is the evening bonus the PRD calls the Night Owl.
+
+Canon this builds on, restated so the design reads cold:
+
+- *D8 / [[file:../decisions.org::#d120][D120]] — routines are app constants.* ~:morning~ / ~:evening~; windows, cutoffs and bonuses are append-only data in ~schedule_versions~ (~BearCub.Schedules~). ~Routines.current/2~ returns ~{:active, slug}~ inside a window and ~{:upcoming, slug}~ in a gap, where the kiosk shows the night screen.
+- *[[file:../decisions.org::#d121][D121]] — each points term is priced by the version in force at its instant* (for a routine bonus, the last live tap). The countdown is not a price: it looks forward, so it reads the version in force *now*, the same one the live stake chip shows.
+- *[[file:../decisions.org::#d124][D124]] — one boundary timer.* ~KioskLive.schedule_boundary/2~ cancels the stored timer before arming the next; boundaries today are window edges and midnight only.
+- *[[file:../decisions.org::#d133][D133]] — the verdict's cutoff test is strict.* ~before_cutoff?/2~ in ~BearCub.Chores~ is ~last_completed_at < cutoff~ in local time; a tap one instant before the cutoff earns.
+- *[[file:../decisions.org::#d134][D134]] / [[file:../decisions.org::#d135][D135]] — the evening bonus is off at ~N = 0~ and for a kid with no cutoff.* The Early Bird verdict ignores ~E~; the =EARLY= pill showing at ~E = 0~ is an open backlog item this initiative does not touch.
+- *[[file:../decisions.org::#d104][D104]] / [[file:../decisions.org::#d136][D136]] — the reward today:* a white sun or moon (~size-14~) in the banner's left slot, a green ~+R+E~ / ~+R+N~ badge, and a white =EARLY= / =NIGHT OWL= pill in the kid's colour; "no bird at all"; and "no target time, no countdown and no hint of ~N~ before the finish". This design supersedes the first and the countdown clause in part (D148, D149); the "no hint of ~N~" clause stands.
+- *[[file:../decisions.org::#d103][D103]] — glyphs outside the emoji set ship as inline SVG.* The bird and bear are inline SVG.
+- *[[file:../decisions.org::#d105][D105]] — the stake bar carries no text and no second chip; Nunito (~font-reward~) is for celebratory strings only, never a time.* The countdown stays out of the stake bar and puts its time on the system sans.
+- *[[file:../decisions.org::#d115][D115]] — Claude Design flows back only as a handoff recreated in the component tree:* every hex becomes a token, a prototype's JS is a timing spec, never code. The visual spec below came from the handoff "Bonus countdown design exploration", direction 4a, chosen by the human.
+- *[[file:../decisions.org::#d119][D119]] / [[file:../decisions.org::#d126][D126]] — no clock mocking.* Tests and dev scenarios stage time by inserting schedule versions relative to the real now.
+- *Kiosk fit budget* — five pending chores fit a column at 1280 × 800 with no scroll and almost nothing to spare, so the countdown adds no height.
+- *Local time* — all time logic takes a local datetime argument (~BearCub.LocalTime~); no ~DateTime.utc_now()~ in domain code.
+
+* Data Model
+
+No schema change. Everything the countdown needs is already stored: ~early_bird_bonus~ (E) and ~night_owl_bonus~ (N) on ~ScheduleVersion~; per weekday, ~DayEntry.early_bird_cutoff~ (one family-wide ~Time~) and ~DayEntry.night_owl_cutoffs~ (embedded ~{kid_id, cutoff}~, at most one per kid, absent meaning no evening bonus).
+
+** Configuration (SC-1, SC-2)
+
+Runtime config, read in ~config/runtime.exs~ from env vars that new ~services.bear-cub~ module options in ~nix/module.nix~ set ([[file:../decisions.org::#d147][D147]]):
+
+| Key                                          | Env var                               | Default | Meaning                                                 |
+|----------------------------------------------+---------------------------------------+---------+---------------------------------------------------------|
+| ~:bonus_countdown~, ~lead_minutes:~          | =BEAR_CUB_COUNTDOWN_LEAD_MINUTES=     | 30      | The countdown appears this long before the cutoff       |
+| ~:bonus_countdown~, ~seconds_minutes:~       | =BEAR_CUB_COUNTDOWN_SECONDS_MINUTES=  | 5       | At or below this much time left, seconds mode           |
+
+Boot refuses unless both are positive integers and lead > seconds. One value each for the whole app: not per routine, not in the admin UI (PRD Out of Scope). ~KioskLive~ reads the config at mount into assigns and passes milliseconds into ~BearCub.Countdown~.
+
+** Column state
+
+Each kiosk column gains three fields, built in ~KioskLive.build_column~:
+
+- ~countdown_cutoff~ — the cutoff that applies to this kid today as a local ~DateTime~, or ~nil~.
+- ~countdown_eligible?~ — the eligibility rule below (Key Behaviors).
+- ~countdown~ — the result of ~Countdown.state/5~: ~nil~ or ~%{mode: :minutes | :seconds, remaining_ms: integer, fraction: float}~.
+
+The first two are cached so a tick can recompute the third without reloading.
+
+* Screens / Interfaces
+
+** Kiosk — the banner's left slot (SC-1 to SC-4)
+
+The left slot of each kid's banner shows exactly one of: the *reward* (when ~reveal?~ — the existing rule), the *countdown* (when the column's ~countdown~ is not ~nil~), or *nothing*. The two can never both be due: the countdown requires the routine not complete, the reward requires it complete. Position: absolute, ~left: 16px~, vertically centred in the ~h-20~ (80 px) banner. The centred name and the right-hand group (points pill and gift button) are unchanged. Nothing adds height anywhere in the column, so the five-pending-chore no-scroll budget is untouched ([[file:../decisions.org::#d148][D148]]).
+
+The banner sits above both body views, so a racing kid who opens the reward shop still sees their countdown: the race does not pause for shopping.
+
+*** Countdown — ~KioskComponents.countdown/1~
+
+A function component that renders from assigns only — ~kid~, ~routine~, ~mode~, ~remaining_ms~, ~fraction~; no clock. Minutes and seconds are *separate elements*, ~#countdown-min-{id}~ and ~#countdown-sec-{id}~, each with ~data-mode~, so the grow animation runs once, when seconds mode mounts; between ticks LiveView patches only the text and the dial's inline style.
+
+Minutes mode (lead ≥ remaining > switch):
+- Pill: ~h-[60px]~, ~rounded-full~, white at 20 % (as the points pill), padding ~0 18px 0 6px~, flex row, ~gap: 10px~, items centred.
+- Dial: 50 × 50 px circle. Ring ~conic-gradient(#fff 0deg Xdeg, rgba(255,255,255,.3) Xdeg 360deg)~ with ~X = fraction × 360~, so it drains clockwise over the lead time. Core: an inset 5 px circle in the routine colour (~--routine-morning~ / ~--routine-evening~).
+- Glyph centred in the core, 30 px wide: the bird (stroke ~--routine-morning-content~) in the morning, the bear (fill white) in the evening.
+- Number: whole minutes, system sans, 40 px, weight 800, ~tabular-nums~, white, ~line-height: 1~.
+- Unit =min=: system sans, 22 px, weight 700, white, ~align-self: flex-end; padding-bottom: 14px~.
+
+Seconds mode (remaining ≤ switch), the escalation:
+- Pill: ~h-[70px]~, ~rounded-full~, solid routine colour, ~3px solid~ white border, padding ~0 20px 0 5px~, ~gap: 10px~.
+- Dial: 58 × 58 px. Ring ~conic-gradient(C 0deg Xdeg, color-mix(in oklab, C 22%, transparent) Xdeg 360deg)~ with ~C~ the routine content colour (~--routine-morning-content~ / ~--routine-evening-content~) and ~X = fraction × 360~: at the switch the ring refills to a full circle, then shrinks every second. Core: inset 7 px, ~var(--color-base-100)~.
+- Glyph: 34 px wide, in the routine ink — morning ~--routine-morning-content~, evening ~--routine-evening~ (never white, which would vanish on the core).
+- Number: ~m:ss~, system sans, 56 px, weight 800, ~tabular-nums~, routine content colour. No unit.
+
+Never a bonus amount (~+2~, "earn more") in either mode; the stake chip stays the live ~+R~. No sound. No new hex values: whites and the routine tokens, mixed with ~color-mix~ where the handoff used alpha.
+
+*** Reward — the rebuilt completion icon
+
+Inside the existing ~#completion-icon-{id}~ toggle button, a 96 × 80 px container ([[file:../decisions.org::#d149][D149]]):
+- Sun or moon (~hero-sun-solid~ / ~hero-moon-solid~): 56 px, white, ~left: 20px; top: 4px~.
+- Badge ~#completion-badge-{id}~: ~left: 62px; top: 4px; z-index: 1~; Nunito 900, 14 px, ~bg-success~ / ~text-success-content~, ~rounded-full~, padding ~4px 7px~, the kid-colour ~border-2~ kept. The number is ~R + E~ or ~R + N~, as today; hidden when forfeited, as today.
+- Bonus pill ~#early-bird-{id}~ / ~#night-owl-{id}~ (ids kept as test anchors): ~left: 0; bottom: 6px~; text =EARLY BIRD= or =SLEEPY BEAR=; white ground, kid-colour text, Nunito 900, 14 px, ~rounded-full~, padding ~4px 9px~, ~position: relative; z-index: 1~.
+- Peeking glyph: absolute in a wrapper around the pill at ~right: -15px; top: -16px~, *behind* the pill's upper-right corner, so it climbs out of the pill; white; bird 26 px wide, bear 30 px wide. Pill and glyph are one signal: both render or neither, and a fail removes both.
+- Replaces the private ~routine_pill/1~.
+
+*** Glyphs
+
+A private ~bonus_glyph/1~ (routine, width, colour) renders the bird or the bear as inline SVG for both dials and the reward ([[file:../decisions.org::#d151][D151]]). The bird: SVG Repo, author vectordoodle (https://www.svgrepo.com/author/vectordoodle/), CC BY 4.0, cropped and re-stroked for Bear Cub — a comment beside the SVG says so, and the README gains a credits line saying the same. The bear: SVG Repo, CC0, cropped and thickened with a same-colour stroke; its source is named in the same comment.
+
+#+begin_src svg
+<!-- Bird: SVG Repo, vectordoodle, CC BY 4.0 — cropped viewBox, stroke for Bear Cub -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 95 280 215" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"><path d="M191.179 273.824C240.235 297.511 305.516 282.723 327.848 235.07C343.653 201.345 294.142 174.478 268.869 180.597C249.795 185.215 238.443 210.424 226.139 201.065C216.677 165.605 199.9 119.51 135.192 107.37C114.091 103.412 83.5311 110.64 102.336 135.815C116.496 154.766 137.36 163.983 158.442 173.765C164.792 176.714 169.78 183.842 176.581 185.72C178.199 186.166 181.717 185.007 181.525 186.671C181.105 190.238 113.899 155.977 108.125 179.498C103.955 196.484 152.426 206.208 162.693 208.177C163.338 208.3 167.696 208.583 167.631 209.126C167.291 212.044 128.996 205.366 122.548 219.126C113.925 237.519 146.169 239.099 156.097 238.053C164.394 237.176 172.809 236.947 180.889 235.438C181.156 235.389 194.153 233.997 169.23 238.769C147.16 242.995 90.4779 253.756 88.9641 262.487C87.4503 271.218 95.0462 273.682 99.275 281.556C103.504 289.429 106.52 291.001 110.939 295.051C115.357 299.1 142.753 259.14 172.051 268.915M323.418 199.974C348.126 209.727 352.589 199.404 329.977 213.31M291.997 210.007C291.781 209.411 291.563 208.813 291.345 208.215"></path></svg>
+#+end_src
+
+#+begin_src svg
+<!-- Bear: SVG Repo, CC0 — cropped viewBox, plus a 22-unit stroke of the same colour to thicken it -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 83 536 336" fill="currentColor" stroke="currentColor" stroke-width="22" stroke-linejoin="round"><path d="M507.675,191.611c-8.298-4.523-16.834-10.372-19.115-13.041c-0.059-0.561-0.112-1.189-0.169-1.872 c-1.005-11.850-2.874-33.797-49.601-53.729c-1.287-2.679-3.049-5.224-5.343-7.362c-5.64-5.255-13.02-6.75-20.781-4.219 c-6.564,2.144-10.734,5.34-13.397,8.592c-8.108,0.59-14.155,2.815-19.572,4.817c-5.631,2.079-10.493,3.875-17.535,3.875 c-3.374,0-7.529-2.758-12.338-5.952c-7.879-5.231-17.686-11.742-31.895-11.742c-15.988,0-27.036,5.205-37.722,10.24 c-14.719,6.935-28.619,13.484-57.964,7.615c-35.18-7.035-91.351,6.294-112.053,18.714 c-18.997,11.399-40.327,45.677-63.399,101.886c-14.632,35.644-25.465,69.339-28.109,77.74L2.429,343.42 c-2.345,2.347-3.068,5.865-1.836,8.945l17.693,44.233c1.261,3.149,4.310,5.214,7.701,5.214h26.54c4.581,0,8.294-3.712,8.294-8.294 c0-4.581-3.712-8.294-8.294-8.294h-0.554v-10.488c26.402-3.249,59.225-20.73,76.944-37.043c2.33-2.144,4.631-4.138,6.913-6.016 c2.477,4.775,5.601,8.919,8.665,12.95c7.582,9.979,14.744,19.406,14.744,40.044c0,5.245,4.024,7.32,7.258,8.987 c1.529,0.788,3.638,1.833,6.268,3.107c4.471,2.165,8.942,4.262,8.942,4.262c1.101,0.516,2.303,0.784,3.521,0.784h44.233 c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-16.93c2.395-8.51,7.746-18.546,13.335-29.017 c3.42-6.409,7-13.122,10.205-20.049c2.695,7.75,6.476,15.893,11.637,24.343v17.916c0,6.25,2.434,12.127,6.852,16.543 c4.419,4.418,10.295,6.852,16.544,6.852h46.823c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-8.426 l7.317-65.848c2.988-1.53,7.27-3.888,12.257-7.114c4.495,14.033,19.662,51.536,55.882,62.274l34.154,25.615 c1.435,1.077,3.181,1.659,4.976,1.659h53.08c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-8.847 c-6.816,0-15.195-16.576-23.298-32.609c-7.657-15.148-17.102-33.833-30.32-50.481c-0.004-11.875-0.717-44.067-7.932-59.561h35.011 c2.535,0,4.93-1.159,6.503-3.146c4.512-5.701,14.23-5.701,20.036-5.701c21.078,0,30.004-3.741,31.58-4.492 c2.06-0.982,3.626-2.769,4.327-4.942l7.373-22.854C512.822,197.645,511.173,193.519,507.675,191.611z M211.231,348.398 c-6.879,12.89-13.444,25.202-15.739,36.827h-8.412c-4.082-1.926-8.428-4.02-11.376-5.494c-1.172-22.99-10.449-35.2-18.001-45.138 c-3.415-4.494-6.408-8.446-8.214-12.814c25.194-15.795,49.114-17.274,79.797-17.28 C226.917,318.965,218.974,333.888,211.231,348.398z M430.216,360.098c4.798,9.492,9.185,18.172,13.851,25.127h-17.217 l-33.175-24.881c-0.843-0.631-1.796-1.097-2.812-1.371c-35.568-9.613-47.068-55.402-47.178-55.849 c-0.104-0.435-0.25-0.848-0.416-1.25c12.225-10.095,25.336-24.256,33.76-42.894c4.2-1.215,10.343-3.371,15.885-6.765 c3.49,10.201,5.393,33.494,5.184,52.747c-0.021,1.958,0.652,3.863,1.9,5.372C413.048,326.133,422.17,344.178,430.216,360.098z M489.753,215.126c-3.608,0.864-10.468,2.013-21.435,2.013c-6.907,0-20.558,0-30.13,8.847h-32.123 c-6.123,0-11.439-4.357-12.64-10.361l-3.671-18.359c-0.899-4.491-5.268-7.398-9.759-6.507c-4.491,0.899-7.405,5.268-6.507,9.759 l3.671,18.359c1.373,6.861,5.096,12.781,10.223,16.989c-3.436,2.959-10.879,6.366-18.177,8.011 c-2.668,0.593-4.873,2.464-5.894,4.999c-15.61,38.771-57.117,57.233-57.523,57.41c-2.735,1.181-4.625,3.738-4.953,6.698 l-8.027,72.242h-21.707c-1.819,0-3.529-0.709-4.815-1.996c-1.286-1.284-1.994-2.993-1.994-4.813v-20.285 c0-1.573-0.447-3.112-1.289-4.441c-35.207-55.539-2.282-94.512-0.783-96.234c3.02-3.427,2.703-8.653-0.717-11.687 c-3.428-3.04-8.67-2.728-11.708,0.698c-0.455,0.512-11.195,12.781-16.543,33.268c-0.68,2.605-1.285,5.427-1.772,8.435 c-0.648-0.163-1.324-0.259-2.021-0.259c-41.548,0-73.886,2.696-111.777,37.578c-21.567,19.856-55.676,33.195-74.002,33.195 c-4.581,0-8.294,3.712-8.294,8.294v18.246h-3.784l-13.577-33.941l13.827-13.826c0.959-0.96,1.669-2.14,2.066-3.437 c12.662-41.354,52.581-152.915,84.803-172.248c16.125-9.675,68.321-23.065,100.267-16.673c34.714,6.941,52.550-1.461,68.287-8.874 c9.861-4.646,18.376-8.658,30.652-8.658c9.204,0,15.770,4.358,22.721,8.974c6.457,4.286,13.133,8.719,21.512,8.719 c10.007,0,17.060-2.604,23.281-4.902c3.146-1.161,6.068-2.223,9.264-2.957c0.941,6.784,4.172,12.055,4.707,12.888 c1.589,2.476,4.280,3.835,7.023,3.835c1.528,0,3.072-0.421,4.451-1.306c3.856-2.472,4.994-7.578,2.520-11.433 c-1.143-1.845-3.152-6.624-2.055-9.625c0.854-2.340,3.985-3.795,6.464-4.604c2.480-0.811,3.491-0.160,4.244,0.512 c2.275,2.030,3.078,6.069,2.829,7.285c-1.110,4.444,1.591,8.947,6.035,10.059c3.468,0.865,6.961-0.594,8.861-3.383 c30.203,14.611,31.330,27.616,32.080,36.469c0.116,1.367,0.226,2.657,0.417,3.948c0.370,2.499,1.303,8.790,21.460,20.727 L489.753,215.126z"></path></svg>
+#+end_src
+
+** Admin — the Schedule page labels
+
+On ~lib/bear_cub_web/live/admin/schedule_live.ex~ the evening bonus is labelled by its display name ([[file:../decisions.org::#d150][D150]]): "Night owl bonus" becomes "Sleepy bear bonus"; "Night owl (blank = no Night Owl)" becomes "Sleepy bear (blank = no Sleepy Bear)"; any hint text naming the Night Owl follows. Fields, params and validation are unchanged.
+
+* Key Behaviors
+
+** ~BearCub.Countdown~ — pure state (SC-1, SC-2, SC-4)
+
+A new pure module: no clock, no config, no database. ~local_now~, the lead time and the seconds switch arrive as arguments.
+
+#+begin_src elixir
+@spec state(DateTime.t() | nil, boolean(), DateTime.t(), pos_integer(), pos_integer()) ::
+        nil | %{mode: :minutes | :seconds, remaining_ms: pos_integer(), fraction: float()}
+def state(cutoff, eligible?, local_now, lead_ms, switch_ms)
+
+@spec next_edge(DateTime.t() | nil, DateTime.t(), pos_integer(), pos_integer()) :: DateTime.t() | nil
+def next_edge(cutoff, local_now, lead_ms, switch_ms)
+#+end_src
+
+- ~state/5~ is ~nil~ when not eligible, when ~cutoff~ is ~nil~, when ~remaining <= 0~, or when ~remaining > lead~. Otherwise ~:seconds~ when ~remaining <= switch~, else ~:minutes~.
+- ~fraction~ drives the dial: ~remaining / lead~ in minutes mode, ~remaining / switch~ in seconds mode.
+- Displayed value: in minutes mode ~div(remaining_s, 60)~ where ~remaining_s = div(remaining_ms, 1000)~ — from the lead down to the switch, never =0 min=; in seconds mode ~m:ss~ of ~ceil(remaining_ms / 1000)~ — =5:00= down to =0:01=, then hidden. A tap during =0:01= still earns, matching the strict verdict ([[file:../decisions.org::#d133][D133]]).
+- ~next_edge/4~ is the next instant the display changes, or ~nil~ once the cutoff has passed: appearance (~cutoff − lead~), the next whole minute in minutes mode (~cutoff − k·60 s~), the next whole second in seconds mode (~cutoff − k·1 s~), and the cutoff itself. Every edge is measured back from the cutoff, so ticks never drift ([[file:../decisions.org::#d145][D145]]).
+- Config validation lives here too (a ~validate_config!/1~ or equivalent called from ~config/runtime.exs~), so the boot rule has unit tests.
+
+** Eligibility (SC-1, SC-3)
+
+Computed in ~KioskLive.build_column~ from data the column already loads, using the version in force *now* ([[file:../decisions.org::#d146][D146]]). A kid is eligible when all hold:
+
+- the routine window is active (~routine_state == :active~) — the night screen never shows a countdown;
+- the bonus is on: in the morning ~version.early_bird_bonus > 0~; in the evening ~version.night_owl_bonus > 0~ *and* this kid has a ~NightOwlCutoff~ for today's weekday;
+- the routine is not complete and not failed — a failed routine chore forfeits the bonus, so there is nothing left to race for.
+
+The cutoff is the morning's ~Routines.day(version, today).early_bird_cutoff~, or this kid's entry in ~.night_owl_cutoffs~, combined with ~today~ in ~LocalTime.timezone()~. At ~E = 0~ the countdown is hidden even though the =EARLY= pill still shows on a timely finish (the open backlog item); this initiative changes nothing about earning or pricing (PRD Out of Scope).
+
+** Ticking — still one timer (SC-2, SC-4)
+
+The server keeps the clock; the browser only renders ([[file:../decisions.org::#d145][D145]]).
+
+- ~schedule_boundary/2~ arms for the earliest of ~Routines.next_boundary/2~ and every column's ~Countdown.next_edge/4~ — still one timer reference, cancelled before every re-arm ([[file:../decisions.org::#d124][D124]]).
+- The message names the edge that won: a window edge or midnight sends ~:boundary~ (the full ~load/3~, as today); a countdown edge sends ~:countdown_tick~.
+- ~:countdown_tick~ recomputes only each column's ~countdown~ from the cached ~countdown_cutoff~ and ~countdown_eligible?~ — no database query — then re-arms. A tick every second for the final stretch costs nothing.
+- ~:chores_changed~ (a finish or a fail), ~:schedule_changed~ and ~:boundary~ reload as today, which recomputes eligibility and re-arms.
+- Today's ~max(ms, 1_000)~ floor guards ~:boundary~ against a hot re-arm; applied to a countdown edge it would skip seconds. A countdown edge takes a small floor instead (about 50 ms).
+- Window edges and midnight never collide with a cutoff edge: cutoffs are validated strictly inside their window, so the cutoff always comes first.
+- A tick that fires late or early is harmless: the state is recomputed from the actual now, not stepped.
+- Sleep and reconnect: a remount computes everything fresh from ~LocalTime.now()~; a tick after the cutoff finds ~nil~. There is no clock skew to handle, because the server's clock decides both the display and the verdict.
+
+** Motion (SC-2, SC-4)
+
+Three keyframes in ~assets/css/app.css~, each with an ~--animate-*~ theme entry ([[file:../decisions.org::#d152][D152]]):
+
+- ~cd-grow~: 420 ms ~cubic-bezier(.34,1.56,.64,1)~, once — ~scale(.7)~ at opacity .4 → ~scale(1.08)~ at opacity 1 at 60 % → ~scale(1)~. On the seconds pill as it mounts.
+- ~cd-beat~: 1 s, infinite, ease-in-out — ~scale(1)~ → ~scale(1.14)~ at 12 % → ~scale(1)~ at 30 %. On the seconds-mode dial glyph. It mounts at a second edge, which phases it roughly with the tick; exact phase-locking is not attempted.
+- ~cd-fade~: 600 ms to ~opacity: 0~, through ~phx-remove={JS.transition("animate-cd-fade", time: 600)}~ on both pills. It runs whenever a pill leaves: at the cutoff, on a schedule save or a fail, and on finishing, where it cross-fades with the reward appearing.
+
+All three carry ~motion-reduce:animate-none~: under reduced motion the states swap instantly.
+
+** The Sleepy Bear rename (display only)
+
+User-facing strings only ([[file:../decisions.org::#d150][D150]]): the kiosk pill (Screens above), the admin labels (Screens above) and ~docs/design-language.org~. Unchanged: module, function, field and column names (~night_owl_bonus~, ~night_owl_cutoffs~, ~NightOwlCutoff~, ~night_owl?~, the ~night-owl-{id}~ element id), ~@doc~ prose and historical D-entries. The rest of the rename is a backlog entry ("Rename ~night_owl_*~ to ~sleepy_bear_*~ in code and schema").
+
+** Design-language amendments
+
+~docs/design-language.org~ gains, each dated and citing its D-entry, appended under the ruling it amends (the file's convention):
+
+1. Night Owl entry: "no target time, no countdown" is superseded by the bonus countdown; "no hint of ~N~ before the finish" stands. The display name becomes Sleepy Bear; the pill reads =SLEEPY BEAR= with the bear peeking out ([[file:../decisions.org::#d148][D148]], [[file:../decisions.org::#d149][D149]], [[file:../decisions.org::#d150][D150]]).
+2. Early bird entry: D104's "no bird at all" is overturned — the bird returns as an inline-SVG glyph peeking out of the pill, and the pill reads =EARLY BIRD=. More words on the banner, accepted knowingly, as D104 and D136 did ([[file:../decisions.org::#d149][D149]]).
+3. A new "Bonus countdown" entry: the left-slot rule (nothing / minutes / seconds / reward), both modes' treatment, the dial, the time on the system sans (the Reward-layer type rule holds: no time in ~font-reward~), and the glyph credits ([[file:../decisions.org::#d148][D148]], [[file:../decisions.org::#d151][D151]]).
+4. Motion: ~cd-beat~ is the kiosk's first animation that does not answer a tap — allowed in seconds mode only; ~cd-grow~ and ~cd-fade~ run on server-pushed state changes; all are skipped under ~prefers-reduced-motion~ ([[file:../decisions.org::#d152][D152]]).
+
+** Dev scenario
+
+~BearCub.Dev.Scenarios.countdown/2~:
+- ~countdown(:morning, minutes)~ moves the shared Early Bird cutoff to ~minutes~ from now;
+- ~countdown(:evening, minutes)~ moves every kid's Sleepy Bear cutoff to ~minutes~ from now;
+- ~countdown(:evening, [{kid_id, minutes}, ...])~ sets them per kid.
+
+It writes a schedule version through ~write_version/2~, so ~restore/0~ undoes it and ~:schedule_changed~ reaches an already-open kiosk. Pair it with ~open/1~. It is added to ~test/bear_cub/dev/scenarios_test.exs~ and to the CLAUDE.md scenario list.
+
+Gate screenshots at 1280 × 800: the morning with both kids in minutes; one kid in seconds while the other has finished early; the evening with two different cutoffs; a kid with no evening bonus.
+
+** Testing
+
+Unit — ~test/bear_cub/countdown_test.exs~ (pure; explicit ~local_now~ and cutoff):
+- ~state/5~: ~nil~ when ineligible, when the cutoff is ~nil~, when more than the lead remains, exactly at the cutoff, and after it; ~:minutes~ at exactly the lead and at switch + 1 s; ~:seconds~ at exactly the switch and at 1 ms; ~fraction~ at its bounds.
+- Displayed values: =30= and =5= in minutes mode; =5:00= and =0:01= in seconds mode; never =0 min= or =0:00=.
+- ~next_edge/4~: appearance, the minute steps, the switch, the second steps, the cutoff, ~nil~ after it.
+- Config validation: good values pass; zero, negative, non-integer, and seconds ≥ lead each refuse.
+
+Component — ~test/bear_cub_web/components/kiosk_components_test.exs~:
+- ~countdown/1~: minutes vs seconds markup and ~data-mode~; the dial angle in its style; the bird in the morning, the bear in the evening; no ~+~ amount rendered.
+- Reward: =EARLY BIRD= / =SLEEPY BEAR= with the peeking glyph; both absent when forfeited.
+
+LiveView — ~test/bear_cub_web/live/kiosk_live_test.exs~, staging schedules relative to the real now through ~ScheduleHelpers~ (no clock mocking); assertions check presence and ~data-mode~, not exact digits:
+- Shown: a morning cutoff 10 minutes out gives both kids minutes mode; 3 minutes out gives seconds mode; an evening with different per-kid cutoffs gives each kid their own mode.
+- Hidden: routine complete (the reward renders instead); a routine chore failed; ~E = 0~; ~N = 0~; a kid with no Sleepy Bear cutoff; cutoff beyond the lead; cutoff passed; window closed.
+- Transitions: finishing the last chore removes the countdown; ~send(view.pid, :countdown_tick)~ moves the state on; a ~:schedule_changed~ that moves the cutoff away hides it; with the shop open, the countdown is still in the banner.
+- Timer: a tick leaves exactly one boundary timer, checked as the existing boundary tests do.
+- Admin: the Schedule page shows the Sleepy bear labels.
+
+* Out of Scope for This Design
+
+- Renaming ~night_owl_*~ identifiers and schema to ~sleepy_bear_*~ — backlog.
+- The =EARLY= pill showing at ~E = 0~ — the existing backlog item, untouched.
+- A finish-versus-cutoff distinction in the fade: the same fade plays whenever a pill leaves.
+- Phase-locking the beat to the tick.
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]], the entries whose settles and → § lines name bonus-countdown.
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.
