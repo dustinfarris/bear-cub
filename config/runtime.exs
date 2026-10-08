@@ -23,6 +23,14 @@ end
 # One configured timezone for all "today" and window decisions (design §3).
 config :bear_cub, :timezone, System.get_env("BEAR_CUB_TIMEZONE", "America/Los_Angeles")
 
+# Weather indicator (SC-2, D139): coordinates and thresholds set once in the
+# NixOS module. Unset coordinates turn weather off; invalid thresholds raise
+# here, so the app refuses to start. Coordinates are household data: never in
+# git, never logged.
+for {key, value} <- BearCub.Weather.Config.from_env(System.get_env()) do
+  config :bear_cub, :"weather_#{key}", value
+end
+
 # Calendar refresh pipeline (design §6): fetch interval within the ~15-minute
 # freshness target (FR-18), and the staleness threshold (FR-20, ~2h proposed).
 config :bear_cub,
