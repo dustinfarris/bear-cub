@@ -129,6 +129,12 @@ Ruled [2026-10-08 Thu] at the weather-indicator Batch 1 retro ("The learning of 
 :CREATED:  [2026-10-05 Mon 13:49]
 :END:
 The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows the =EARLY= pill and earns nothing, while the admin hint says "0 turns it off". The night-owl-bonus initiative made ~N = 0~ turn the Night Owl off inside its verdict ([[file:decisions.org::#d134][D134]]) and left the morning alone, because its PRD keeps the morning as it is. Making the two consistent means adding ~early_bird_bonus > 0~ to the Early Bird verdict in ~Chores.resolve/4~; with ~E = 2~ in force nothing visible changes today. Trigger: a parent sets ~E = 0~, or the next initiative that touches the morning.
+* TODO [#C] Rename ~night_owl_*~ to ~sleepy_bear_*~ in code and schema
+:PROPERTIES:
+:CREATED:  [2026-10-08 Thu]
+:END:
+The bonus-countdown design renames the Night Owl to *Sleepy Bear* in everything a person reads — the kiosk pill, the admin Schedule page labels, ~docs/design-language.org~ — and deliberately leaves code and schema alone (docs/2026-10-08-bonus-countdown/DESIGN.org). What still says Night Owl: the ~schedule_versions.night_owl_bonus~ column, the ~night_owl_cutoffs~ embed in ~DayEntry~, ~BearCub.Schedules.NightOwlCutoff~, ~night_owl?~ and ~night_owl_cutoff/3~ in ~BearCub.Chores~, the pricing map's ~:night_owl?~ key, the kiosk ids ~night-owl-{id}~, ~BearCub.Dev.Scenarios.night_owl/1~, the test helpers (~put_night_owl/3~), and ~@doc~ prose. The work is a migration renaming the column (and rewriting the embedded JSON key in every stored ~schedule_versions~ row, which are append-only history) plus a mechanical identifier rename; historical D-entries keep their wording. Trigger: the two names cause a real confusion in a session or a review, or the next initiative that reshapes the evening bonus.
+
 * TODO [#C] ~BearCub.Dev.Scenarios.night_owl/1~ cannot stage a finished-but-late kid :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-10-07 Wed 21:55]
