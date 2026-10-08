@@ -17,7 +17,7 @@ From §Overview (verbatim):
 From §Data Model / Configuration (verbatim, the location paragraph):
 
 #+begin_quote
-Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private, or in an environment file outside the store.
+Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private: the module takes them as plain ~latitude~ / ~longitude~ options and offers no environment file ([[file:../decisions.org::#d144][D144]]).
 #+end_quote
 
 From §Key Behaviors / Fetch and refresh (verbatim):

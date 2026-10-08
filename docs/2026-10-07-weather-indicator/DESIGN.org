@@ -48,7 +48,7 @@ Runtime config, read in ~config/runtime.exs~ from env vars that new ~services.be
 
 ~runtime.exs~ raises at boot when ~cold_below > hot_at~ or the chance is outside 0–100. The 8 AM–3 PM window is a code constant, not config — the PRD fixes it.
 
-Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private, or in an environment file outside the store.
+Location is latitude and longitude, looked up once by the parent (a map pin). The client rounds them to two decimals (about 1 km). Coordinates are household data under the same rule as kid names: they never enter this public repo and are never logged — warnings name the failure, not the location. They live in the host configuration, which must be private: the module takes them as plain ~latitude~ / ~longitude~ options and offers no environment file ([[file:../decisions.org::#d144][D144]]).
 
 ** The reading
 
@@ -252,6 +252,12 @@ Decisions for this initiative: [[file:../decisions.org]] — D138–D143.
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-10-08 Thu 08:59] §Data Model no longer offers an environment file for the coordinates (D144)
+
+/Sections affected: Data Model (Configuration)/
+
+This document used to say the coordinates live "in the host configuration, which must be private, or in an environment file outside the store". The module offers only the first: plain ~latitude~ / ~longitude~ options. Don't add an ~environmentFile~ option to keep the coordinates out of the world-readable Nix store, even though that looks like the tidier secret-handling pattern. Coordinates are household data, not a credential, and D144 accepts the store exposure on a single-household host. Rationale: [[file:../decisions.org::#d144][D144]].
 
 ** [2026-10-08 Thu 08:51] §Key Behaviors no longer leaves ~weather_code~'s time basis open (D143)
 

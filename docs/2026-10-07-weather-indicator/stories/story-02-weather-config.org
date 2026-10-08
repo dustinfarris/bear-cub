@@ -49,17 +49,49 @@ As a parent, I need to set where we live and where hot, cold and rain begin once
 
 * Acceptance Criteria
 
-** [ ] The hot, cold and precipitation-chance thresholds and the latitude and longitude are settable through new ~services.bear-cub.weather.*~ NixOS module options, which reach the app as its weather configuration. The coordinates are set as plain ~latitude~ / ~longitude~ options in the private host config; no environment-file option is added. (SC-2)
-** [ ] Left unset, the thresholds are 80 °F for hot, 60 °F for cold and a 40 % chance for precipitation, and with no latitude or no longitude the weather is off. (SC-2)
-** [ ] A cold threshold above the hot one, or a precipitation chance outside 0–100, stops the app from starting rather than letting it run with values a parent did not mean. (SC-2)
-** [ ] No coordinates are written into this repository — not in the module's defaults, examples, config files or tests. (SC-2)
+** [X] The hot, cold and precipitation-chance thresholds and the latitude and longitude are settable through new ~services.bear-cub.weather.*~ NixOS module options, which reach the app as its weather configuration. The coordinates are set as plain ~latitude~ / ~longitude~ options in the private host config; no environment-file option is added. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ~weather~ option set in ~nix/module.nix~ (~latitude~ / ~longitude~ as ~nullOr float~, ~hotAt~ / ~coldBelow~ ints, ~precipChanceAt~ as ~ints.between 0 100~); the service ~environment~ sets =BEAR_CUB_WEATHER_HOT_AT=, =_COLD_BELOW=, =_PRECIP_CHANCE_AT= and, via ~lib.optionalAttrs~ on non-null, the latitude and longitude vars; names match the reads in ~BearCub.Weather.Config.from_env/1~, which ~config/runtime.exs~ calls with ~System.get_env()~. No environment-file option was added. ~mix test~ cannot exercise the module, so evidence is reading it beside ~runtime.exs~, ~nix-instantiate --parse nix/module.nix~ (parses), and ~toString~ on floats rendering values ~Float.parse~ accepts.
+:END:
+** [X] Left unset, the thresholds are 80 °F for hot, 60 °F for cold and a 40 % chance for precipitation, and with no latitude or no longitude the weather is off. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ~@defaults~ 80 / 60 / 40 in ~lib/bear_cub/weather/config.ex~ and matching module defaults; coordinates default to ~nil~. Test "defaults the thresholds and leaves the location unset" passes; "a lone coordinate parses" leaves the off decision to the consumer (Story 03).
+:END:
+** [X] A cold threshold above the hot one, or a precipitation chance outside 0–100, stops the app from starting rather than letting it run with values a parent did not mean. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ~validate!/1~ raises ~ArgumentError~ on ~cold_below > hot_at~ or a chance outside 0-100, and non-numeric values raise too; tests cover 71 vs 70, -1, 101, "warm", "12.3456N", plus boundaries (equal thresholds, 0 and 100 accepted). ~runtime.exs~ calls ~from_env~ unconditionally. I also ran ~mix run~ with =BEAR_CUB_WEATHER_PRECIP_CHANCE_AT=150= and it aborted with the validation error.
+:END:
+** [X] No coordinates are written into this repository — not in the module's defaults, examples, config files or tests. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: the only coordinate-like values are the fake =12.3456= / =-65.4321= in ~test/bear_cub/weather/config_test.exs~; module defaults are ~null~, no examples or config files carry any; ~config.ex~ has no logging and errors name the variable, not the value (test refutes the latitude in the message).
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ACs 1-4 all met above, no deferrals.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: 8 tests in ~test/bear_cub/weather/config_test.exs~ cover ACs 2-4, all passing in the full run; AC 1 is covered by module reading and parse check.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ~mix format --check-formatted~ clean, ~mix precommit~ passed; moduledoc wrapped at 80, ~@spec~ present.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 08:57] \\
+  Verified by story-verifier: ~mix precommit~ finished with 876 passed, 0 failures.
+:END:
 
 * Technical Notes
 
