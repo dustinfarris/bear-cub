@@ -5,6 +5,9 @@ Things we learned building the MVP that are *not* recorded in commit
 messages, CLAUDE.md, or the PRD/design docs. Newest entries at the top
 of each section are fine; every entry carries the date it was learned.
 
+* [2026-10-07 Wed] A verification line that names a staged state is checked against the scenario that stages it
+The night-owl-bonus DESIGN asked the gate for a screenshot of "one kid earned, one not" and, a page earlier, designed ~Scenarios.night_owl/1~ to move every kid's cutoff after now, which stages an earned or an unfinished evening and never a late one. Story 03's note saw it coming, and the gate staged the late kid by hand through ~project_eval~, the hand-poke CLAUDE.md says scenarios exist to replace. When a DESIGN names a reviewable state (a gate screenshot, a story's visual DoD item) and a scenario meant to stage it, read the two together at promotion and make the scenario produce that exact state. A scenario that stages a neighbouring state leaves the gate hand-staging, and the hand-staged version is the one nobody can re-run. Evidence: docs/2026-10-05-night-owl-bonus/retro.org, Batch 1 ("The scenario could not stage the gate's own screenshot").
+
 * [2026-10-04 Sun] Green tests, wrong code: prove the behavior an AC names, not the attribute meant to produce it
 Effort-multiplier Story 09 exists because Story 08 shipped with ~mix precommit~ green and two behaviors broken. Its AC said the count panel scrolls into view, and its tests asserted that the ~phx-hook~ attribute was present on the element, not what it was set to. ~phx-hook~ there was an expression, and LiveView expands a dot-prefixed name (~.ScrollIntoView~) to the colocated hook's full name only in a literal, so the hook never loaded; the browser logged "unknown hook" and a panel opened on the fifth extra ended below the fold. Its other AC kept the panel's ground tinted rather than flooded with the kid's color, and the test checked the ground before the 280 ms confirm beat, while the render during the beat is what handed ~chore_card_style/5~ the ~@done?~ that flooded it. Both tests asserted structure where the AC described behavior.
 
@@ -70,7 +73,7 @@ and its migration test for the working pattern. Adjacent fact: ~ecto_sqlite3~
 always the create-new/copy-rows/drop-old/rename table rebuild, never an
 in-place ~ALTER COLUMN~.
 
-* [2026-07-10 Fri] Nix deploy: every mix.lock change needs a fetchMixDeps hash bump
+* [2026-07-10 Fri] Nix deploy: a deps change surfaces late inside nixos-rebuild (hash bump, deps_nix layout)
 The mix deps fetch in ~nix/package.nix~ is a fixed-output derivation:
 when ~mix.lock~ changes but the pinned ~hash~ does not, Nix silently
 reuses the *cached pre-change deps* and the failure surfaces late — as
@@ -83,6 +86,8 @@ Fast TOFU loop that avoids committing broken pins: on the target box,
 already-pushed rev and ~hash = lib.fakeHash~; the mismatch error
 prints the real hash (no sudo needed). Bonus: the deps land in the
 store, so the subsequent ~nixos-rebuild switch~ skips refetching.
+
+Second variant [2026-10-07 Wed]: a dependency bump that regenerates ~nix/deps.nix~ under a newer deps_nix can change derivation layout, not only hashes. deps_nix 3.1 wrapped heroicons in a derivation exposing the checkout at =$out/src= where ~package.nix~ still linked the derivation root as =deps/heroicons=, so ~assets.deploy~ could not find =optimized/24/outline= and the release failed, again inside ~nixos-rebuild~, eight hours and a whole batch after the bump landed (b2c7dc4 bumped at 10:08, 398b013 fixed it twelve minutes after the batch's gate). ~mix precommit~ cannot see ~nix/~, so the batch ran green all day on a broken deploy. Rule: a commit that regenerates ~nix/deps.nix~ is verified by a build on the target box before feature work stacks on it, either deployed on its own or through the ~nix-build~ loop above run against the real ~package.nix~, so a layout change fails on the bump and not on the feature.
 
 * [2026-07-10 Fri] Elixir: map-pattern keys must be literals or pins
 ~assert %{chore.id => found} = ...~ is not legal Elixir — a pattern

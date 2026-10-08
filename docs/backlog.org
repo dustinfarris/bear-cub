@@ -127,6 +127,15 @@ Considered during the routine-schedule design and kept out of that initiative ([
 :CREATED:  [2026-10-05 Mon 13:49]
 :END:
 The Early Bird verdict ignores ~E~, so with ~E = 0~ a timely morning still shows the =EARLY= pill and earns nothing, while the admin hint says "0 turns it off". The night-owl-bonus initiative made ~N = 0~ turn the Night Owl off inside its verdict ([[file:decisions.org::#d134][D134]]) and left the morning alone, because its PRD keeps the morning as it is. Making the two consistent means adding ~early_bird_bonus > 0~ to the Early Bird verdict in ~Chores.resolve/4~; with ~E = 2~ in force nothing visible changes today. Trigger: a parent sets ~E = 0~, or the next initiative that touches the morning.
+* TODO [#C] ~BearCub.Dev.Scenarios.night_owl/1~ cannot stage a finished-but-late kid :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-10-07 Wed 21:55]
+:END:
+
+~night_owl/1~ moves every kid's cutoff for today two hours after now, so it stages an earned Night Owl or an unfinished evening and never a kid who finished late. The night-owl-bonus DESIGN's verification line asked the gate for "one kid earned, one not", and the gate staged the late kid by hand: a version insert through ~project_eval~ moving Kid B's cutoff behind now, then both evenings finished (gate record in docs/2026-10-05-night-owl-bonus/PLAN.org). Give the scenario a ~late:~ option taking a kid id or list: those kids' cutoffs go behind now, inside the evening window, while the others stay ahead, so the gate state is one call plus taps. ~restore/0~ already undoes it. Add the order "night_owl with late, then open(:evening)" to ~test/bear_cub/dev/scenarios_test.exs~ and the option to the CLAUDE.md scenario list.
+
+Ruled [2026-10-07 Wed] at the night-owl-bonus Batch 1 retro ("The scenario could not stage the gate's own screenshot").
+
 * TODO [#C] ~BearCub.Notifications~ log noise buries real failures in a ~mix precommit~ run :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-09-21 Mon 06:57]
