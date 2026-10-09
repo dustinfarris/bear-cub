@@ -30,7 +30,12 @@ Design: [[file:DESIGN.org]]
 - Note taken on [2026-10-08 Thu 17:59] \\
   For Story 05: ~Application.get_env(:bear_cub, :bonus_countdown)~ is the keyword list ~[lead_minutes: 30, seconds_minutes: 5]~, in minutes; ~KioskLive~ converts to milliseconds (~:timer.minutes/1~) before calling ~BearCub.Countdown~. The env parse lives beside the validation as ~BearCub.Countdown.config_from_env/1~, which ~config/runtime.exs~ calls and which calls ~validate_config!/1~.
 :END:
-** TODO [[file:stories/story-03-bonus-reward.org][Story 03 — The Early Bird and Sleepy Bear reward, with the bird and bear]]
+** DONE [[file:stories/story-03-bonus-reward.org][Story 03 — The Early Bird and Sleepy Bear reward, with the bird and bear]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  For Story 05: ~bonus_glyph/1~ (private, ~kiosk_components.ex~) takes ~routine~ (~:morning~ bird / ~:evening~ bear), ~width~ (integer px) and an optional ~class~. The design's "colour" argument is carried by ~currentColor~: set it with a text-colour class through ~class~ or on the wrapping element (the reward wraps it in a ~text-white~ span). The reward's glyph wrapper id is ~#early-bird-{id}-glyph~ / ~#night-owl-{id}-glyph~. \\
+  For review staging: ~Scenarios.night_owl/0~ only moves the cutoff and ~open(:evening)~ only opens the window; a finished Sleepy Bear evening also needs that kid's evening chores completed (done here with ~Chores.complete_chore/3~ at ~LocalTime.now()~ through ~project_eval~). The banner screenshots were taken at full 1280 × 800 with the kid-name ~h1~ and event text hidden by an injected style, not cropped, since a crop does not evidence the viewport.
+:END:
 ** TODO [[file:stories/story-04-countdown-scenario.org][Story 04 — Staging a cutoff minutes away for review]]
 ** TODO [[file:stories/story-05-kiosk-countdown.org][Story 05 — The countdown in each kid's banner]]
 ** TODO [[file:stories/story-06-countdown-ticks.org][Story 06 — The countdown ticks, grows, beats and fades]]

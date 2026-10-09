@@ -81,22 +81,66 @@ As a kid who beat the cutoff, I need my reward to say =EARLY BIRD= or =SLEEPY BE
 
 * Acceptance Criteria
 
-** [ ] On a morning finished before the Early Bird cutoff, the banner's completion icon shows the sun, the ~R + E~ badge, and a white pill reading =EARLY BIRD= in the kid's colour with the bird peeking out of its upper-right corner. (SC-3)
-** [ ] On an evening finished before the kid's Sleepy Bear cutoff, the completion icon shows the moon, the ~R + N~ badge, and a white pill reading =SLEEPY BEAR= in the kid's colour with the bear peeking out of its upper-right corner. (SC-3)
-** [ ] A forfeited routine (a failed routine chore) shows neither the pill nor its glyph, and the badge stays hidden as today; pill and glyph always render together or not at all. (SC-3)
-** [ ] The bird and bear are inline SVG carrying the source and licence comment the design gives, and the README gains a credits line for the CC BY 4.0 bird. (SC-3)
-** [ ] The admin Schedule page labels the evening bonus "Sleepy bear bonus" and the per-kid cutoffs "Sleepy bear (blank = no Sleepy Bear)", and no hint text there still names the Night Owl; saving the page behaves exactly as before. (SC-3)
-** [ ] ~docs/design-language.org~ carries amendments 1 (Night Owl entry) and 2 (Early bird entry), each dated and citing its D-entries, appended under the ruling it amends. (SC-3)
+** [X] On a morning finished before the Early Bird cutoff, the banner's completion icon shows the sun, the ~R + E~ badge, and a white pill reading =EARLY BIRD= in the kid's colour with the bird peeking out of its upper-right corner. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified by the story-verifier pass over the final code: ~bonus_pill/1~ in ~lib/bear_cub_web/components/kiosk_components.ex~ renders =EARLY BIRD= with the bird SVG in ~#early-bird-{id}-glyph~; component test "an early morning folds E into the badge and adds the EARLY BIRD pill" (~kiosk_components_test.exs:74~) asserts =+7=, the pill text and the glyph; ~kiosk_live_test.exs~ asserts =EARLY BIRD= inside ~#completion-icon-{id}~; ~story-03-early-bird.png~ shows sun, badge, pill and bird.
+:END:
+** [X] On an evening finished before the kid's Sleepy Bear cutoff, the completion icon shows the moon, the ~R + N~ badge, and a white pill reading =SLEEPY BEAR= in the kid's colour with the bear peeking out of its upper-right corner. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: the evening branch renders =SLEEPY BEAR= with the bear SVG in ~#night-owl-{id}-glyph~; component test at ~kiosk_components_test.exs:84~ asserts moon, =+8=, pill text and glyph; the kiosk_live Sleepy Bear test passes; ~story-03-sleepy-bear.png~ shows moon, badge, pill and bear.
+:END:
+** [X] A forfeited routine (a failed routine chore) shows neither the pill nor its glyph, and the badge stays hidden as today; pill and glyph always render together or not at all. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: pill and glyph live in one ~bonus_pill/1~ gated on ~early_bird?~ / ~night_owl?~, the badge on ~not failed?~; test "pill and glyph render together or not at all" (~kiosk_components_test.exs:107~) and the kiosk_live forfeit tests (=refute= ~#early-bird-{id}~ / ~#night-owl-{id}~) pass. Verifier's note: the forfeit component test checks the badge only, since the flags are false upstream when failed (existing behaviour).
+:END:
+** [X] The bird and bear are inline SVG carrying the source and licence comment the design gives, and the README gains a credits line for the CC BY 4.0 bird. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: both inline SVGs in ~bonus_glyph/1~ carry the source and licence comments (bird: vectordoodle, CC BY 4.0; bear: SVG Repo, CC0) with viewBox, stroke and path as in the design excerpt; README gains a =Credits= section with the CC BY 4.0 bird line.
+:END:
+** [X] The admin Schedule page labels the evening bonus "Sleepy bear bonus" and the per-kid cutoffs "Sleepy bear (blank = no Sleepy Bear)", and no hint text there still names the Night Owl; saving the page behaves exactly as before. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: ~schedule_live.ex~ now reads "Sleepy bear bonus" and "Sleepy bear (blank = no Sleepy Bear)"; a grep of ~lib/bear_cub_web~ finds no user-facing Night Owl string (only ~@doc~ prose, kept per the design); ~schedule_live_test.exs:316~ and ~:351~ assert the labels and the save tests pass unchanged.
+:END:
+** [X] ~docs/design-language.org~ carries amendments 1 (Night Owl entry) and 2 (Early bird entry), each dated and citing its D-entries, appended under the ruling it amends. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: ~docs/design-language.org~ has =Amended [2026-10-08]= appended under the Early bird entry (D149) and the Night Owl entry (D148, D149, D150), wording matching the design excerpt.
+:END:
 
 # Trace note: the reward rebuild (D149, D151) and the Sleepy Bear display name (D150) are ride-alongs the DESIGN records as settled with the human during design; they are cited to SC-3 because SC-3 names "the existing badge being the reward", but the admin-label and display-name criteria go beyond any Success Criterion's wording and rest on D150, not on the PRD.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: AC 1–6 all met by the verifier pass, no removals or deferrals.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: the updated and new tests in ~kiosk_components_test.exs~, ~kiosk_live_test.exs~ and ~schedule_live_test.exs~ pass in the ~mix precommit~ run (956 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified by the verifier's diff review: private ~bonus_glyph/1~ / ~bonus_pill/1~, ids kept as test anchors, comments wrapped at 80, ~night_owl~ names and ~@doc~ prose untouched; no breach found.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: ~mix precommit~ run by the verifier on the final code, 956 tests passed.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:05] \\
+  Verified: ~story-03-early-bird.png~ and ~story-03-sleepy-bear.png~ in the initiative directory are full 1280 × 800 captures (checked with ~sips~; viewport read as 1280 × 800 before capture), staged with ~Scenarios.early_bird/0~ and ~Scenarios.night_owl/0~ plus ~open(:evening)~. Kid names and calendar text were hidden in the page before capture; the verifier viewed both and found neither. Earlier tight crops failed the viewport bar and were replaced.
+:END:
 
 * Technical Notes
 
