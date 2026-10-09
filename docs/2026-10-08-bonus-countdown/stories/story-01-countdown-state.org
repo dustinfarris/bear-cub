@@ -53,18 +53,54 @@ As a kid racing a bonus cutoff, I need the time I have left to be worked out exa
 
 * Acceptance Criteria
 
-** [ ] With no cutoff, with the bonus not earnable, with more than the lead time left, exactly at the cutoff, and after it, there is no countdown. (SC-1, SC-3, SC-4)
-** [ ] From the lead time down to just above the seconds switch the countdown is in minutes; at or below the switch, down to the last millisecond before the cutoff, it is in seconds. (SC-2)
-** [ ] In minutes the shown value runs from the lead (=30=) down to the switch (=5=) and is never =0 min=; in seconds it runs from =5:00= down to =0:01= and is never =0:00=. (SC-2, SC-4)
-** [ ] The dial's fill drains from full to empty over the lead time in minutes, and refills to full at the switch and drains again over the seconds stretch. (SC-2)
-** [ ] The next moment the display changes is known ahead of time — the countdown's appearance, each whole minute, the switch, each whole second, and the cutoff, each measured back from the cutoff — and there is none once the cutoff has passed. (SC-2, SC-4)
+** [X] With no cutoff, with the bonus not earnable, with more than the lead time left, exactly at the cutoff, and after it, there is no countdown. (SC-1, SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~state/5~ (~lib/bear_cub/countdown.ex:24-32~) returns ~nil~ for a nil cutoff, ineligible, remaining > lead, and remaining <= 0. Verified by the story-verifier against the "state/5 — no countdown" tests in ~test/bear_cub/countdown_test.exs~ (ineligible, nil cutoff, lead + 1 ms, exactly 0, -1 ms, -1 h); 21/21 passing.
+:END:
+** [X] From the lead time down to just above the seconds switch the countdown is in minutes; at or below the switch, down to the last millisecond before the cutoff, it is in seconds. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~state/5~ (~countdown.ex:34-38~) gives ~:minutes~ above the switch and ~:seconds~ at or below it. Verified against the "state/5 — mode" tests: ~:minutes~ at the lead, switch + 1 s and switch + 1 ms; ~:seconds~ at exactly the switch and at 1 ms.
+:END:
+** [X] In minutes the shown value runs from the lead (=30=) down to the switch (=5=) and is never =0 min=; in seconds it runs from =5:00= down to =0:01= and is never =0:00=. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~display/1~ (~countdown.ex:47-55~) uses ~div(div(ms, 1000), 60)~ in minutes and ~div(ms + 999, 1000)~ (ceil) in seconds. Verified against the "display/1" tests: =30=, =29=, =6=, =5= at switch + 1 s and + 1 ms; =5:00=, =4:59=, =1:01=, =1:00=, =0:02=, =0:01= at 1000 ms and 1 ms; =0 min= and =0:00= unreachable (minutes value >= 5, seconds remaining >= 1 ms, and ~state(0)~ is ~nil~).
+:END:
+** [X] The dial's fill drains from full to empty over the lead time in minutes, and refills to full at the switch and drains again over the seconds stretch. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~fraction~ is ~remaining / lead~ in minutes and ~remaining / switch~ in seconds (~countdown.ex:35,38~). Verified against the "state/5 — fraction" tests: 1.0 and 0.5 at the lead and half-lead, (switch + 1)/lead just above the switch, 1.0 at the switch (the refill), 0.5 at half the switch, 1/switch at 1 ms.
+:END:
+** [X] The next moment the display changes is known ahead of time — the countdown's appearance, each whole minute, the switch, each whole second, and the cutoff, each measured back from the cutoff — and there is none once the cutoff has passed. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~next_edge/4~ (~countdown.ex:64-81~) measured back from the cutoff. Verified against the "next_edge/4" tests: appearance at the lead, minute steps, the switch never skipped (switch + 1 ms, + 1 s, + 59,999 ms), second steps, the cutoff itself at 1000 ms and 1 ms, ~nil~ at/after the cutoff and for a nil cutoff, and a non-minute 90 s switch.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  All five Acceptance Criteria verified met by the story-verifier pass above; no removals or deferrals.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~test/bear_cub/countdown_test.exs~ holds 21 tests covering every Acceptance Criterion, all passing (~mix test test/bear_cub/countdown_test.exs~ → 21 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  Module is pure (no clock, config or database access); tests pass explicit ~local_now~ and cutoff with no sleeps; ~mix format --check-formatted~ exits 0 on both files; docstrings wrapped near 80 columns.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:56] \\
+  ~mix precommit~ (the declared Verify command) run once by the verifier: compile with warnings as errors, format check, then tests, ending =Result: 950 passed=.
+:END:
 
 * Technical Notes
 

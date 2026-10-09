@@ -19,7 +19,12 @@ Design: [[file:DESIGN.org]]
 # screenshot list (DESIGN §Key Behaviors / Dev scenario) is Story 05's review set re-shot.
 # Stories 03 and 04 are independent of 01 and 02 and could move earlier.
 
-** TODO [[file:stories/story-01-countdown-state.org][Story 01 — The countdown's state as a pure function of the cutoff and now]]
+** DONE [[file:stories/story-01-countdown-state.org][Story 01 — The countdown's state as a pure function of the cutoff and now]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:57] \\
+  For Story 05: the display-formatting function is ~BearCub.Countdown.display/1~. It takes the map ~state/5~ returns and gives a string: whole minutes (="30"= … ="5"=) in ~:minutes~ mode, ~m:ss~ (="5:00"= … ="0:01"=) in ~:seconds~ mode. The component adds the =min= unit itself. \\
+  For Story 06: ~next_edge/4~ returns a ~DateTime~ with millisecond precision (~DateTime.add/3~ in ~:millisecond~). Struct ~==~ against a second-precision cutoff is false even when the instants match, so compare with ~DateTime.compare/2~ or ~DateTime.diff/3~. The timer delay is ~DateTime.diff(edge, local_now, :millisecond)~.
+:END:
 ** TODO [[file:stories/story-02-countdown-config.org][Story 02 — Lead time and seconds switch set once in the NixOS module]]
 ** TODO [[file:stories/story-03-bonus-reward.org][Story 03 — The Early Bird and Sleepy Bear reward, with the bird and bear]]
 ** TODO [[file:stories/story-04-countdown-scenario.org][Story 04 — Staging a cutoff minutes away for review]]
