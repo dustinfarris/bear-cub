@@ -23,7 +23,7 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - Story 04's timeline has two "commit" turns six minutes apart (01:08 and 01:14 UTC); both of its commits, ~d574244~ and ~16d9757~, are stamped 18:14 local.
 - The whole batch ran in about 33 minutes of wall clock, 00:54 to 01:27 UTC, six stories back to back.
 - Note column, checked against git: Story 03's close-out ~e6f1f2d~ did not touch ~story-05~ and Story 02's ~c98f12d~ did not touch ~story-01~, so both references were reads. Story 04's "also read story-04" names its own file.
-- No human questions appear in any timeline; the human turns were the implement prompts and "commit". Story 06's Plan note records a ruling "by the human at the Story 06 handoff" that the Story 06 timeline does not show.
+- No human questions appear in any story timeline; the human turns were the implement prompts and "commit". Both human rulings in this batch came before Story 01, at the user-stories handoff, where that session raised two =# GAP:= items: what the evening forms of ~countdown/2~ do for a kid with no cutoff (Story 04, later D153) and where design-language amendment 4 lands (Story 06, its own "Motion" ruling). Story 06's Plan note dates its ruling to that handoff.
 - No deferred discoveries: the PLAN's Deferred section is empty.
 - All six story transcripts were found on this machine.
 - The gate's design walk found a divergence no story verifier caught: the ~:countdown_tick~ re-arm queried ~schedule_versions~ on every tick, against DESIGN §Ticking and the code's own comment. Fixed before the gate in ~764f26c~ on the human's ruling.
