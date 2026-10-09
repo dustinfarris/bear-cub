@@ -99,23 +99,79 @@ As a kid with a bonus still to earn, I need a big countdown in my own banner sho
 
 * Acceptance Criteria
 
-** [ ] With a morning Early Bird cutoff 10 minutes out and both kids unfinished, each kid's banner shows the countdown in minutes on the left; with the cutoff 3 minutes out, each shows it in seconds. (SC-1, SC-2)
-** [ ] On an evening where the kids have different Sleepy Bear cutoffs, each kid's banner counts down to their own cutoff and shows the mode their own time left calls for. (SC-1)
-** [ ] Minutes mode shows a translucent white pill with the dial draining clockwise, the bird (morning) or bear (evening) in the dial's centre, the whole minutes and the unit =min=; seconds mode shows a solid routine-colour pill with a white border, a larger dial, the glyph in the routine ink, and the time as =m:ss= with no unit — each as the Countdown subsection specifies. (SC-2)
-** [ ] The countdown never shows a bonus amount, its time is set in the system sans (never the reward font), it adds no height to the column, and the centred name and right-hand points pill and gift button are unchanged. (SC-1, SC-2)
-** [ ] No countdown shows when the routine is complete (the reward shows in that slot instead), when a routine chore has been failed, when the Early Bird amount is 0, when the Sleepy Bear amount is 0, for a kid with no Sleepy Bear cutoff today, when the cutoff is further away than the lead time, once the cutoff has passed, or outside the routine window. (SC-3, SC-4)
-** [ ] Finishing the last routine chore before the cutoff removes the countdown and the reward takes its place; a schedule save that moves the cutoff beyond the lead time hides it. (SC-3)
-** [ ] A kid who opens the reward shop still sees their countdown in the banner. (SC-1)
-** [ ] The lead time and seconds switch the kiosk uses are the app's configured values (Story 02). (SC-1, SC-2)
-** [ ] ~docs/design-language.org~ carries amendment 3, a new dated "Bonus countdown" entry citing D148 and D151. (SC-1, SC-2)
+** [X] With a morning Early Bird cutoff 10 minutes out and both kids unfinished, each kid's banner shows the countdown in minutes on the left; with the cutoff 3 minutes out, each shows it in seconds. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Verifier pass over the final code. LiveView tests ~a cutoff 10 minutes out gives both kids minutes mode~ and ~a cutoff 3 minutes out gives both kids seconds mode~ in ~test/bear_cub_web/live/kiosk_live_test.exs~; ~build_column~ computes the countdown per kid and the banner left slot renders it; =story-05-morning-minutes.png= shows both banners.
+:END:
+** [X] On an evening where the kids have different Sleepy Bear cutoffs, each kid's banner counts down to their own cutoff and shows the mode their own time left calls for. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Test ~an evening with different cutoffs gives each kid their own mode~ (kid A minutes, kid B seconds, bear glyph); the evening cutoff is the kid's ~night_owl_cutoffs~ entry matched on ~kid_id~; =story-05-evening-mixed.png= shows 2:59 beside 9 min.
+:END:
+** [X] Minutes mode shows a translucent white pill with the dial draining clockwise, the bird (morning) or bear (evening) in the dial's centre, the whole minutes and the unit =min=; seconds mode shows a solid routine-colour pill with a white border, a larger dial, the glyph in the routine ink, and the time as =m:ss= with no unit — each as the Countdown subsection specifies. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  ~KioskComponents.countdown/1~ matches the Countdown subsection in both modes (sizes, dial, glyph ink, ~m:ss~, no unit in seconds); component tests for minutes vs seconds markup and ~data-mode~, the dial angle (180.0deg, 90.0deg), and bird vs bear; both screenshots.
+:END:
+** [X] The countdown never shows a bonus amount, its time is set in the system sans (never the reward font), it adds no height to the column, and the centred name and right-hand points pill and gift button are unchanged. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Component test ~never renders a bonus amount, and keeps time off the reward font~ refutes =+= and ~font-reward~ in both modes; the wrapper is ~absolute left-4 top-1/2 -translate-y-1/2~ so it adds no height; the ~h1~, points pill and gift button are untouched in the diff; five morning rows still fit in the screenshot.
+:END:
+** [X] No countdown shows when the routine is complete (the reward shows in that slot instead), when a routine chore has been failed, when the Early Bird amount is 0, when the Sleepy Bear amount is 0, for a kid with no Sleepy Bear cutoff today, when the cutoff is further away than the lead time, once the cutoff has passed, or outside the routine window. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  One LiveView test per hidden state: routine complete, failed chore, E = 0, N = 0, no Sleepy Bear cutoff, cutoff beyond the lead, cutoff passed, outside the window (night screen).
+:END:
+** [X] Finishing the last routine chore before the cutoff removes the countdown and the reward takes its place; a schedule save that moves the cutoff beyond the lead time hides it. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Tests ~finishing the last chore removes it and the reward takes its place~ and ~a schedule save that moves the cutoff away hides it~.
+:END:
+** [X] A kid who opens the reward shop still sees their countdown in the banner. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Test ~stays in the banner while the shop is open~.
+:END:
+** [X] The lead time and seconds switch the kiosk uses are the app's configured values (Story 02). (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  ~countdown_ms/0~ reads ~Application.fetch_env!(:bear_cub, :bonus_countdown)~ at mount; test ~uses the configured lead time and seconds switch~ stages a cutoff at lead+1 (hidden) and switch+1 (minutes).
+:END:
+** [X] ~docs/design-language.org~ carries amendment 3, a new dated "Bonus countdown" entry citing D148 and D151. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  ~docs/design-language.org~ carries a dated =Bonus countdown [2026-10-08]= entry covering the left-slot rule, both modes, the dial, system-sans time and glyph credits, citing D148 and D151.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  All nine acceptance criteria met per the verifier pass; none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  New tests in ~kiosk_components_test.exs~ (~countdown/1~, banner left slot) and ~kiosk_live_test.exs~ (the bonus countdown describe block) pass inside the full run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  Verifier read the diff against CLAUDE.md: docstring wrapped at 80, no new hex values, no Chores→Calendars dependency, no ~DateTime.utc_now~ in domain code.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  ~mix precommit~ run by the verifier on the final code: 981 passed, exit 0.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  =story-05-morning-minutes.png= and =story-05-evening-mixed.png= in the initiative directory, both 1280 × 800 (~sips~), staged with ~BearCub.Dev.Scenarios~ (~open/1~, ~countdown/2~), kid names hidden, no calendar text. Not shot: a reward beside a countdown and a kid with no evening bonus — the gate re-shoots the full list.
+:END:
 
 * Technical Notes
 

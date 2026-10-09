@@ -42,7 +42,12 @@ Design: [[file:DESIGN.org]]
   For Story 05: ~Scenarios.countdown/2~ sets a cutoff of ~LocalTime.now()~ plus ~minutes~, truncated to the second, so it lands up to one second early, never a minute; it is held at 23:59:59 when it would cross midnight, so staging within ~minutes~ of midnight gives a shorter countdown than asked. A kid with no evening bonus beside one counting down is one call: ~countdown(:evening, [{kid_id, minutes}])~. Pair with ~open/1~ before or after; ~restore/0~ undoes both. \\
   The ~countdown/2~ tests in ~test/bear_cub/dev/scenarios_test.exs~ read the real clock with a 0.1-minute tolerance, so a run in the last 20 minutes before midnight hits the 23:59:59 cap and fails; accepted under the no-clock-mocking rule.
 :END:
-** TODO [[file:stories/story-05-kiosk-countdown.org][Story 05 — The countdown in each kid's banner]]
+** DONE [[file:stories/story-05-kiosk-countdown.org][Story 05 — The countdown in each kid's banner]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:19] \\
+  For Story 06: ~mount_kiosk/1~ assigns ~:countdown_ms~ as ~{lead_ms, switch_ms}~ (from ~countdown_ms/0~), and ~load/3~ hands ~build_column~ a trailing ~{local_now, lead_ms, switch_ms}~ tuple, so its arity is now 18. Each column carries ~countdown_cutoff~ (local ~DateTime~ or ~nil~, ~nil~ at night), ~countdown_eligible?~ and ~countdown~; a tick can map ~Countdown.state/5~ over the columns from the first two with no reload. ~banner/1~ takes an optional ~countdown~ assign (default ~nil~) and shows it only when ~not reveal?~; ~countdown/1~ is public and its glyph wrapper is ~#countdown-glyph-{id}~. The ~:countdown_tick~ LiveView test was left to Story 06 with its clause. \\
+  For review staging: a dev server started before Story 02 has no ~:bonus_countdown~ env and 500s on ~/~ at mount (~fetch_env!~); restart it, or ~Application.put_env(:bear_cub, :bonus_countdown, lead_minutes: 30, seconds_minutes: 5)~ through ~project_eval~. The dev roster's mornings may already be complete; ~Scenarios.reset/0~ first.
+:END:
 ** TODO [[file:stories/story-06-countdown-ticks.org][Story 06 — The countdown ticks, grows, beats and fades]]
 
 * Deferred
