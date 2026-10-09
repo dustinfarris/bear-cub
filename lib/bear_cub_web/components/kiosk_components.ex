@@ -133,7 +133,10 @@ defmodule BearCubWeb.KioskComponents do
     <div
       id={"countdown-min-#{@kid.id}"}
       data-mode="minutes"
-      class="flex h-[60px] items-center gap-[10px] rounded-full bg-white/20 pl-[6px] pr-[18px] text-white"
+      phx-remove={
+        JS.transition("animate-cd-fade motion-reduce:animate-none motion-reduce:opacity-0", time: 600)
+      }
+      class="col-start-1 row-start-1 flex h-[60px] items-center gap-[10px] rounded-full bg-white/20 pl-[6px] pr-[18px] text-white"
     >
       <span
         class="flex size-[50px] shrink-0 items-center justify-center rounded-full"
@@ -166,7 +169,10 @@ defmodule BearCubWeb.KioskComponents do
     <div
       id={"countdown-sec-#{@kid.id}"}
       data-mode="seconds"
-      class="flex h-[70px] items-center gap-[10px] rounded-full border-[3px] border-solid border-white pl-[5px] pr-5"
+      phx-remove={
+        JS.transition("animate-cd-fade motion-reduce:animate-none motion-reduce:opacity-0", time: 600)
+      }
+      class="animate-cd-grow col-start-1 row-start-1 flex h-[70px] items-center gap-[10px] rounded-full border-[3px] border-solid border-white pl-[5px] pr-5 motion-reduce:animate-none"
       style={"background-color: var(--routine-#{@routine}); color: var(--routine-#{@routine}-content)"}
     >
       <span
@@ -175,7 +181,7 @@ defmodule BearCubWeb.KioskComponents do
       >
         <span
           id={"countdown-glyph-#{@kid.id}"}
-          class="flex size-11 items-center justify-center rounded-full"
+          class="animate-cd-beat flex size-11 items-center justify-center rounded-full motion-reduce:animate-none"
           style={"background-color: var(--color-base-100); color: #{if @routine == :morning, do: "var(--routine-morning-content)", else: "var(--routine-evening)"}; line-height: 0"}
         >
           <.bonus_glyph routine={@routine} width={34} />
@@ -282,11 +288,13 @@ defmodule BearCubWeb.KioskComponents do
       </button>
       <%!-- Left slot (D148): reward, countdown or nothing — the countdown
            needs the routine incomplete, the reward complete, so never both. --%>
-      <div
-        :if={@countdown && not @reveal?}
-        class="absolute left-4 top-1/2 -translate-y-1/2"
-      >
+      <%!-- Always present, empty when there is nothing to show: phx-remove
+           runs only on the element morphdom discards, so the fade has to
+           sit on a pill that leaves, not on a wrapper that leaves with it.
+           The grid stacks a leaving pill under the arriving one. --%>
+      <div class="absolute left-4 top-1/2 grid -translate-y-1/2 items-center">
         <.countdown
+          :if={@countdown && not @reveal?}
           kid={@kid}
           routine={@routine}
           mode={@countdown.mode}

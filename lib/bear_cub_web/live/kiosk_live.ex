@@ -76,8 +76,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:counting, %{})
      |> assign(:boundary_timer, nil)
      |> assign(:countdown_ms, countdown_ms())
-     |> load(now)
-     |> schedule_boundary(now)}
+     |> load(now)}
   end
 
   @impl true
@@ -334,9 +333,33 @@ defmodule BearCubWeb.KioskLive do
       |> assign(:rewards, MapSet.new())
       |> assign(:counting, %{})
       |> load(now)
-      |> schedule_boundary(now)
 
     {:noreply, socket}
+  end
+
+  # A countdown edge (D145): only each column's `countdown` is recomputed,
+  # from the cutoff and eligibility `load/3` cached, so a tick a second
+  # costs no query. The state comes from the actual now, never a step from
+  # the last tick, so a late or early tick is harmless.
+  def handle_info(:countdown_tick, socket) do
+    now = LocalTime.now()
+    {lead_ms, switch_ms} = socket.assigns.countdown_ms
+
+    columns =
+      Enum.map(socket.assigns.columns, fn column ->
+        countdown =
+          Countdown.state(
+            column.countdown_cutoff,
+            column.countdown_eligible?,
+            now,
+            lead_ms,
+            switch_ms
+          )
+
+        %{column | countdown: countdown}
+      end)
+
+    {:noreply, socket |> assign(:columns, columns) |> schedule_boundary(now)}
   end
 
   def handle_info(:boundary, socket) do
@@ -352,7 +375,6 @@ defmodule BearCubWeb.KioskLive do
       |> assign(:rewards, MapSet.new())
       |> assign(:counting, %{})
       |> load(now)
-      |> schedule_boundary(now)
 
     {:noreply, socket}
   end
@@ -527,6 +549,7 @@ defmodule BearCubWeb.KioskLive do
       counting: still_counting,
       calendars_stale?: Calendars.any_stale?(local_now)
     )
+    |> schedule_boundary(local_now)
   end
 
   defp build_column(
@@ -908,17 +931,40 @@ defmodule BearCubWeb.KioskLive do
     {slot, done}
   end
 
-  # The one boundary chain (D124): every :boundary arms the next, so
-  # anything that arms from elsewhere (a schedule save) must cancel the
-  # timer it replaces or a second chain starts and never ends.
+  # The one boundary timer (D124), re-armed by every `load/3` and every
+  # tick: it cancels the timer it replaces or a second chain starts and
+  # never ends. It aims at the earliest of the next window edge or midnight
+  # and any column's next countdown edge, and the message names the winner
+  # (D145): `:boundary` reloads everything, `:countdown_tick` only the
+  # countdown. Cutoffs sit strictly inside their window, so a countdown edge
+  # never ties with a window edge.
   defp schedule_boundary(socket, now) do
     if socket.assigns.boundary_timer, do: Process.cancel_timer(socket.assigns.boundary_timer)
 
     if connected?(socket) do
       entry = Schedules.day_entry(now)
-      ms = DateTime.diff(Routines.next_boundary(now, entry), now, :millisecond)
-      # floor guards against a timer that fires a hair early re-arming hot
-      assign(socket, :boundary_timer, Process.send_after(self(), :boundary, max(ms, 1_000)))
+      window_ms = DateTime.diff(Routines.next_boundary(now, entry), now, :millisecond)
+      {lead_ms, switch_ms} = socket.assigns.countdown_ms
+
+      countdown_ms =
+        socket.assigns.columns
+        |> Enum.flat_map(fn column ->
+          cutoff = if column.countdown_eligible?, do: column.countdown_cutoff
+          edge = Countdown.next_edge(cutoff, now, lead_ms, switch_ms)
+          if edge, do: [DateTime.diff(edge, now, :millisecond)], else: []
+        end)
+        |> Enum.min(fn -> nil end)
+
+      timer =
+        if countdown_ms && countdown_ms < window_ms do
+          # a small floor: the 1 s one would skip seconds
+          Process.send_after(self(), :countdown_tick, max(countdown_ms, 50))
+        else
+          # floor guards against a timer that fires a hair early re-arming hot
+          Process.send_after(self(), :boundary, max(window_ms, 1_000))
+        end
+
+      assign(socket, :boundary_timer, timer)
     else
       socket
     end

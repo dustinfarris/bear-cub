@@ -193,6 +193,30 @@
   @keyframes sink-collapse {
     to { height: 0; border-width: 0; margin-bottom: 0; }
   }
+
+  /* Bonus countdown motion (D152). Grow: the seconds pill springs in once
+     as it mounts. Beat: the seconds-mode dial glyph pulses once a second,
+     mounted at a second edge so it lands roughly with the tick. Fade: a
+     pill leaving, run by phx-remove for 600 ms before LiveView drops it. */
+  --animate-cd-grow: cd-grow 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-cd-beat: cd-beat 1s ease-in-out infinite;
+  --animate-cd-fade: cd-fade 600ms ease-out forwards;
+
+  @keyframes cd-grow {
+    from { transform: scale(0.7); opacity: 0.4; }
+    60% { transform: scale(1.08); opacity: 1; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes cd-beat {
+    0% { transform: scale(1); }
+    12% { transform: scale(1.14); }
+    30%, 100% { transform: scale(1); }
+  }
+
+  @keyframes cd-fade {
+    to { opacity: 0; }
+  }
 }
 
 /* Add variants based on LiveView classes */

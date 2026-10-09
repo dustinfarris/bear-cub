@@ -1198,6 +1198,103 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert mode_of(view, kid) == :minutes
     end
+
+    # a tick recomputes from the column's cached cutoff, so moving the cache
+    # moves the state with no reload to put the database's cutoff back
+    defp cache_cutoff(view, kid, cutoff) do
+      :sys.replace_state(view.pid, fn state ->
+        columns =
+          Enum.map(state.socket.assigns.columns, fn column ->
+            if column.kid.id == kid.id, do: %{column | countdown_cutoff: cutoff}, else: column
+          end)
+
+        put_in(state.socket.assigns.columns, columns)
+      end)
+    end
+
+    test "a :countdown_tick moves the state on from the cached cutoff, without a reload",
+         %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, kid) == :minutes
+
+      cache_cutoff(view, kid, DateTime.add(LocalTime.now(), 90, :second))
+      send(view.pid, :countdown_tick)
+      assert mode_of(view, kid) == :seconds
+
+      cache_cutoff(view, kid, DateTime.add(LocalTime.now(), -1, :second))
+      send(view.pid, :countdown_tick)
+      assert mode_of(view, kid) == nil
+    end
+
+    test "a tick shows the state for the actual time, not a step from the last",
+         %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, kid) == :minutes
+
+      # the cache jumps straight past the switch, skipping every step between
+      cache_cutoff(view, kid, DateTime.add(LocalTime.now(), 20, :second))
+      send(view.pid, :countdown_tick)
+
+      assert mode_of(view, kid) == :seconds
+    end
+
+    test "a tick leaves exactly one boundary timer, armed for the countdown's next edge",
+         %{conn: conn} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      first = boundary_timer(view)
+      # the next whole minute is under 61 s away; the window edge is hours off
+      assert Process.read_timer(first) <= 61_000
+
+      send(view.pid, :countdown_tick)
+      second = boundary_timer(view)
+
+      assert first != second
+      assert Process.read_timer(first) == false
+      assert is_integer(Process.read_timer(second))
+    end
+
+    test "without a countdown the timer still waits for the window edge", %{conn: conn} do
+      morning_race(45)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # the lead time opens 15 minutes before a cutoff 45 minutes out
+      assert Process.read_timer(boundary_timer(view)) > 61_000
+    end
+
+    test "a finish re-arms the one timer", %{conn: conn, morning_a: chore} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      first = boundary_timer(view)
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+      second = boundary_timer(view)
+
+      assert first != second
+      assert Process.read_timer(first) == false
+      assert is_integer(Process.read_timer(second))
+    end
+
+    test "both pills fade out; the seconds pill grows in and its dial glyph beats",
+         %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#countdown-min-#{kid.id}[phx-remove*=animate-cd-fade]")
+      assert has_element?(view, "#countdown-min-#{kid.id}[phx-remove*='motion-reduce:opacity-0']")
+      refute has_element?(view, "#countdown-glyph-#{kid.id}.animate-cd-beat")
+
+      cache_cutoff(view, kid, DateTime.add(LocalTime.now(), 90, :second))
+      send(view.pid, :countdown_tick)
+
+      assert has_element?(view, "#countdown-sec-#{kid.id}[phx-remove*=animate-cd-fade]")
+      assert has_element?(view, "#countdown-sec-#{kid.id}[phx-remove*='motion-reduce:opacity-0']")
+      assert has_element?(view, "#countdown-sec-#{kid.id}.animate-cd-grow")
+      assert has_element?(view, "#countdown-glyph-#{kid.id}.animate-cd-beat")
+      refute has_element?(view, "#countdown-min-#{kid.id}")
+    end
   end
 
   describe "night owl (D136)" do
