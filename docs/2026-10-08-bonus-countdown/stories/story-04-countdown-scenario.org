@@ -30,19 +30,51 @@ As the person reviewing the kiosk before a deploy, I need one call that puts a k
 
 * Acceptance Criteria
 
-** [ ] ~countdown(:morning, minutes)~ moves the shared Early Bird cutoff to that many minutes from now, and an already-open kiosk picks up the new schedule without a reload. (SC-1)
-** [ ] ~countdown(:evening, minutes)~ sets every kid's Sleepy Bear cutoff to that many minutes from now, including a kid who had none today; ~countdown(:evening, [{kid_id, minutes}, ...])~ is the complete evening picture — each listed kid gets their own cutoff and an unlisted kid's existing cutoff is removed, so a kid with no evening bonus is staged in the same call. (SC-1)
-** [ ] ~restore/0~ undoes a ~countdown/2~ call, bringing back the schedule from before the first staging scenario. (SC-1)
-** [ ] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~ and listed in the CLAUDE.md scenario list. (SC-1)
+** [X] ~countdown(:morning, minutes)~ moves the shared Early Bird cutoff to that many minutes from now, and an already-open kiosk picks up the new schedule without a reload. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: ~countdown(:morning, minutes)~ in ~dev/bear_cub/dev/scenarios.ex~ calls ~cutoff(cutoff_in(minutes))~, which writes through ~write_version/2~ and broadcasts ~:schedule_changed~. Test ~countdown/2 morning moves the shared early bird cutoff to minutes from now~ asserts the cutoff is 10 minutes ahead (±0.1) and ~assert_received :schedule_changed~.
+:END:
+** [X] ~countdown(:evening, minutes)~ sets every kid's Sleepy Bear cutoff to that many minutes from now, including a kid who had none today; ~countdown(:evening, [{kid_id, minutes}, ...])~ is the complete evening picture — each listed kid gets their own cutoff and an unlisted kid's existing cutoff is removed, so a kid with no evening bonus is staged in the same call. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: the minutes clause maps every kid from ~Chores.list_kids/0~ to ~{id, minutes}~; the list clause replaces today's weekday ~night_owl_cutoffs~ with exactly the listed entries. Tests ~evening with minutes gives every kid a cutoff, including one who had none~ and ~evening with a per-kid list is the complete picture~ (listed kid at 5 min, unlisted kid nil) pass.
+:END:
+** [X] ~restore/0~ undoes a ~countdown/2~ call, bringing back the schedule from before the first staging scenario. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: test ~countdown/2 restore/0 undoes it~ stages morning and evening, calls ~restore/0~, and asserts the original early bird cutoff is back, the kid's cutoff is gone and ~night_owl_bonus~ is 0.
+:END:
+** [X] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~ and listed in the CLAUDE.md scenario list. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: ~describe "countdown/2"~ (4 tests) in ~test/bear_cub/dev/scenarios_test.exs~; the CLAUDE.md scenario list now carries ~countdown/2~ with its three forms and the pair-with-~open/1~ note.
+:END:
 
 # Ruled by the human at the handoff (2026-10-08): the minutes form gives every kid a cutoff, and the per-kid list removes an unlisted kid's cutoff. Story 04's update-design pass records this in the DESIGN with its D-entry and Advisory.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: all four Acceptance Criteria met; nothing removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: the four ~countdown/2~ tests are in the green ~mix precommit~ run (960 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: ~mix format --check-formatted~ exit 0; code and docstring follow the surrounding scenarios.ex style (docstring wrapped near 80 columns).
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:07] \\
+  Verifier pass: ~mix precommit~ ended with 960 passed, 0 failures.
+:END:
 
 * Technical Notes
 

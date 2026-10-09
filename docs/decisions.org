@@ -687,3 +687,10 @@ Both glyphs come from SVG Repo and ship as inline SVG ([[#d103][D103]]). The bir
 :END:
 
 Three CSS animations: ~cd-grow~ (420 ms spring) as the seconds pill mounts, ~cd-beat~ (1 s, infinite) on the seconds-mode glyph, and ~cd-fade~ (600 ms) through ~phx-remove~ whenever a pill leaves. The beat is the first kiosk motion not triggered by the kiosk's own tap; it is allowed in seconds mode only, as the escalation. All three are skipped under ~prefers-reduced-motion~. The fade runs on every exit — the cutoff (the PRD's quiet disappearance), a schedule save or fail, and a finish, where it cross-fades with the reward. Rejected — telling a finish apart from the cutoff to skip the fade on finishing: it needs extra state to tell the two apart, and the cross-fade reads fine. Settles bonus-countdown/SC-2, bonus-countdown/SC-4. → bonus-countdown/Key Behaviors (motion).
+
+* D153 (2026-10-08) — The countdown scenario's evening forms each set the whole evening: minutes gives every kid a cutoff, a per-kid list removes the unlisted
+:PROPERTIES:
+:CUSTOM_ID: d153
+:END:
+
+Ruled by the human at the story handoff. ~countdown(:evening, minutes)~ gives every kid a Sleepy Bear cutoff for today's weekday, including a kid who had none, and ~countdown(:evening, [{kid_id, minutes}, ...])~ replaces today's cutoffs with exactly the listed ones, so an unlisted kid loses theirs and "a kid with no evening bonus" is staged in the same call as the other kid's countdown. Both evening forms also set ~N~ the way ~night_owl/1~ does (the current ~N~, or 3 when it is 0), so a staged cutoff carries a bonus on a schedule whose ~N~ is 0. The cutoff is now plus ~minutes~, truncated to the second and held at 23:59:59 when it would cross midnight. Rejected — "moves" read literally, touching only kids who already had a cutoff, with the per-kid list merging into the existing cutoffs: staging a kid with no bonus would then need a second scenario or a hand-written version. Settles bonus-countdown/SC-1 (review staging). → bonus-countdown/Key Behaviors (dev scenario).
