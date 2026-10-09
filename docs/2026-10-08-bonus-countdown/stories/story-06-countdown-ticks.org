@@ -1,0 +1,97 @@
+#+title: Story 06 — The countdown ticks, grows, beats and fades
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — properties 2 and 4 of §Overview with the D124 canon line, §Key Behaviors / Ticking — still one timer, §Key Behaviors / Motion, design-language amendment 4, the Transitions and Timer bullets of §Key Behaviors / Testing, LiveView, and the motion items of §Out of Scope for This Design.
+
+From §Overview (verbatim):
+
+#+begin_quote
+2. *Minutes, then seconds* (SC-2). ~:minutes~ mode above a configured switch point, ~:seconds~ mode at or below it, ticked by the server on the one boundary timer ([[file:../decisions.org::#d145][D145]], [[file:../decisions.org::#d147][D147]]).
+4. *A quiet end* (SC-4). At the cutoff the state is ~nil~ and the pill fades out; no message, no colour change, no "missed it" ([[file:../decisions.org::#d152][D152]]).
+
+- *[[file:../decisions.org::#d124][D124]] — one boundary timer.* ~KioskLive.schedule_boundary/2~ cancels the stored timer before arming the next; boundaries today are window edges and midnight only.
+#+end_quote
+
+From §Key Behaviors / Ticking — still one timer (verbatim):
+
+#+begin_quote
+The server keeps the clock; the browser only renders ([[file:../decisions.org::#d145][D145]]).
+
+- ~schedule_boundary/2~ arms for the earliest of ~Routines.next_boundary/2~ and every column's ~Countdown.next_edge/4~ — still one timer reference, cancelled before every re-arm ([[file:../decisions.org::#d124][D124]]).
+- The message names the edge that won: a window edge or midnight sends ~:boundary~ (the full ~load/3~, as today); a countdown edge sends ~:countdown_tick~.
+- ~:countdown_tick~ recomputes only each column's ~countdown~ from the cached ~countdown_cutoff~ and ~countdown_eligible?~ — no database query — then re-arms. A tick every second for the final stretch costs nothing.
+- ~:chores_changed~ (a finish or a fail), ~:schedule_changed~ and ~:boundary~ reload as today, which recomputes eligibility and re-arms.
+- Today's ~max(ms, 1_000)~ floor guards ~:boundary~ against a hot re-arm; applied to a countdown edge it would skip seconds. A countdown edge takes a small floor instead (about 50 ms).
+- Window edges and midnight never collide with a cutoff edge: cutoffs are validated strictly inside their window, so the cutoff always comes first.
+- A tick that fires late or early is harmless: the state is recomputed from the actual now, not stepped.
+- Sleep and reconnect: a remount computes everything fresh from ~LocalTime.now()~; a tick after the cutoff finds ~nil~. There is no clock skew to handle, because the server's clock decides both the display and the verdict.
+#+end_quote
+
+From §Key Behaviors / Motion (verbatim):
+
+#+begin_quote
+Three keyframes in ~assets/css/app.css~, each with an ~--animate-*~ theme entry ([[file:../decisions.org::#d152][D152]]):
+
+- ~cd-grow~: 420 ms ~cubic-bezier(.34,1.56,.64,1)~, once — ~scale(.7)~ at opacity .4 → ~scale(1.08)~ at opacity 1 at 60 % → ~scale(1)~. On the seconds pill as it mounts.
+- ~cd-beat~: 1 s, infinite, ease-in-out — ~scale(1)~ → ~scale(1.14)~ at 12 % → ~scale(1)~ at 30 %. On the seconds-mode dial glyph. It mounts at a second edge, which phases it roughly with the tick; exact phase-locking is not attempted.
+- ~cd-fade~: 600 ms to ~opacity: 0~, through ~phx-remove={JS.transition("animate-cd-fade", time: 600)}~ on both pills. It runs whenever a pill leaves: at the cutoff, on a schedule save or a fail, and on finishing, where it cross-fades with the reward appearing.
+
+All three carry ~motion-reduce:animate-none~: under reduced motion the states swap instantly.
+#+end_quote
+
+From §Key Behaviors / Design-language amendments (verbatim, the lead-in and item 4):
+
+#+begin_quote
+~docs/design-language.org~ gains, each dated and citing its D-entry, appended under the ruling it amends (the file's convention):
+4. Motion: ~cd-beat~ is the kiosk's first animation that does not answer a tap — allowed in seconds mode only; ~cd-grow~ and ~cd-fade~ run on server-pushed state changes; all are skipped under ~prefers-reduced-motion~ ([[file:../decisions.org::#d152][D152]]).
+#+end_quote
+
+From §Key Behaviors / Testing, LiveView (verbatim, the bullets in this story's scope; Story 05 owns the rest of the Transitions bullet):
+
+#+begin_quote
+- Transitions: finishing the last chore removes the countdown; ~send(view.pid, :countdown_tick)~ moves the state on; a ~:schedule_changed~ that moves the cutoff away hides it; with the shop open, the countdown is still in the banner.
+- Timer: a tick leaves exactly one boundary timer, checked as the existing boundary tests do.
+#+end_quote
+
+From §Out of Scope for This Design (verbatim, the motion items):
+
+#+begin_quote
+- A finish-versus-cutoff distinction in the fade: the same fade plays whenever a pill leaves.
+- Phase-locking the beat to the tick.
+#+end_quote
+
+* User Story
+
+As a kid racing a bonus cutoff, I need the countdown to keep counting down on its own — minute by minute, then second by second with a beat — and to fade away quietly when the time is up, so that the pressure builds as the cutoff nears and missing it is no big moment.
+
+* Acceptance Criteria
+
+** [ ] Left open, the countdown appears when the cutoff comes within the lead time, steps down each whole minute, switches to seconds at the switch point, steps down each second, and is gone at the cutoff — with no reload and no browser-side clock. (SC-1, SC-2, SC-4)
+** [ ] Ticking the countdown does not reload the kiosk's data, and the kiosk never holds more than one boundary timer, whether the next change is a countdown step, a routine window edge or midnight. (SC-2)
+** [ ] A tick that arrives late or early shows the state for the actual time, not a step from the last one. (SC-2, SC-4)
+** [ ] When the seconds pill appears it grows in once; in seconds mode the dial's glyph beats once a second. (SC-2)
+** [ ] Whenever a countdown pill leaves — at the cutoff, on a schedule save, on a fail, or on finishing (where it cross-fades with the reward) — it fades out, with no message and no colour change. (SC-3, SC-4)
+** [ ] Under reduced motion the grow, beat and fade are all skipped and the states swap instantly. (SC-2, SC-4)
+** [ ] ~docs/design-language.org~ carries amendment 4 as a new dated "Motion" entry in its Rulings list, citing D152: an animation that answers no tap is allowed only in seconds mode, ~cd-grow~ and ~cd-fade~ run on server-pushed state changes, and all are skipped under ~prefers-reduced-motion~. (SC-2, SC-4)
+
+# Ruled by the human at the handoff (2026-10-08): amendment 4 is its own new "Motion" entry, not inside "Done rows sink" or Story 05's "Bonus countdown" entry. The DESIGN's "appended under the ruling it amends" lead-in fits amendments 1 and 2 only; that is a wording clarification for the Plan LOGBOOK, with no D-entry.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes Stories 01–05 left for this one live there.
+- This story depends on Story 01 (~Countdown.next_edge/4~) and Story 05 (the column's cached ~countdown_cutoff~ / ~countdown_eligible?~ and the two pill elements the animations attach to).
+- ~schedule_boundary/2~ is at ~lib/bear_cub_web/live/kiosk_live.ex~ line 863; it currently sends only ~:boundary~ with a ~max(ms, 1_000)~ floor. The message it arms must say which edge won. The design gives the countdown floor as "about 50 ms" — a soft value, not a contract. Every path that re-arms (mount, ~:boundary~, ~:schedule_changed~, ~:chores_changed~, the new ~:countdown_tick~) must cancel the stored timer first (D124). The existing boundary tests show how "exactly one timer" is checked.
+- The LiveView tests drive ticks with ~send(view.pid, :countdown_tick)~ and assert presence and ~data-mode~, not digits; stage cutoffs relative to the real now through ~ScheduleHelpers~ (no clock mocking).
+- Motion: three keyframes in ~assets/css/app.css~ with ~--animate-*~ theme entries, following the existing ~--animate-pop~ / ~sink-grow~ entries (around lines 167–193). ~phx-remove={JS.transition("animate-cd-fade", time: 600)}~ goes on both pills. Each animation carries ~motion-reduce:animate-none~.
+- Local review: a beat or fade cannot be proven by one still. Capture the seconds pill (staged via ~Scenarios.countdown/2~ a few minutes out, with ~open/1~) and a moment mid-fade or just after the cutoff; the Weather Story 05 Plan note describes freezing a transient with ~liveSocket.disconnect()~.

@@ -1,0 +1,77 @@
+#+title: Story 01 — The countdown's state as a pure function of the cutoff and now
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — properties 1, 2 and 4 of §Overview, the Local time canon line, §Key Behaviors / ~BearCub.Countdown~ — pure state (except the config-validation bullet, which is Story 02), and the ~state/5~, displayed-value and ~next_edge/4~ bullets of §Key Behaviors / Testing, Unit.
+
+From §Overview (verbatim):
+
+#+begin_quote
+1. *Per kid, to the cutoff that applies to them* (SC-1). The morning uses the one shared Early Bird cutoff, the evening each kid's own cutoff; each column computes its own countdown ([[file:../decisions.org::#d146][D146]], [[file:../decisions.org::#d148][D148]]).
+2. *Minutes, then seconds* (SC-2). ~:minutes~ mode above a configured switch point, ~:seconds~ mode at or below it, ticked by the server on the one boundary timer ([[file:../decisions.org::#d145][D145]], [[file:../decisions.org::#d147][D147]]).
+4. *A quiet end* (SC-4). At the cutoff the state is ~nil~ and the pill fades out; no message, no colour change, no "missed it" ([[file:../decisions.org::#d152][D152]]).
+#+end_quote
+
+#+begin_quote
+- *[[file:../decisions.org::#d133][D133]] — the verdict's cutoff test is strict.* ~before_cutoff?/2~ in ~BearCub.Chores~ is ~last_completed_at < cutoff~ in local time; a tap one instant before the cutoff earns.
+- *Local time* — all time logic takes a local datetime argument (~BearCub.LocalTime~); no ~DateTime.utc_now()~ in domain code.
+#+end_quote
+
+From §Key Behaviors / ~BearCub.Countdown~ — pure state (verbatim):
+
+#+begin_quote
+A new pure module: no clock, no config, no database. ~local_now~, the lead time and the seconds switch arrive as arguments.
+
+#+begin_src elixir
+@spec state(DateTime.t() | nil, boolean(), DateTime.t(), pos_integer(), pos_integer()) ::
+        nil | %{mode: :minutes | :seconds, remaining_ms: pos_integer(), fraction: float()}
+def state(cutoff, eligible?, local_now, lead_ms, switch_ms)
+
+@spec next_edge(DateTime.t() | nil, DateTime.t(), pos_integer(), pos_integer()) :: DateTime.t() | nil
+def next_edge(cutoff, local_now, lead_ms, switch_ms)
+#+end_src
+
+- ~state/5~ is ~nil~ when not eligible, when ~cutoff~ is ~nil~, when ~remaining <= 0~, or when ~remaining > lead~. Otherwise ~:seconds~ when ~remaining <= switch~, else ~:minutes~.
+- ~fraction~ drives the dial: ~remaining / lead~ in minutes mode, ~remaining / switch~ in seconds mode.
+- Displayed value: in minutes mode ~div(remaining_s, 60)~ where ~remaining_s = div(remaining_ms, 1000)~ — from the lead down to the switch, never =0 min=; in seconds mode ~m:ss~ of ~ceil(remaining_ms / 1000)~ — =5:00= down to =0:01=, then hidden. A tap during =0:01= still earns, matching the strict verdict ([[file:../decisions.org::#d133][D133]]).
+- ~next_edge/4~ is the next instant the display changes, or ~nil~ once the cutoff has passed: appearance (~cutoff − lead~), the next whole minute in minutes mode (~cutoff − k·60 s~), the next whole second in seconds mode (~cutoff − k·1 s~), and the cutoff itself. Every edge is measured back from the cutoff, so ticks never drift ([[file:../decisions.org::#d145][D145]]).
+#+end_quote
+
+From §Key Behaviors / Testing, Unit (verbatim, the bullets in this story's scope):
+
+#+begin_quote
+Unit — ~test/bear_cub/countdown_test.exs~ (pure; explicit ~local_now~ and cutoff):
+- ~state/5~: ~nil~ when ineligible, when the cutoff is ~nil~, when more than the lead remains, exactly at the cutoff, and after it; ~:minutes~ at exactly the lead and at switch + 1 s; ~:seconds~ at exactly the switch and at 1 ms; ~fraction~ at its bounds.
+- Displayed values: =30= and =5= in minutes mode; =5:00= and =0:01= in seconds mode; never =0 min= or =0:00=.
+- ~next_edge/4~: appearance, the minute steps, the switch, the second steps, the cutoff, ~nil~ after it.
+#+end_quote
+
+* User Story
+
+As a kid racing a bonus cutoff, I need the time I have left to be worked out exactly from my own cutoff and the real time, so that the countdown I will see counts whole minutes and then seconds to the instant the bonus stops paying, and is gone from that instant on.
+
+* Acceptance Criteria
+
+** [ ] With no cutoff, with the bonus not earnable, with more than the lead time left, exactly at the cutoff, and after it, there is no countdown. (SC-1, SC-3, SC-4)
+** [ ] From the lead time down to just above the seconds switch the countdown is in minutes; at or below the switch, down to the last millisecond before the cutoff, it is in seconds. (SC-2)
+** [ ] In minutes the shown value runs from the lead (=30=) down to the switch (=5=) and is never =0 min=; in seconds it runs from =5:00= down to =0:01= and is never =0:00=. (SC-2, SC-4)
+** [ ] The dial's fill drains from full to empty over the lead time in minutes, and refills to full at the switch and drains again over the seconds stretch. (SC-2)
+** [ ] The next moment the display changes is known ahead of time — the countdown's appearance, each whole minute, the switch, each whole second, and the cutoff, each measured back from the cutoff — and there is none once the cutoff has passed. (SC-2, SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]]; this is the first story, so there are none yet.
+- No dependencies: nothing reads ~BearCub.Countdown~ until Story 05. It comes first because it holds most of the SC-2 and SC-4 logic and is pure.
+- New module ~lib/bear_cub/countdown.ex~, tests in ~test/bear_cub/countdown_test.exs~. Every test passes an explicit ~local_now~ and cutoff; no clock reads anywhere (CLAUDE.md "All time logic takes a local datetime argument").
+- The Testing list puts the displayed-value cases in ~countdown_test.exs~, so the minutes / ~m:ss~ formatting belongs in ~BearCub.Countdown~ (a public function the component in Story 05 calls), not in the component. The design does not name the function; pick one and record its name in this story's Plan note for Story 05.
+- Config validation (~validate_config!/1~ or equivalent) is in the same module but is Story 02's scope.
+- Boundary arithmetic: ~remaining~ is ~DateTime.diff(cutoff, local_now, :millisecond)~. Minutes edges are ~cutoff − k·60 s~ and second edges ~cutoff − k·1 s~, so the minutes display (~div(remaining_s, 60)~) and the seconds display (~ceil~ of seconds) change exactly on those edges; test the edge just before and just after the switch to confirm ~next_edge/4~ never skips the switch.

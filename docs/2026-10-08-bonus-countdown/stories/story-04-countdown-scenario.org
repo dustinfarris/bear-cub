@@ -1,0 +1,54 @@
+#+title: Story 04 — Staging a cutoff minutes away for review
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — the D119 / D126 canon line of §Overview and §Key Behaviors / Dev scenario.
+
+From §Overview (verbatim):
+
+#+begin_quote
+- *[[file:../decisions.org::#d119][D119]] / [[file:../decisions.org::#d126][D126]] — no clock mocking.* Tests and dev scenarios stage time by inserting schedule versions relative to the real now.
+#+end_quote
+
+From §Key Behaviors / Dev scenario (verbatim):
+
+#+begin_quote
+~BearCub.Dev.Scenarios.countdown/2~:
+- ~countdown(:morning, minutes)~ moves the shared Early Bird cutoff to ~minutes~ from now;
+- ~countdown(:evening, minutes)~ moves every kid's Sleepy Bear cutoff to ~minutes~ from now;
+- ~countdown(:evening, [{kid_id, minutes}, ...])~ sets them per kid.
+
+It writes a schedule version through ~write_version/2~, so ~restore/0~ undoes it and ~:schedule_changed~ reaches an already-open kiosk. Pair it with ~open/1~. It is added to ~test/bear_cub/dev/scenarios_test.exs~ and to the CLAUDE.md scenario list.
+
+Gate screenshots at 1280 × 800: the morning with both kids in minutes; one kid in seconds while the other has finished early; the evening with two different cutoffs; a kid with no evening bonus.
+#+end_quote
+
+* User Story
+
+As the person reviewing the kiosk before a deploy, I need one call that puts a kid's bonus cutoff a chosen number of minutes from now, so that every countdown state the gate asks for can be staged on the running dev server without touching the clock or the database by hand.
+
+* Acceptance Criteria
+
+** [ ] ~countdown(:morning, minutes)~ moves the shared Early Bird cutoff to that many minutes from now, and an already-open kiosk picks up the new schedule without a reload. (SC-1)
+** [ ] ~countdown(:evening, minutes)~ sets every kid's Sleepy Bear cutoff to that many minutes from now, including a kid who had none today; ~countdown(:evening, [{kid_id, minutes}, ...])~ is the complete evening picture — each listed kid gets their own cutoff and an unlisted kid's existing cutoff is removed, so a kid with no evening bonus is staged in the same call. (SC-1)
+** [ ] ~restore/0~ undoes a ~countdown/2~ call, bringing back the schedule from before the first staging scenario. (SC-1)
+** [ ] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~ and listed in the CLAUDE.md scenario list. (SC-1)
+
+# Ruled by the human at the handoff (2026-10-08): the minutes form gives every kid a cutoff, and the per-kid list removes an unlisted kid's cutoff. Story 04's update-design pass records this in the DESIGN with its D-entry and Advisory.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- Independent of Stories 01–03 in code: it writes schedule data the kiosk already reads. It sits here so Story 05's local review can stage the countdown; until then, its effect is visible as the moved cutoff (a timely finish earning or not) and on the admin Schedule page.
+- ~dev/bear_cub/dev/scenarios.ex~: model it on ~cutoff/1~ (line 172) and ~night_owl/1~ (line 183), both of which go through the private ~write_version/2~ (line 287). ~night_owl/1~ shows how per-kid ~night_owl_cutoffs~ are built today. A cutoff must sit strictly inside its routine's window (schedule validation); pairing with ~open/1~ is what makes any near cutoff valid.
+- Minutes from now means from ~LocalTime.now()~, truncated to whatever precision the ~Time~ cutoff stores; note in the Plan LOGBOOK if the cutoff lands up to a minute early because of that, since Story 05's review counts on it.
+- Run it through Tidewave ~project_eval~ so the broadcast lands in the running server (CLAUDE.md).

@@ -1,0 +1,57 @@
+#+title: Story 02 — Lead time and seconds switch set once in the NixOS module
+#+date: 2026-10-08
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Data Model / Configuration, the config-validation bullet of §Key Behaviors / ~BearCub.Countdown~ — pure state, and the config-validation bullet of §Key Behaviors / Testing, Unit.
+
+From §Data Model / Configuration (verbatim):
+
+#+begin_quote
+Runtime config, read in ~config/runtime.exs~ from env vars that new ~services.bear-cub~ module options in ~nix/module.nix~ set ([[file:../decisions.org::#d147][D147]]):
+
+| Key                                          | Env var                               | Default | Meaning                                                 |
+|----------------------------------------------+---------------------------------------+---------+---------------------------------------------------------|
+| ~:bonus_countdown~, ~lead_minutes:~          | =BEAR_CUB_COUNTDOWN_LEAD_MINUTES=     | 30      | The countdown appears this long before the cutoff       |
+| ~:bonus_countdown~, ~seconds_minutes:~       | =BEAR_CUB_COUNTDOWN_SECONDS_MINUTES=  | 5       | At or below this much time left, seconds mode           |
+
+Boot refuses unless both are positive integers and lead > seconds. One value each for the whole app: not per routine, not in the admin UI (PRD Out of Scope). ~KioskLive~ reads the config at mount into assigns and passes milliseconds into ~BearCub.Countdown~.
+#+end_quote
+
+From §Key Behaviors / ~BearCub.Countdown~ — pure state (verbatim):
+
+#+begin_quote
+- Config validation lives here too (a ~validate_config!/1~ or equivalent called from ~config/runtime.exs~), so the boot rule has unit tests.
+#+end_quote
+
+From §Key Behaviors / Testing, Unit (verbatim):
+
+#+begin_quote
+- Config validation: good values pass; zero, negative, non-integer, and seconds ≥ lead each refuse.
+#+end_quote
+
+* User Story
+
+As a parent, I need to set how long before a cutoff the countdown appears, and when it switches to seconds, once in the server's configuration, so that the kiosk's urgency follows the household's own pace and a mistaken setting is caught before the kids ever see it.
+
+* Acceptance Criteria
+
+** [ ] The lead time and the seconds switch are settable, in minutes, through new ~services.bear-cub~ NixOS module options, which reach the app as its ~:bonus_countdown~ configuration; there is one value of each for the whole app, and neither appears in the admin UI. (SC-1, SC-2)
+** [ ] Left unset, the lead time is 30 minutes and the seconds switch 5 minutes. (SC-1, SC-2)
+** [ ] A lead time or seconds switch that is zero, negative or not a whole number, or a seconds switch at or above the lead time, stops the app from starting. (SC-1, SC-2)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes Story 01 left for this one live there.
+- This story depends on Story 01 because the validation function lives in ~BearCub.Countdown~ and its tests extend ~test/bear_cub/countdown_test.exs~.
+- Reading the config into ~KioskLive~ assigns at mount is Story 05's scope, not this one; this story ends at the app env.
+- Follow the weather config's path (Weather Story 02, ~docs/2026-10-07-weather-indicator/~): ~config/runtime.exs~ reads the env vars in every environment (not under ~if config_env() == :prod~), parses them, and calls the validation so dev and test take the defaults and a bad value raises at boot. ~runtime.exs~ line 24 (timezone) and ~nix/module.nix~ line 26 / line 104 show the option-to-env-var pattern; match the module's camelCase option naming. A non-numeric env value refuses boot too, rather than falling back.
+- Evidence for the module-options AC: ~mix test~ cannot exercise ~nix/module.nix~. Show it by reading the options and ~environment~ entries beside the ~runtime.exs~ reads, plus ~nix-instantiate --parse nix/module.nix~, as Weather Story 02 did. A ~mix run~ with a bad env value demonstrates the boot refusal.
