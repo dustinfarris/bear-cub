@@ -48,7 +48,14 @@ Design: [[file:DESIGN.org]]
   For Story 06: ~mount_kiosk/1~ assigns ~:countdown_ms~ as ~{lead_ms, switch_ms}~ (from ~countdown_ms/0~), and ~load/3~ hands ~build_column~ a trailing ~{local_now, lead_ms, switch_ms}~ tuple, so its arity is now 18. Each column carries ~countdown_cutoff~ (local ~DateTime~ or ~nil~, ~nil~ at night), ~countdown_eligible?~ and ~countdown~; a tick can map ~Countdown.state/5~ over the columns from the first two with no reload. ~banner/1~ takes an optional ~countdown~ assign (default ~nil~) and shows it only when ~not reveal?~; ~countdown/1~ is public and its glyph wrapper is ~#countdown-glyph-{id}~. The ~:countdown_tick~ LiveView test was left to Story 06 with its clause. \\
   For review staging: a dev server started before Story 02 has no ~:bonus_countdown~ env and 500s on ~/~ at mount (~fetch_env!~); restart it, or ~Application.put_env(:bear_cub, :bonus_countdown, lead_minutes: 30, seconds_minutes: 5)~ through ~project_eval~. The dev roster's mornings may already be complete; ~Scenarios.reset/0~ first.
 :END:
-** TODO [[file:stories/story-06-countdown-ticks.org][Story 06 — The countdown ticks, grows, beats and fades]]
+** DONE [[file:stories/story-06-countdown-ticks.org][Story 06 — The countdown ticks, grows, beats and fades]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:27] \\
+  Ruled by the human at the Story 06 handoff: design-language amendment 4 is its own new "Motion" entry in the Rulings list, not appended inside "Done rows sink" or "Bonus countdown". DESIGN §Key Behaviors / Design-language amendments says each amendment is "appended under the ruling it amends"; that lead-in fits amendments 1 and 2 only. A wording clarification, no D-entry. \\
+  The re-arm lives at the end of ~load/3~, so every reload path (mount, ~:boundary~, ~:schedule_changed~, ~:chores_changed~ and the rest) re-arms the one timer; the explicit ~schedule_boundary/2~ calls in mount, ~:boundary~ and ~:schedule_changed~ are gone. ~:countdown_tick~ re-arms itself without a reload. \\
+  The left slot's wrapper is a ~grid~ with both pills on ~col-start-1 row-start-1~, so a fading minutes pill sits under the arriving seconds pill instead of beside it. \\
+  For the gate's re-shoot: a still of the fade cannot be captured by restyling the pill, because the next tick's patch resets the inline style. Call ~liveSocket.disconnect()~ first, swap ~animate-cd-grow~ for ~animate-cd-fade~ on the pill, and pause its animation through the Web Animations API (~el.getAnimations()~, ~pause()~, ~currentTime = 300~). Then hide the disconnect toast and re-check the viewport, because the resize did not survive the navigation.
+:END:
 
 * Deferred
 

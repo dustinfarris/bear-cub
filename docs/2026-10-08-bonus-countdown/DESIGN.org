@@ -162,9 +162,9 @@ Three keyframes in ~assets/css/app.css~, each with an ~--animate-*~ theme entry 
 
 - ~cd-grow~: 420 ms ~cubic-bezier(.34,1.56,.64,1)~, once — ~scale(.7)~ at opacity .4 → ~scale(1.08)~ at opacity 1 at 60 % → ~scale(1)~. On the seconds pill as it mounts.
 - ~cd-beat~: 1 s, infinite, ease-in-out — ~scale(1)~ → ~scale(1.14)~ at 12 % → ~scale(1)~ at 30 %. On the seconds-mode dial glyph. It mounts at a second edge, which phases it roughly with the tick; exact phase-locking is not attempted.
-- ~cd-fade~: 600 ms to ~opacity: 0~, through ~phx-remove={JS.transition("animate-cd-fade", time: 600)}~ on both pills. It runs whenever a pill leaves: at the cutoff, on a schedule save or a fail, and on finishing, where it cross-fades with the reward appearing.
+- ~cd-fade~: 600 ms to ~opacity: 0~, through ~phx-remove={JS.transition("animate-cd-fade motion-reduce:animate-none motion-reduce:opacity-0", time: 600)}~ on both pills. It runs whenever a pill leaves: at the cutoff, on a schedule save or a fail, and on finishing, where it cross-fades with the reward appearing. ~phx-remove~ runs only on the element LiveView discards, so the left slot's wrapper is always rendered and the pill itself carries the ~:if~.
 
-All three carry ~motion-reduce:animate-none~: under reduced motion the states swap instantly.
+All three carry ~motion-reduce:animate-none~: under reduced motion the states swap instantly. The fade also carries ~motion-reduce:opacity-0~, because ~phx-remove~ holds the leaving pill for the transition's 600 ms whether or not it animates.
 
 ** The Sleepy Bear rename (display only)
 
@@ -238,3 +238,9 @@ Decisions for this initiative: [[file:../decisions.org]], the entries whose sett
 /Sections affected: Key Behaviors (Dev scenario)/
 
 This section used to say ~countdown(:evening, minutes)~ "moves every kid's Sleepy Bear cutoff" and the list form "sets them per kid". That wording reads naturally as touching only kids who already had a cutoff, with the list merging into what was there, so an unlisted kid would keep their cutoff. Do not implement or rely on that reading: the minutes form gives every kid a cutoff, the list form removes an unlisted kid's cutoff for today, and both evening forms set ~N~ to 3 when it was 0. Rationale: [[file:../decisions.org::#d153][D153]].
+
+** [2026-10-08 Thu 18:27] Motion: the fade is no longer a bare ~JS.transition("animate-cd-fade", time: 600)~
+
+/Sections affected: Key Behaviors (Motion)/
+
+This section used to give the fade as ~phx-remove={JS.transition("animate-cd-fade", time: 600)}~ and claim that, with ~motion-reduce:animate-none~, reduced motion swaps the states instantly. That is the natural one-liner, but it does neither: the bare transition has no ~motion-reduce~ variant, so the fade plays under reduced motion, and even with ~animate-none~ alone ~phx-remove~ keeps the pill on screen at full opacity for 600 ms. Keep ~motion-reduce:opacity-0~ in the transition. Likewise do not put the ~:if~ back on the left slot's wrapper ~div~: ~phx-remove~ on a pill inside a wrapper that leaves never runs. A corrected error, no D-entry.

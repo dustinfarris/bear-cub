@@ -68,23 +68,71 @@ As a kid racing a bonus cutoff, I need the countdown to keep counting down on it
 
 * Acceptance Criteria
 
-** [ ] Left open, the countdown appears when the cutoff comes within the lead time, steps down each whole minute, switches to seconds at the switch point, steps down each second, and is gone at the cutoff — with no reload and no browser-side clock. (SC-1, SC-2, SC-4)
-** [ ] Ticking the countdown does not reload the kiosk's data, and the kiosk never holds more than one boundary timer, whether the next change is a countdown step, a routine window edge or midnight. (SC-2)
-** [ ] A tick that arrives late or early shows the state for the actual time, not a step from the last one. (SC-2, SC-4)
-** [ ] When the seconds pill appears it grows in once; in seconds mode the dial's glyph beats once a second. (SC-2)
-** [ ] Whenever a countdown pill leaves — at the cutoff, on a schedule save, on a fail, or on finishing (where it cross-fades with the reward) — it fades out, with no message and no colour change. (SC-3, SC-4)
-** [ ] Under reduced motion the grow, beat and fade are all skipped and the states swap instantly. (SC-2, SC-4)
-** [ ] ~docs/design-language.org~ carries amendment 4 as a new dated "Motion" entry in its Rulings list, citing D152: an animation that answers no tap is allowed only in seconds mode, ~cd-grow~ and ~cd-fade~ run on server-pushed state changes, and all are skipped under ~prefers-reduced-motion~. (SC-2, SC-4)
+** [X] Left open, the countdown appears when the cutoff comes within the lead time, steps down each whole minute, switches to seconds at the switch point, steps down each second, and is gone at the cutoff — with no reload and no browser-side clock. (SC-1, SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified by the second story-verifier pass (after a fix loop, see AC6). ~schedule_boundary/2~ (~kiosk_live.ex~) arms for the earlier of the window edge and every column's ~Countdown.next_edge/4~ and sends ~:countdown_tick~ when a countdown edge wins; no browser clock added. Tests: "a :countdown_tick moves the state on from the cached cutoff, without a reload" (minutes, seconds, nil), "a tick leaves exactly one boundary timer, armed for the countdown's next edge", "without a countdown the timer still waits for the window edge". No test runs the whole sequence on live timers, since cutoffs are staged against the real clock.
+:END:
+** [X] Ticking the countdown does not reload the kiosk's data, and the kiosk never holds more than one boundary timer, whether the next change is a countdown step, a routine window edge or midnight. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: the ~:countdown_tick~ clause maps ~Countdown.state/5~ over the cached ~countdown_cutoff~ / ~countdown_eligible?~ with no query and no ~load/3~. ~schedule_boundary/2~ moved to the end of ~load/3~ so mount, ~:boundary~, ~:schedule_changed~ and finishes all re-arm, cancelling the stored timer first. Tests: "a tick leaves exactly one boundary timer…" and "a finish re-arms the one timer" assert the old timer reads false and the new one is live.
+:END:
+** [X] A tick that arrives late or early shows the state for the actual time, not a step from the last one. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: the tick handler recomputes from ~LocalTime.now()~. Test "a tick shows the state for the actual time, not a step from the last" jumps the cache straight to the seconds state and gets seconds mode.
+:END:
+** [X] When the seconds pill appears it grows in once; in seconds mode the dial's glyph beats once a second. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: ~animate-cd-grow~ on ~#countdown-sec-*~, ~animate-cd-beat~ on ~#countdown-glyph-*~ in seconds mode only; keyframes and ~--animate-*~ entries in ~assets/css/app.css~ (420 ms cubic-bezier, 1 s infinite). Test "both pills fade out; the seconds pill grows in and its dial glyph beats" asserts the classes and that the minutes glyph has no beat; computed ~animation-name~ read as ~cd-grow~ / ~cd-beat~ in Chrome at 1280 × 800. The beat's pulse itself cannot be shown in a still.
+:END:
+** [X] Whenever a countdown pill leaves — at the cutoff, on a schedule save, on a fail, or on finishing (where it cross-fades with the reward) — it fades out, with no message and no colour change. (SC-3, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: both pills carry ~phx-remove~ with ~JS.transition("animate-cd-fade …", time: 600)~; the left-slot wrapper is now always rendered so the pill, not the wrapper, is the discarded element and the fade can run (~phx-remove~ fires only on the element morphdom discards). Opacity only: no message, no colour change. Test asserts the attribute on both pills; ~story-06-mid-fade.png~ shows a real mid-fade frame. No test fires ~phx-remove~ in a browser.
+:END:
+** [X] Under reduced motion the grow, beat and fade are all skipped and the states swap instantly. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Not met on the first verifier pass: the fade ran under reduced motion because ~JS.transition~ carried no ~motion-reduce~ variant. Fixed: the transition is now ~"animate-cd-fade motion-reduce:animate-none motion-reduce:opacity-0"~ on both pills (the pill goes to opacity 0 at once), with ~motion-reduce:animate-none~ already on the grow and beat. The test asserts ~phx-remove*='motion-reduce:opacity-0'~ on both pills. Re-verified by the second pass.
+:END:
+** [X] ~docs/design-language.org~ carries amendment 4 as a new dated "Motion" entry in its Rulings list, citing D152: an animation that answers no tap is allowed only in seconds mode, ~cd-grow~ and ~cd-fade~ run on server-pushed state changes, and all are skipped under ~prefers-reduced-motion~. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: ~docs/design-language.org~ carries a new dated "Motion [2026-10-08]" entry of its own in the Rulings list, citing D152: the beat is the first animation that answers no tap and is allowed in seconds mode only; grow and fade run on server-pushed changes; all are skipped under ~prefers-reduced-motion~. Accurate now that AC6 is fixed.
+:END:
 
 # Ruled by the human at the handoff (2026-10-08): amendment 4 is its own new "Motion" entry, not inside "Done rows sink" or Story 05's "Bonus countdown" entry. The DESIGN's "appended under the ruling it amends" lead-in fits amendments 1 and 2 only; that is a wording clarification for the Plan LOGBOOK, with no D-entry.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: AC1–AC7 all met on the second verifier pass, none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: new LiveView tests in the Story 06 block of ~test/bear_cub_web/live/kiosk_live_test.exs~ (tick, actual-time, one timer, edge targeting, finish re-arm, pill motion classes incl. the reduced-motion fade) pass in ~mix precommit~.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified by the verifier: format and compile with warnings-as-errors pass; comments wrapped at 80, no new hex values, time logic takes a datetime argument, ~Chores~ does not depend on ~Calendars~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified: ~mix precommit~ exited 0 with 987 tests passing, twice in the second verifier pass.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 18:26] \\
+  Verified at 1280 × 800 (innerWidth/innerHeight read, files checked as 1280 × 800): ~story-06-seconds-pill.png~ (staged with ~Scenarios.reset/0~, ~open(:morning)~, ~countdown(:morning, 3)~) and ~story-06-mid-fade.png~ (the ~cd-fade~ keyframe paused at 300 ms, opacity 0.315). Not met on the first pass because the first mid-fade capture showed full opacity; retaken. Kid names and event text hidden. Beat and grow are evidenced by computed ~animation-name~ and tests, not stills.
+:END:
 
 * Technical Notes
 
