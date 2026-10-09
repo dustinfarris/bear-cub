@@ -1007,6 +1007,199 @@ defmodule BearCubWeb.KioskLiveTest do
     end
   end
 
+  describe "bonus countdown in the banner (Story 05, D146, D148)" do
+    alias BearCub.Chores
+
+    setup do
+      kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      kid_b = kid_fixture(%{name: "Kid B", color: "#2563eb", position: 1})
+      morning_a = chore_fixture(kid_a, %{name: "Brush Teeth", icon: "🪥", routine: "morning"})
+      morning_b = chore_fixture(kid_b, %{name: "Make Bed", icon: "🛏️", routine: "morning"})
+      evening_a = chore_fixture(kid_a, %{name: "Pajamas", icon: "🌙", routine: "evening"})
+      chore_fixture(kid_b, %{name: "Teeth", icon: "🦷", routine: "evening"})
+
+      %{
+        kid_a: kid_a,
+        kid_b: kid_b,
+        morning_a: morning_a,
+        morning_b: morning_b,
+        evening_a: evening_a
+      }
+    end
+
+    # a cutoff `minutes` from the real now, as the wall-clock time the
+    # schedule stores
+    defp cutoff_in(minutes) do
+      LocalTime.now() |> DateTime.add(round(minutes * 60), :second) |> DateTime.to_time()
+    end
+
+    defp mode_of(view, kid) do
+      cond do
+        has_element?(view, "#countdown-min-#{kid.id}[data-mode=minutes]") -> :minutes
+        has_element?(view, "#countdown-sec-#{kid.id}[data-mode=seconds]") -> :seconds
+        true -> nil
+      end
+    end
+
+    defp morning_race(minutes) do
+      morning_active()
+      put_cutoff(cutoff_in(minutes))
+    end
+
+    test "a cutoff 10 minutes out gives both kids minutes mode", %{conn: conn} = ctx do
+      morning_race(10)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, ctx.kid_a) == :minutes
+      assert mode_of(view, ctx.kid_b) == :minutes
+    end
+
+    test "a cutoff 3 minutes out gives both kids seconds mode", %{conn: conn} = ctx do
+      morning_race(3)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, ctx.kid_a) == :seconds
+      assert mode_of(view, ctx.kid_b) == :seconds
+    end
+
+    test "an evening with different cutoffs gives each kid their own mode", %{conn: conn} = ctx do
+      evening_active()
+      put_night_owl([{ctx.kid_a.id, cutoff_in(10)}, {ctx.kid_b.id, cutoff_in(3)}], 3)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, ctx.kid_a) == :minutes
+      assert mode_of(view, ctx.kid_b) == :seconds
+      assert has_element?(view, "#countdown-glyph-#{ctx.kid_a.id} svg[fill=currentColor]")
+    end
+
+    test "uses the configured lead time and seconds switch", %{conn: conn} = ctx do
+      [lead_minutes: lead, seconds_minutes: switch] =
+        Application.fetch_env!(:bear_cub, :bonus_countdown)
+
+      morning_race(lead + 1)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, ctx.kid_a) == nil
+
+      morning_race(switch + 1)
+      Phoenix.PubSub.broadcast(BearCub.PubSub, "schedules", :schedule_changed)
+      assert mode_of(view, ctx.kid_a) == :minutes
+    end
+
+    test "the reward renders instead once the routine is complete",
+         %{conn: conn, kid_a: kid, morning_a: chore} do
+      morning_race(10)
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "kiosk")
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+    end
+
+    test "a failed routine chore hides it", %{conn: conn, kid_a: kid, morning_a: chore} do
+      morning_race(10)
+      {:ok, _} = Chores.complete_chore(chore, LocalTime.now(), "kiosk")
+      {:ok, _} = Chores.fail_chore(chore, LocalTime.now())
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "no countdown at E = 0", %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      put_bonuses(5, 0)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "no countdown at N = 0", %{conn: conn, kid_a: kid} do
+      evening_active()
+      put_night_owl([{kid.id, cutoff_in(10)}], 0)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "a kid with no Sleepy Bear cutoff has none, the other still counts",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      evening_active()
+      put_night_owl([{kid_a.id, cutoff_in(10)}], 3)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid_a) == :minutes
+      assert mode_of(view, kid_b) == nil
+    end
+
+    test "none with the cutoff beyond the lead time", %{conn: conn, kid_a: kid} do
+      morning_race(45)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "none once the cutoff has passed", %{conn: conn, kid_a: kid} do
+      morning_race(-5)
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "none outside the routine window", %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      put_windows({~T[23:59:59], ~T[23:59:59]}, {~T[23:59:59], ~T[23:59:59]})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#night-screen")
+      assert mode_of(view, kid) == nil
+    end
+
+    test "finishing the last chore removes it and the reward takes its place",
+         %{conn: conn, kid_a: kid, morning_a: chore} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, kid) == :minutes
+
+      view |> element("#chore-#{chore.id}") |> render_click()
+      send(view.pid, {:collapse_ready, kid.id})
+      _ = render(view)
+
+      assert mode_of(view, kid) == nil
+      assert has_element?(view, "#completion-icon-#{kid.id}")
+    end
+
+    test "a schedule save that moves the cutoff away hides it",
+         %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, kid) == :minutes
+
+      put_cutoff(cutoff_in(45))
+      Phoenix.PubSub.broadcast(BearCub.PubSub, "schedules", :schedule_changed)
+
+      assert mode_of(view, kid) == nil
+    end
+
+    test "stays in the banner while the shop is open", %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#gift-button-#{kid.id}") |> render_click()
+
+      assert mode_of(view, kid) == :minutes
+    end
+  end
+
   describe "night owl (D136)" do
     alias BearCub.Chores
     import BearCub.ScheduleHelpers, only: [put_night_owl: 2, evening_active: 0]

@@ -113,6 +113,87 @@ defmodule BearCubWeb.KioskComponents do
     """
   end
 
+  attr :kid, :map, required: true
+  attr :routine, :atom, required: true
+  attr :mode, :atom, values: [:minutes, :seconds], required: true
+  attr :remaining_ms, :integer, required: true
+  attr :fraction, :float, required: true
+
+  @doc """
+  The bonus countdown in a kid's banner (D148, D151): renders from assigns
+  only, no clock. Minutes and seconds are separate elements so the grow
+  runs once, when the seconds pill mounts; between ticks only the text and
+  the dial's inline style are patched. The time is set in the system sans,
+  never `font-reward`, and no bonus amount appears in either mode.
+  """
+  def countdown(%{mode: :minutes} = assigns) do
+    assigns = assign_countdown(assigns)
+
+    ~H"""
+    <div
+      id={"countdown-min-#{@kid.id}"}
+      data-mode="minutes"
+      class="flex h-[60px] items-center gap-[10px] rounded-full bg-white/20 pl-[6px] pr-[18px] text-white"
+    >
+      <span
+        class="flex size-[50px] shrink-0 items-center justify-center rounded-full"
+        style={"background: conic-gradient(#fff 0deg #{@angle}deg, rgba(255,255,255,.3) #{@angle}deg 360deg)"}
+      >
+        <span
+          id={"countdown-glyph-#{@kid.id}"}
+          class="flex size-10 items-center justify-center rounded-full"
+          style={"background-color: var(--routine-#{@routine}); color: #{if @routine == :morning, do: "var(--routine-morning-content)", else: "#fff"}; line-height: 0"}
+        >
+          <.bonus_glyph routine={@routine} width={30} />
+        </span>
+      </span>
+      <span class="flex items-baseline">
+        <span class="font-sans text-[40px] font-extrabold tabular-nums leading-none">
+          {@text}
+        </span>
+        <span class="ml-[10px] self-end pb-[14px] font-sans text-[22px] font-bold leading-none">
+          min
+        </span>
+      </span>
+    </div>
+    """
+  end
+
+  def countdown(%{mode: :seconds} = assigns) do
+    assigns = assign_countdown(assigns)
+
+    ~H"""
+    <div
+      id={"countdown-sec-#{@kid.id}"}
+      data-mode="seconds"
+      class="flex h-[70px] items-center gap-[10px] rounded-full border-[3px] border-solid border-white pl-[5px] pr-5"
+      style={"background-color: var(--routine-#{@routine}); color: var(--routine-#{@routine}-content)"}
+    >
+      <span
+        class="flex size-[58px] shrink-0 items-center justify-center rounded-full"
+        style={"background: conic-gradient(var(--routine-#{@routine}-content) 0deg #{@angle}deg, color-mix(in oklab, var(--routine-#{@routine}-content) 22%, transparent) #{@angle}deg 360deg)"}
+      >
+        <span
+          id={"countdown-glyph-#{@kid.id}"}
+          class="flex size-11 items-center justify-center rounded-full"
+          style={"background-color: var(--color-base-100); color: #{if @routine == :morning, do: "var(--routine-morning-content)", else: "var(--routine-evening)"}; line-height: 0"}
+        >
+          <.bonus_glyph routine={@routine} width={34} />
+        </span>
+      </span>
+      <span class="font-sans text-[56px] font-extrabold tabular-nums leading-none">
+        {@text}
+      </span>
+    </div>
+    """
+  end
+
+  defp assign_countdown(assigns) do
+    assigns
+    |> assign(:angle, Float.round(assigns.fraction * 360, 1))
+    |> assign(:text, BearCub.Countdown.display(assigns))
+  end
+
   @doc """
   Header band: the color block, not the name, is the primary identifier
   (FR-5a) — a pre-reader finds their column by color. Never dimmed:
@@ -136,6 +217,10 @@ defmodule BearCubWeb.KioskComponents do
   attr :n, :integer, required: true, doc: "the Night Owl bonus as priced for this routine-day"
   attr :points, :integer, required: true
   attr :pending_request?, :boolean, required: true
+
+  attr :countdown, :map,
+    default: nil,
+    doc: "`Countdown.state/5`, or nil; the left slot shows it when the reward is not due"
 
   def banner(assigns) do
     ~H"""
@@ -195,6 +280,20 @@ defmodule BearCubWeb.KioskComponents do
           </.bonus_pill>
         </span>
       </button>
+      <%!-- Left slot (D148): reward, countdown or nothing — the countdown
+           needs the routine incomplete, the reward complete, so never both. --%>
+      <div
+        :if={@countdown && not @reveal?}
+        class="absolute left-4 top-1/2 -translate-y-1/2"
+      >
+        <.countdown
+          kid={@kid}
+          routine={@routine}
+          mode={@countdown.mode}
+          remaining_ms={@countdown.remaining_ms}
+          fraction={@countdown.fraction}
+        />
+      </div>
       <h1 class="font-reward text-4xl font-black tracking-tight text-white drop-shadow-sm">
         {@kid.name}
       </h1>

@@ -5,6 +5,7 @@ defmodule BearCubWeb.KioskLive do
 
   alias BearCub.Calendars
   alias BearCub.Chores
+  alias BearCub.Countdown
   alias BearCub.LocalTime
   alias BearCub.Points
   alias BearCub.Rewards
@@ -74,6 +75,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:rewards_timers, %{})
      |> assign(:counting, %{})
      |> assign(:boundary_timer, nil)
+     |> assign(:countdown_ms, countdown_ms())
      |> load(now)
      |> schedule_boundary(now)}
   end
@@ -412,6 +414,13 @@ defmodule BearCubWeb.KioskLive do
     assign(socket, :settling, MapSet.put(socket.assigns.settling, chore_id))
   end
 
+  # The configured lead time and seconds switch, in milliseconds (Story 02),
+  # read once at mount and handed to `BearCub.Countdown`.
+  defp countdown_ms do
+    config = Application.fetch_env!(:bear_cub, :bonus_countdown)
+    {:timer.minutes(config[:lead_minutes]), :timer.minutes(config[:seconds_minutes])}
+  end
+
   defp load(socket, local_now, opts \\ []) do
     just_sunk = Keyword.get(opts, :just_sunk)
 
@@ -450,6 +459,7 @@ defmodule BearCubWeb.KioskLive do
     rewards = socket.assigns.rewards
     just_risen = socket.assigns.just_risen
     counting = socket.assigns.counting
+    {lead_ms, switch_ms} = socket.assigns.countdown_ms
 
     {columns, pending_collapse} =
       Enum.map_reduce(Chores.list_kids(), pending_collapse, fn kid, pending_collapse ->
@@ -470,7 +480,8 @@ defmodule BearCubWeb.KioskLive do
           rewards,
           counting,
           just_sunk,
-          just_risen
+          just_risen,
+          {local_now, lead_ms, switch_ms}
         )
       end)
 
@@ -535,7 +546,8 @@ defmodule BearCubWeb.KioskLive do
          rewards,
          counting,
          just_sunk,
-         just_risen
+         just_risen,
+         {local_now, lead_ms, switch_ms}
        ) do
     chores = if night?, do: [], else: Chores.list_chores(kid, Atom.to_string(auto))
     complete? = chores != [] and Enum.all?(chores, &Map.has_key?(completions, &1.id))
@@ -634,9 +646,24 @@ defmodule BearCubWeb.KioskLive do
     # shopping — the sibling column pays nothing for the reward domain.
     catalog = if state == :rewards, do: build_catalog(kid, today), else: []
 
+    # Bonus countdown (D146, D148): priced by the version in force now. The
+    # cutoff and eligibility are kept on the column so a tick can recompute
+    # `countdown` without reloading.
+    countdown_cutoff = if night?, do: nil, else: countdown_cutoff(kid, auto, version, today)
+
+    countdown_eligible? =
+      countdown_cutoff != nil and not complete? and not failed? and
+        bonus_on?(auto, version)
+
+    countdown =
+      Countdown.state(countdown_cutoff, countdown_eligible?, local_now, lead_ms, switch_ms)
+
     column = %{
       kid: kid,
       state: state,
+      countdown_cutoff: countdown_cutoff,
+      countdown_eligible?: countdown_eligible?,
+      countdown: countdown,
       routine: auto,
       reveal?: reveal?,
       complete?: complete?,
@@ -664,6 +691,30 @@ defmodule BearCubWeb.KioskLive do
     }
 
     {column, pending_collapse}
+  end
+
+  defp bonus_on?(:morning, version), do: version.early_bird_bonus > 0
+  defp bonus_on?(:evening, version), do: version.night_owl_bonus > 0
+
+  # The cutoff that applies to this kid today as a local DateTime: the one
+  # shared Early Bird cutoff in the morning, the kid's own Sleepy Bear
+  # cutoff in the evening (nil when they have none).
+  defp countdown_cutoff(kid, auto, version, today) do
+    day = Routines.day(version, today)
+
+    time =
+      case auto do
+        :morning ->
+          day.early_bird_cutoff
+
+        :evening ->
+          case Enum.find(day.night_owl_cutoffs, &(&1.kid_id == kid.id)) do
+            nil -> nil
+            entry -> entry.cutoff
+          end
+      end
+
+    time && DateTime.new!(today, time, LocalTime.timezone())
   end
 
   # Done extras rise (D117): newest completion first, then the pending rows
@@ -946,6 +997,7 @@ defmodule BearCubWeb.KioskLive do
               events: events,
               points: points,
               pending_request?: pending_request?,
+              countdown: countdown,
               catalog: catalog
             } <-
               @columns
@@ -970,6 +1022,7 @@ defmodule BearCubWeb.KioskLive do
             n={n}
             points={points}
             pending_request?={pending_request?}
+            countdown={countdown}
           />
 
           <%!-- Renders only while `standing?` (already window- and

@@ -27,6 +27,81 @@ defmodule BearCubWeb.KioskComponentsTest do
     end
   end
 
+  describe "countdown/1" do
+    defp countdown(attrs) do
+      render_component(
+        &KioskComponents.countdown/1,
+        Map.merge(
+          %{kid: @kid, routine: :morning, mode: :minutes, remaining_ms: 600_000, fraction: 0.5},
+          attrs
+        )
+      )
+    end
+
+    test "minutes mode: whole minutes and the unit, in the minutes element only" do
+      html = countdown(%{})
+
+      assert has?(html, "#countdown-min-1[data-mode=minutes]")
+      refute has?(html, "#countdown-sec-1")
+      assert text(html, "#countdown-min-1") =~ "10"
+      assert text(html, "#countdown-min-1") =~ "min"
+    end
+
+    test "seconds mode: m:ss with no unit, in the seconds element only" do
+      html = countdown(%{mode: :seconds, remaining_ms: 125_000, fraction: 0.4})
+
+      assert has?(html, "#countdown-sec-1[data-mode=seconds]")
+      refute has?(html, "#countdown-min-1")
+      assert text(html, "#countdown-sec-1") =~ "2:05"
+      refute text(html, "#countdown-sec-1") =~ "min"
+    end
+
+    test "the dial angle is the fraction of a circle, in both modes" do
+      assert countdown(%{fraction: 0.5}) =~ "180.0deg"
+
+      assert countdown(%{mode: :seconds, remaining_ms: 60_000, fraction: 0.25}) =~ "90.0deg"
+    end
+
+    test "the bird in the morning, the bear in the evening" do
+      assert has?(countdown(%{}), "#countdown-glyph-1 svg[stroke=currentColor]")
+
+      evening = countdown(%{routine: :evening})
+      assert has?(evening, "#countdown-glyph-1 svg[fill=currentColor]")
+      refute has?(evening, "#countdown-glyph-1 svg[stroke-width='20']")
+    end
+
+    test "never renders a bonus amount, and keeps time off the reward font" do
+      for mode <- [:minutes, :seconds] do
+        html = countdown(%{mode: mode})
+
+        refute html =~ "+"
+        refute html =~ "font-reward"
+      end
+    end
+  end
+
+  describe "banner/1 left slot" do
+    test "shows the countdown when one is given" do
+      html =
+        render_component(&KioskComponents.banner/1, %{
+          kid: @kid,
+          routine: :morning,
+          reveal?: false,
+          failed?: false,
+          early_bird?: false,
+          night_owl?: false,
+          r: 5,
+          e: 2,
+          n: 3,
+          points: 12,
+          pending_request?: false,
+          countdown: %{mode: :minutes, remaining_ms: 600_000, fraction: 0.5}
+        })
+
+      assert has?(html, "#countdown-min-1")
+    end
+  end
+
   describe "banner/1" do
     defp banner(attrs) do
       render_component(
