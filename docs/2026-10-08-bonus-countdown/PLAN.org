@@ -25,7 +25,11 @@ Design: [[file:DESIGN.org]]
   For Story 05: the display-formatting function is ~BearCub.Countdown.display/1~. It takes the map ~state/5~ returns and gives a string: whole minutes (="30"= … ="5"=) in ~:minutes~ mode, ~m:ss~ (="5:00"= … ="0:01"=) in ~:seconds~ mode. The component adds the =min= unit itself. \\
   For Story 06: ~next_edge/4~ returns a ~DateTime~ with millisecond precision (~DateTime.add/3~ in ~:millisecond~). Struct ~==~ against a second-precision cutoff is false even when the instants match, so compare with ~DateTime.compare/2~ or ~DateTime.diff/3~. The timer delay is ~DateTime.diff(edge, local_now, :millisecond)~.
 :END:
-** TODO [[file:stories/story-02-countdown-config.org][Story 02 — Lead time and seconds switch set once in the NixOS module]]
+** DONE [[file:stories/story-02-countdown-config.org][Story 02 — Lead time and seconds switch set once in the NixOS module]]
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  For Story 05: ~Application.get_env(:bear_cub, :bonus_countdown)~ is the keyword list ~[lead_minutes: 30, seconds_minutes: 5]~, in minutes; ~KioskLive~ converts to milliseconds (~:timer.minutes/1~) before calling ~BearCub.Countdown~. The env parse lives beside the validation as ~BearCub.Countdown.config_from_env/1~, which ~config/runtime.exs~ calls and which calls ~validate_config!/1~.
+:END:
 ** TODO [[file:stories/story-03-bonus-reward.org][Story 03 — The Early Bird and Sleepy Bear reward, with the bird and bear]]
 ** TODO [[file:stories/story-04-countdown-scenario.org][Story 04 — Staging a cutoff minutes away for review]]
 ** TODO [[file:stories/story-05-kiosk-countdown.org][Story 05 — The countdown in each kid's banner]]

@@ -36,16 +36,44 @@ As a parent, I need to set how long before a cutoff the countdown appears, and w
 
 * Acceptance Criteria
 
-** [ ] The lead time and the seconds switch are settable, in minutes, through new ~services.bear-cub~ NixOS module options, which reach the app as its ~:bonus_countdown~ configuration; there is one value of each for the whole app, and neither appears in the admin UI. (SC-1, SC-2)
-** [ ] Left unset, the lead time is 30 minutes and the seconds switch 5 minutes. (SC-1, SC-2)
-** [ ] A lead time or seconds switch that is zero, negative or not a whole number, or a seconds switch at or above the lead time, stops the app from starting. (SC-1, SC-2)
+** [X] The lead time and the seconds switch are settable, in minutes, through new ~services.bear-cub~ NixOS module options, which reach the app as its ~:bonus_countdown~ configuration; there is one value of each for the whole app, and neither appears in the admin UI. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  ~nix/module.nix~ adds ~services.bear-cub.countdown.leadMinutes~ and ~secondsMinutes~ (~ints.positive~), whose ~environment~ entries set =BEAR_CUB_COUNTDOWN_LEAD_MINUTES= and =BEAR_CUB_COUNTDOWN_SECONDS_MINUTES=; ~config/runtime.exs~ reads the same names through ~BearCub.Countdown.config_from_env/1~ into ~:bonus_countdown~ in every environment. ~nix-instantiate --parse nix/module.nix~ exits 0; ~mix run~ shows ~Application.get_env(:bear_cub, :bonus_countdown)~ as ~[lead_minutes: 30, seconds_minutes: 5]~; no mention of countdown under ~lib/bear_cub_web~, so nothing in the admin UI. Verified by the story-verifier.
+:END:
+** [X] Left unset, the lead time is 30 minutes and the seconds switch 5 minutes. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  Nix option defaults are 30 and 5, and ~config_from_env/1~ falls back to 30 and 5; ~mix run~ with no env vars prints ~[lead_minutes: 30, seconds_minutes: 5]~; the "defaults are 30 and 5" test passes.
+:END:
+** [X] A lead time or seconds switch that is zero, negative or not a whole number, or a seconds switch at or above the lead time, stops the app from starting. (SC-1, SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  ~mix run~ with lead 3 / seconds 5 aborts with ~ArgumentError: countdown seconds_minutes must be less than lead_minutes~, and a non-numeric lead aborts naming the variable rather than falling back. Tests under ~describe "validate_config!/1 and config_from_env/1"~ in ~test/bear_cub/countdown_test.exs~ cover zero, negative, non-integer, seconds >= lead, and bad env strings; all pass.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  All three Acceptance Criteria verified met by the story-verifier; nothing removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  Five new config tests in ~test/bear_cub/countdown_test.exs~ pass within the full run, ~Result: 955 passed~.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  ~mix precommit~ (includes the format check) passes; docs wrap at 80; scope stays inside the story (no ~KioskLive~ change).
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-08 Thu 17:59] \\
+  ~mix precommit~ run by the story-verifier: exit 0, 955 tests passed.
+:END:
 
 * Technical Notes
 
