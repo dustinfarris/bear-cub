@@ -115,6 +115,15 @@ Swept [2026-07-25 Sat 22:40] from docs/2026-07-25-rewards-redemption/PLAN.org's 
 :CREATED:  [2026-10-04 Sun 22:16]
 :END:
 Considered during the routine-schedule design and kept out of that initiative ([[file:decisions.org::#d127][D127]]). Commanded's only officially supported production event store is the PostgreSQL-backed EventStore (the in-memory adapter is test-only), so adopting it means moving the home server off SQLite, rewriting each context around aggregates and projections, and storing points in projections rather than deriving them on read (D10). The app already holds two append-only fact logs — ~completions~ and ~schedule_versions~ — which give derive-on-read the history it needs. Trigger: a concrete want for an audit trail of every parent and kid action, replaying history under new rules, or read models that derive-on-read cannot serve; make that case as its own PRD, not as a side effect of another feature.
+* TODO [#B] A dev-only review mask so kiosk screenshots carry no household text by construction :oneshot:
+:PROPERTIES:
+:CREATED:  [2026-10-08 Thu 19:02]
+:END:
+
+Every session that captures a kiosk screenshot writes its own injected stylesheet to hide kid names and calendar text; Stories 03, 05 and 06 and the gate of the bonus-countdown batch each used a different selector set, none recorded it, and chore names slipped through all four, so two committed shots carried the family's extras and were painted over before the push. Put the mask in the app: a ~BearCub.Dev.Scenarios~ function (~review_mask/1~, on and off) that, in dev only, has the kiosk render kid names, calendar event text and chore names as placeholders or blanks, broadcast so an open kiosk re-renders. The gate and the visual DoD item then stage with it and never touch the page. Add it to ~test/bear_cub/dev/scenarios_test.exs~, the moduledoc usage list and the CLAUDE.md scenario list, and have CLAUDE.md's household-data line name it. Pairs with the calendar-events scenario below: with both, every screenshot state is staged by scenario calls alone.
+
+Ruled [2026-10-08 Thu] at the bonus-countdown Batch 1 retro ("Household text is hidden by hand, four ways").
+
 * TODO [#B] ~BearCub.Dev.Scenarios~ cannot stage calendar events, so kiosk screenshots show the live family calendar :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-10-08 Thu 13:36]
