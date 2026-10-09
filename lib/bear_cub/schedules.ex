@@ -36,9 +36,9 @@ defmodule BearCub.Schedules do
 
   @doc """
   The day entry governing `local_now`: the version in force at that
-  instant, then its entry for the local date's weekday. Every `:boundary`
-  re-resolves through here, so a new weekday's timings take over at
-  midnight with no special case.
+  instant, then its entry for the local date's weekday. Resolved afresh on
+  each call, so a new weekday's timings take over at midnight with no
+  special case.
   """
   def day_entry(%DateTime{} = local_now) do
     versions()
