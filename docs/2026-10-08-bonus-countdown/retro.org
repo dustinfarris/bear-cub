@@ -1,0 +1,31 @@
+#+title: Retro — bonus-countdown
+
+* Batch 1 — Bonus countdown — 2026-10-08
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 1 | 1 | 0 | 5 | 1(0.6m) | 20.8k | 82 | 154 |  |
+| story-02 | 1 | 1 | 1 | 2 | 1(0.8m) | 15.1k | 69 | 44 | also read story-01 |
+| story-03 | 3 | 2 | 1 | 6 | 2(1.4m) | 41.1k | 80 | 12 | also read story-05 |
+| story-04 | 1 | 1 | 7 | 3 | 1(0.5m) | 27.0k | 54 | 49 | also read story-04 |
+| story-05 | 3 | 1 | 1 | 8 | 1(1.1m) | 39.3k | 152 | 268 |  |
+| story-06 | 3 | 4 | 1 | 4 | 2(2.1m) | 58.8k | 78 | 97 |  |
+| total | 12 | 10 | 11 | 28 | 8(6.5m) | 202.2k | 515 | 624 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- Stories 03 and 06 each ran a second verifier pass ("Re-verify story 03", "Re-verify story 06"); Stories 01, 02, 04 and 05 passed on the first dispatch.
+- Story 04's update-design pass was the longest stage of any story, at 7 min against 0–1 min for every other story's pass; that pass minted D153 and its Advisory (~16d9757~ touches ~docs/decisions.org~ and DESIGN.org).
+- Story 04's timeline has two "commit" turns six minutes apart (01:08 and 01:14 UTC); both of its commits, ~d574244~ and ~16d9757~, are stamped 18:14 local.
+- The whole batch ran in about 33 minutes of wall clock, 00:54 to 01:27 UTC, six stories back to back.
+- Note column, checked against git: Story 03's close-out ~e6f1f2d~ did not touch ~story-05~ and Story 02's ~c98f12d~ did not touch ~story-01~, so both references were reads. Story 04's "also read story-04" names its own file.
+- No human questions appear in any timeline; the human turns were the implement prompts and "commit". Story 06's Plan note records a ruling "by the human at the Story 06 handoff" that the Story 06 timeline does not show.
+- No deferred discoveries: the PLAN's Deferred section is empty.
+- All six story transcripts were found on this machine.
+- The gate's design walk found a divergence no story verifier caught: the ~:countdown_tick~ re-arm queried ~schedule_versions~ on every tick, against DESIGN §Ticking and the code's own comment. Fixed before the gate in ~764f26c~ on the human's ruling.
+
+** Retro
