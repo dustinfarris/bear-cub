@@ -29,3 +29,33 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - The gate's design walk found a divergence no story verifier caught: the ~:countdown_tick~ re-arm queried ~schedule_versions~ on every tick, against DESIGN §Ticking and the code's own comment. Fixed before the gate in ~764f26c~ on the human's ruling.
 
 ** Retro
+
+Rulings recorded 2026-10-08. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** The driver's first run
+
+Six stories ran unattended in 33 minutes of wall clock against 33 active (12 implementation, 10 close-out, 11 update-design), where the weather batch spent 264 wall on 67 active with a human typing the four prompts. No question reached the human; every human turn in the timelines is the driver's. One stop: Story 04's commit, when 1Password had locked with the screen and refused to sign, answered by a resume and a second "commit" six minutes later, and closed for good by moving commit signing to a key file outside the agent. No implementer self-triggered close-out, every stage ran once, the predicates read every artifact right, and the lost-connection retry was never exercised. The closeout-cost checks held again: one dispatch on the four clean stories, close-out 1–4 minutes, both second dispatches fix loops.
+
+Ruling: evidence, no change. Lands as the addendum the kit's batch-driver design asked this retro for.
+
+*** The verifier passed a behavior on the shape of the code
+
+Story 06's second AC says a tick reloads no data. The verifier's entry says the ~:countdown_tick~ clause has no query and no ~load/3~, which was true; the re-arm it calls read the whole ~schedule_versions~ table through ~Schedules.day_entry/1~, once a second per kiosk in the final five minutes. The gate's design walk found it, the human ruled it a bug, and it was fixed before the gate (~764f26c~) with a test that counts the view's queries across a tick. The 2026-10-04 learning named this shape after effort-multiplier's Story 08, where tests asserted an attribute's presence while the behavior was broken. Two initiatives. The kit verifier's MET rule let "file path and line numbers demonstrating the behavior" stand as evidence, and both misses leaned on that clause.
+
+Ruling: a behavior an AC names is proved by a test or an executed command; file lines prove structure only. Lands in the kit's story-verifier agent as a tightening of its evidence rule (0.9.2) and in ~docs/learnings.org~ as the second instance under the 2026-10-04 entry.
+
+*** Household text is hidden by hand, four ways
+
+Stories 03, 05 and 06 and the gate each injected their own stylesheet to blank kid names and event text before capturing, with four different selector sets, none recorded; chore names slipped through every one of them, so the two completed-morning shots (~gate-1-morning-seconds-and-reward.png~, ~story-03-early-bird.png~) carried the family's extras. Both were painted over before the push.
+
+Ruling: the mask moves into the app. A dev-only review mask through ~BearCub.Dev.Scenarios~ blanks kid names, calendar text and chore names in the kiosk render, so a screenshot is clean by construction and no session writes selectors. Lands in ~docs/backlog.org~ as a oneshot; CLAUDE.md's household-data line gains chore names now.
+
+*** Rulings at the handoff reached the code the right way round
+
+Both of the batch's human rulings were made at the user-stories handoff, on the two GAP comments the 0.8.11 guard had the session raise: the evening scenario's semantics (later D153) and the Motion ruling's placement. Story 04's update-design pass minted D153 with the body edit and Advisory, 7 minutes, the only update-design pass above one minute; Story 06's placement went to a Plan note. The weather batch's D144 was the same kind of choice, made by a session and ratified after the code; here the human made it before any code and the chain recorded it on schedule.
+
+Ruling: evidence, no change.
+
+*** Small things
+
+Story 03's screenshot entry does not name the finding its second verifier pass fixed (tight crops, not 1280 × 800 captures); Story 06's does. One miss of 0.8.10's clause, not a pattern. The gate restored the dev schedule "as found", which was the weather gate's all-day morning window from 13:13, never restored; the next session that stages a window runs ~restore/0~ first. The gate's own first retro draft placed the batch's rulings in the wrong session and corrected itself in ~3b56f97~.
