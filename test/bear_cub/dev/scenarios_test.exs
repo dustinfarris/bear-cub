@@ -114,6 +114,55 @@ defmodule BearCub.Dev.ScenariosTest do
     end
   end
 
+  describe "countdown/2" do
+    setup do
+      Scenarios.early_bird(now())
+      %{kids: Chores.list_kids()}
+    end
+
+    defp minutes_ahead(time), do: Time.diff(time, DateTime.to_time(now()), :second) / 60
+
+    defp evening_cutoff(kid) do
+      Enum.find(entry_now().night_owl_cutoffs, &(&1.kid_id == kid.id))
+    end
+
+    test "morning moves the shared early bird cutoff to minutes from now" do
+      Scenarios.countdown(:morning, 10)
+
+      assert_in_delta minutes_ahead(entry_now().early_bird_cutoff), 10, 0.1
+      assert_received :schedule_changed
+    end
+
+    test "evening with minutes gives every kid a cutoff, including one who had none", %{
+      kids: [a, b]
+    } do
+      Scenarios.countdown(:evening, 20)
+      assert_in_delta minutes_ahead(evening_cutoff(a).cutoff), 20, 0.1
+      assert_in_delta minutes_ahead(evening_cutoff(b).cutoff), 20, 0.1
+      assert Schedules.current().night_owl_bonus == 3
+      assert_received :schedule_changed
+    end
+
+    test "evening with a per-kid list is the complete picture", %{kids: [a, b]} do
+      Scenarios.countdown(:evening, 20)
+      Scenarios.countdown(:evening, [{a.id, 5}])
+
+      assert_in_delta minutes_ahead(evening_cutoff(a).cutoff), 5, 0.1
+      assert evening_cutoff(b) == nil
+    end
+
+    test "restore/0 undoes it", %{kids: [a, _]} do
+      original = entry_now().early_bird_cutoff
+      Scenarios.countdown(:morning, 10)
+      Scenarios.countdown(:evening, 20)
+      Scenarios.restore()
+
+      assert entry_now().early_bird_cutoff == original
+      assert evening_cutoff(a) == nil
+      assert Schedules.current().night_owl_bonus == 0
+    end
+  end
+
   test "restore/0 brings back the schedule in force before the first scenario write" do
     original = entry_now()
 

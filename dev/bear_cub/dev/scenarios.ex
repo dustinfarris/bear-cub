@@ -205,6 +205,60 @@ defmodule BearCub.Dev.Scenarios do
   end
 
   @doc """
+  Stages a bonus cutoff `minutes` from now, for reviewing the countdown.
+  Writes a version in force now; pair it with `open/1`, which is what keeps
+  a near cutoff inside its routine's window. `restore/0` undoes it.
+
+    * `countdown(:morning, minutes)` moves the shared early bird cutoff.
+    * `countdown(:evening, minutes)` gives every kid a Sleepy Bear cutoff
+      for today's weekday, including a kid who had none.
+    * `countdown(:evening, [{kid_id, minutes}, ...])` is the whole evening
+      picture: each listed kid gets their own cutoff and an unlisted kid's
+      cutoff for today is removed, so a kid with no evening bonus is staged
+      in the same call.
+
+  The evening forms set the Night Owl bonus like `night_owl/1` does (the
+  current N, or 3 when that is 0). The cutoff is `now + minutes` truncated
+  to the second, capped at 23:59:59, so it can land up to a second early.
+  """
+  def countdown(:morning, minutes) when is_integer(minutes) do
+    cutoff(cutoff_in(minutes))
+  end
+
+  def countdown(:evening, minutes) when is_integer(minutes) do
+    countdown(:evening, for(kid <- Chores.list_kids(), do: {kid.id, minutes}))
+  end
+
+  def countdown(:evening, per_kid) when is_list(per_kid) do
+    weekday = Date.day_of_week(DateTime.to_date(LocalTime.now()))
+    current = Schedules.current()
+    n = if current.night_owl_bonus > 0, do: current.night_owl_bonus, else: 3
+
+    entries =
+      for {kid_id, minutes} <- per_kid,
+          do: %BearCub.Schedules.NightOwlCutoff{kid_id: kid_id, cutoff: cutoff_in(minutes)}
+
+    write_version(
+      fn
+        %{weekday: ^weekday} = day -> %{day | night_owl_cutoffs: entries}
+        day -> day
+      end,
+      night_owl_bonus: n
+    )
+  end
+
+  # `minutes` after the real now as a `Time`, held at 23:59:59 when that
+  # would cross midnight.
+  defp cutoff_in(minutes) do
+    now = LocalTime.now()
+    later = DateTime.add(now, minutes * 60, :second)
+
+    if DateTime.to_date(later) == DateTime.to_date(now),
+      do: later |> DateTime.to_time() |> Time.truncate(:second),
+      else: ~T[23:59:59]
+  end
+
+  @doc """
   A valid schedule in force now whose Saturday and Sunday start the
   morning at 08:00 with a 09:30 early bird cutoff, the weekdays untouched
   — so `/admin/schedule` loads with the quiet "custom" marker on the two
