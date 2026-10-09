@@ -29,3 +29,8 @@ Ready to run in production? Please [check our deployment guides](https://phoenix
 * Docs: https://phoenix.hexdocs.pm
 * Forum: https://elixirforum.com/c/phoenix-forum
 * Source: https://github.com/phoenixframework/phoenix
+
+## Credits
+
+* The Early Bird glyph is a bird from SVG Repo by [vectordoodle](https://www.svgrepo.com/author/vectordoodle/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), cropped and re-stroked for Bear Cub.
+* The Sleepy Bear glyph is a bear from SVG Repo (CC0), cropped and thickened with a same-colour stroke.

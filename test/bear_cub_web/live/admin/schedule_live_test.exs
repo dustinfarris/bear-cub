@@ -313,7 +313,7 @@ defmodule BearCubWeb.Admin.ScheduleLiveTest do
       {:ok, view, html} = live(conn, ~p"/admin/schedule")
 
       assert has_element?(view, "#bonuses input[name='schedule[night_owl_bonus]'][value='0']")
-      assert html =~ "Night owl bonus"
+      assert html =~ "Sleepy bear bonus"
 
       view |> submit_change(%{night_owl_bonus: "4"}) |> render_submit()
 
@@ -348,7 +348,7 @@ defmodule BearCubWeb.Admin.ScheduleLiveTest do
          %{conn: conn, first: first} do
       {:ok, view, _html} = live(conn, ~p"/admin/schedule")
 
-      assert has_element?(view, "#day-card-1", "blank = no Night Owl")
+      assert has_element?(view, "#day-card-1", "blank = no Sleepy Bear")
       refute has_element?(view, "#{cutoff_input(1, first)}[value]")
     end
 

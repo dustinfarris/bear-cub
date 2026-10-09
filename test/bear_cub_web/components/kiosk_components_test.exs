@@ -71,20 +71,23 @@ defmodule BearCubWeb.KioskComponentsTest do
       refute has?(html, "#early-bird-1")
     end
 
-    test "an early morning folds E into the badge and adds the EARLY pill" do
+    test "an early morning folds E into the badge and adds the EARLY BIRD pill" do
       html = banner(%{reveal?: true, early_bird?: true})
 
       assert text(html, "#completion-badge-1") =~ "+7"
 
-      assert text(html, "#early-bird-1") =~ "EARLY"
+      assert text(html, "#early-bird-1") =~ "EARLY BIRD"
+      assert has?(html, "#early-bird-1-glyph svg")
+      refute has?(html, "#night-owl-1")
     end
 
-    test "a Night Owl evening folds N into the badge and adds the NIGHT OWL pill" do
+    test "a Night Owl evening folds N into the badge and adds the SLEEPY BEAR pill" do
       html = banner(%{reveal?: true, night_owl?: true, routine: :evening})
 
       assert has?(html, "#completion-icon-1 .hero-moon-solid")
       assert text(html, "#completion-badge-1") =~ "+8"
-      assert text(html, "#night-owl-1") =~ "NIGHT OWL"
+      assert text(html, "#night-owl-1") =~ "SLEEPY BEAR"
+      assert has?(html, "#night-owl-1-glyph svg")
       refute has?(html, "#early-bird-1")
     end
 
@@ -99,6 +102,15 @@ defmodule BearCubWeb.KioskComponentsTest do
 
       assert has?(html, "#completion-icon-1 .hero-moon-solid")
       refute has?(html, "#completion-badge-1")
+    end
+
+    test "pill and glyph render together or not at all" do
+      html = banner(%{reveal?: true, early_bird?: false, night_owl?: false})
+
+      refute has?(html, "#early-bird-1")
+      refute has?(html, "#early-bird-1-glyph")
+      refute has?(html, "#night-owl-1")
+      refute has?(html, "#night-owl-1-glyph")
     end
   end
 

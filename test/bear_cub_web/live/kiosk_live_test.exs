@@ -1024,7 +1024,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
     defp tap_evening(chore), do: Chores.complete_chore(chore, LocalTime.now(), "kiosk")
 
-    test "a timely evening shows one combined +R+N badge on the moon and a NIGHT OWL pill",
+    test "a timely evening shows one combined +R+N badge on the moon and a SLEEPY BEAR pill",
          %{conn: conn, kid: kid, chore: chore} do
       evening_active()
       put_night_owl([{kid.id, @timely}], 3)
@@ -1038,7 +1038,7 @@ defmodule BearCubWeb.KioskLiveTest do
       assert has_element?(
                view,
                "#completion-icon-#{kid.id} #night-owl-#{kid.id}",
-               "NIGHT OWL"
+               "SLEEPY BEAR"
              )
     end
 
@@ -1100,7 +1100,7 @@ defmodule BearCubWeb.KioskLiveTest do
 
       assert has_element?(view, "#stake-chip-#{kid.id}", "+5")
       refute has_element?(view, "#stake-chip-#{kid.id}", "+8")
-      refute render(view) =~ "NIGHT OWL"
+      refute render(view) =~ "SLEEPY BEAR"
     end
 
     test "a schedule change reaches an open kiosk and applies from the next tap, with no reload",
@@ -1116,7 +1116,7 @@ defmodule BearCubWeb.KioskLiveTest do
       # the finish was priced by the version the broadcast loaded; a fresh
       # mount skips the post-finish reveal delay
       {:ok, view, _html} = live(conn, ~p"/")
-      assert has_element?(view, "#night-owl-#{kid.id}", "NIGHT OWL")
+      assert has_element?(view, "#night-owl-#{kid.id}", "SLEEPY BEAR")
     end
   end
 
@@ -1273,7 +1273,7 @@ defmodule BearCubWeb.KioskLiveTest do
                "+7"
              )
 
-      assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id}", "EARLY")
+      assert has_element?(view, "#completion-icon-#{kid.id} #early-bird-#{kid.id}", "EARLY BIRD")
       refute has_element?(view, "#completion-icon-#{kid.id} svg.sparrow")
       refute has_element?(view, "#early-bird-badge-#{kid.id}")
     end

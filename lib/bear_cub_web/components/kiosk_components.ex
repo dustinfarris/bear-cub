@@ -34,18 +34,82 @@ defmodule BearCubWeb.KioskComponents do
   end
 
   attr :id, :string, required: true
+  attr :routine, :atom, required: true
   attr :color, :string, required: true
   slot :inner_block, required: true
 
-  defp routine_pill(assigns) do
+  # The reward pill with the bird or bear climbing out of its upper-right
+  # corner (D149): pill and glyph are one signal, rendered together. The
+  # glyph sits behind the pill (the pill is z-index 1) so it appears to
+  # peek out from behind it.
+  defp bonus_pill(assigns) do
     ~H"""
-    <span
-      id={@id}
-      class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-white px-2 py-0.5 font-reward text-xs font-black tracking-wide drop-shadow-sm"
-      style={"color: #{@color}"}
-    >
-      {render_slot(@inner_block)}
+    <span class="absolute bottom-[6px] left-0 block">
+      <span
+        id={"#{@id}-glyph"}
+        class="absolute -right-[15px] -top-4 block text-white"
+        style="line-height: 0"
+      >
+        <.bonus_glyph routine={@routine} width={if @routine == :morning, do: 26, else: 30} />
+      </span>
+      <span
+        id={@id}
+        class="relative z-[1] block whitespace-nowrap rounded-full bg-white px-[9px] py-1 font-reward text-sm font-black leading-none tracking-wide drop-shadow-sm"
+        style={"color: #{@color}"}
+      >
+        {render_slot(@inner_block)}
+      </span>
     </span>
+    """
+  end
+
+  attr :routine, :atom, required: true
+  attr :width, :integer, required: true
+  attr :class, :string, default: nil
+
+  # The bird (morning) or the bear (evening) as inline SVG, coloured through
+  # currentColor, for the reward and, in the countdown dial, the banner
+  # (D103, D151).
+  defp bonus_glyph(%{routine: :morning} = assigns) do
+    ~H"""
+    <%!-- Bird: SVG Repo, vectordoodle (https://www.svgrepo.com/author/vectordoodle/),
+         CC BY 4.0 — cropped viewBox, stroke for Bear Cub --%>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="80 95 280 215"
+      width={@width}
+      fill="none"
+      stroke="currentColor"
+      stroke-width="20"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={@class}
+      aria-hidden="true"
+    >
+      <path d="M191.179 273.824C240.235 297.511 305.516 282.723 327.848 235.07C343.653 201.345 294.142 174.478 268.869 180.597C249.795 185.215 238.443 210.424 226.139 201.065C216.677 165.605 199.9 119.51 135.192 107.37C114.091 103.412 83.5311 110.64 102.336 135.815C116.496 154.766 137.36 163.983 158.442 173.765C164.792 176.714 169.78 183.842 176.581 185.72C178.199 186.166 181.717 185.007 181.525 186.671C181.105 190.238 113.899 155.977 108.125 179.498C103.955 196.484 152.426 206.208 162.693 208.177C163.338 208.3 167.696 208.583 167.631 209.126C167.291 212.044 128.996 205.366 122.548 219.126C113.925 237.519 146.169 239.099 156.097 238.053C164.394 237.176 172.809 236.947 180.889 235.438C181.156 235.389 194.153 233.997 169.23 238.769C147.16 242.995 90.4779 253.756 88.9641 262.487C87.4503 271.218 95.0462 273.682 99.275 281.556C103.504 289.429 106.52 291.001 110.939 295.051C115.357 299.1 142.753 259.14 172.051 268.915M323.418 199.974C348.126 209.727 352.589 199.404 329.977 213.31M291.997 210.007C291.781 209.411 291.563 208.813 291.345 208.215">
+      </path>
+    </svg>
+    """
+  end
+
+  defp bonus_glyph(%{routine: :evening} = assigns) do
+    ~H"""
+    <%!-- Bear: SVG Repo, CC0 — cropped viewBox, plus a 22-unit stroke of
+         the same colour to thicken it --%>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="-12 83 536 336"
+      width={@width}
+      fill="currentColor"
+      stroke="currentColor"
+      stroke-width="22"
+      stroke-linejoin="round"
+      class={@class}
+      aria-hidden="true"
+    >
+      <path d="M507.675,191.611c-8.298-4.523-16.834-10.372-19.115-13.041c-0.059-0.561-0.112-1.189-0.169-1.872 c-1.005-11.850-2.874-33.797-49.601-53.729c-1.287-2.679-3.049-5.224-5.343-7.362c-5.64-5.255-13.02-6.75-20.781-4.219 c-6.564,2.144-10.734,5.34-13.397,8.592c-8.108,0.59-14.155,2.815-19.572,4.817c-5.631,2.079-10.493,3.875-17.535,3.875 c-3.374,0-7.529-2.758-12.338-5.952c-7.879-5.231-17.686-11.742-31.895-11.742c-15.988,0-27.036,5.205-37.722,10.24 c-14.719,6.935-28.619,13.484-57.964,7.615c-35.18-7.035-91.351,6.294-112.053,18.714 c-18.997,11.399-40.327,45.677-63.399,101.886c-14.632,35.644-25.465,69.339-28.109,77.74L2.429,343.42 c-2.345,2.347-3.068,5.865-1.836,8.945l17.693,44.233c1.261,3.149,4.310,5.214,7.701,5.214h26.54c4.581,0,8.294-3.712,8.294-8.294 c0-4.581-3.712-8.294-8.294-8.294h-0.554v-10.488c26.402-3.249,59.225-20.73,76.944-37.043c2.33-2.144,4.631-4.138,6.913-6.016 c2.477,4.775,5.601,8.919,8.665,12.95c7.582,9.979,14.744,19.406,14.744,40.044c0,5.245,4.024,7.32,7.258,8.987 c1.529,0.788,3.638,1.833,6.268,3.107c4.471,2.165,8.942,4.262,8.942,4.262c1.101,0.516,2.303,0.784,3.521,0.784h44.233 c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-16.93c2.395-8.51,7.746-18.546,13.335-29.017 c3.42-6.409,7-13.122,10.205-20.049c2.695,7.75,6.476,15.893,11.637,24.343v17.916c0,6.25,2.434,12.127,6.852,16.543 c4.419,4.418,10.295,6.852,16.544,6.852h46.823c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-8.426 l7.317-65.848c2.988-1.53,7.27-3.888,12.257-7.114c4.495,14.033,19.662,51.536,55.882,62.274l34.154,25.615 c1.435,1.077,3.181,1.659,4.976,1.659h53.08c4.581,0,8.294-3.712,8.294-8.294c0-4.581-3.712-8.294-8.294-8.294h-8.847 c-6.816,0-15.195-16.576-23.298-32.609c-7.657-15.148-17.102-33.833-30.32-50.481c-0.004-11.875-0.717-44.067-7.932-59.561h35.011 c2.535,0,4.93-1.159,6.503-3.146c4.512-5.701,14.23-5.701,20.036-5.701c21.078,0,30.004-3.741,31.58-4.492 c2.06-0.982,3.626-2.769,4.327-4.942l7.373-22.854C512.822,197.645,511.173,193.519,507.675,191.611z M211.231,348.398 c-6.879,12.89-13.444,25.202-15.739,36.827h-8.412c-4.082-1.926-8.428-4.02-11.376-5.494c-1.172-22.99-10.449-35.2-18.001-45.138 c-3.415-4.494-6.408-8.446-8.214-12.814c25.194-15.795,49.114-17.274,79.797-17.28 C226.917,318.965,218.974,333.888,211.231,348.398z M430.216,360.098c4.798,9.492,9.185,18.172,13.851,25.127h-17.217 l-33.175-24.881c-0.843-0.631-1.796-1.097-2.812-1.371c-35.568-9.613-47.068-55.402-47.178-55.849 c-0.104-0.435-0.25-0.848-0.416-1.25c12.225-10.095,25.336-24.256,33.76-42.894c4.2-1.215,10.343-3.371,15.885-6.765 c3.49,10.201,5.393,33.494,5.184,52.747c-0.021,1.958,0.652,3.863,1.9,5.372C413.048,326.133,422.17,344.178,430.216,360.098z M489.753,215.126c-3.608,0.864-10.468,2.013-21.435,2.013c-6.907,0-20.558,0-30.13,8.847h-32.123 c-6.123,0-11.439-4.357-12.64-10.361l-3.671-18.359c-0.899-4.491-5.268-7.398-9.759-6.507c-4.491,0.899-7.405,5.268-6.507,9.759 l3.671,18.359c1.373,6.861,5.096,12.781,10.223,16.989c-3.436,2.959-10.879,6.366-18.177,8.011 c-2.668,0.593-4.873,2.464-5.894,4.999c-15.61,38.771-57.117,57.233-57.523,57.41c-2.735,1.181-4.625,3.738-4.953,6.698 l-8.027,72.242h-21.707c-1.819,0-3.529-0.709-4.815-1.996c-1.286-1.284-1.994-2.993-1.994-4.813v-20.285 c0-1.573-0.447-3.112-1.289-4.441c-35.207-55.539-2.282-94.512-0.783-96.234c3.02-3.427,2.703-8.653-0.717-11.687 c-3.428-3.04-8.67-2.728-11.708,0.698c-0.455,0.512-11.195,12.781-16.543,33.268c-0.68,2.605-1.285,5.427-1.772,8.435 c-0.648-0.163-1.324-0.259-2.021-0.259c-41.548,0-73.886,2.696-111.777,37.578c-21.567,19.856-55.676,33.195-74.002,33.195 c-4.581,0-8.294,3.712-8.294,8.294v18.246h-3.784l-13.577-33.941l13.827-13.826c0.959-0.96,1.669-2.14,2.066-3.437 c12.662-41.354,52.581-152.915,84.803-172.248c16.125-9.675,68.321-23.065,100.267-16.673c34.714,6.941,52.550-1.461,68.287-8.874 c9.861-4.646,18.376-8.658,30.652-8.658c9.204,0,15.770,4.358,22.721,8.974c6.457,4.286,13.133,8.719,21.512,8.719 c10.007,0,17.060-2.604,23.281-4.902c3.146-1.161,6.068-2.223,9.264-2.957c0.941,6.784,4.172,12.055,4.707,12.888 c1.589,2.476,4.280,3.835,7.023,3.835c1.528,0,3.072-0.421,4.451-1.306c3.856-2.472,4.994-7.578,2.520-11.433 c-1.143-1.845-3.152-6.624-2.055-9.625c0.854-2.340,3.985-3.795,6.464-4.604c2.480-0.811,3.491-0.160,4.244,0.512 c2.275,2.030,3.078,6.069,2.829,7.285c-1.110,4.444,1.591,8.947,6.035,10.059c3.468,0.865,6.961-0.594,8.861-3.383 c30.203,14.611,31.330,27.616,32.080,36.469c0.116,1.367,0.226,2.657,0.417,3.948c0.370,2.499,1.303,8.790,21.460,20.727 L489.753,215.126z">
+      </path>
+    </svg>
     """
   end
 
@@ -87,37 +151,48 @@ defmodule BearCubWeb.KioskComponents do
         phx-value-kid-id={@kid.id}
         class="absolute left-5 flex items-center justify-center transition active:scale-[0.99]"
       >
-        <span class="relative flex items-center justify-center">
+        <span class="relative block h-20 w-24">
           <.icon
             name={completion_icon_name(@routine)}
-            class="size-14 text-white drop-shadow-sm"
+            class="absolute left-[20px] top-[4px] size-14 text-white drop-shadow-sm"
           />
-          <%!-- Bonus badge (D44, D47, D104): shown only "if not
+          <%!-- Bonus badge (D44, D47, D104, D149): shown only "if not
                forfeited" — forfeited? = failed?, the routine-day
                boolean. A forfeited bonus shows no badge at all rather
                than a zeroed one; the icon itself still toggles. On an
                early morning the badge carries R + E as one number
-               (D104), and the EARLY pill below the sun says why; a
-               Night Owl evening is the mirror, R + N and a NIGHT OWL
-               pill under the moon (D136). --%>
+               (D104); an evening before the kid's Sleepy Bear cutoff is
+               the mirror, R + N (D136, D150). --%>
           <span
             :if={not @failed?}
             id={"completion-badge-#{@kid.id}"}
-            class="absolute -right-4 -top-1 flex items-center rounded-full border-2 bg-success px-2 py-0.5 font-reward text-sm font-black text-success-content drop-shadow-sm"
+            class="absolute left-[62px] top-[4px] z-[1] flex items-center rounded-full border-2 bg-success px-[7px] py-1 font-reward text-sm font-black text-success-content drop-shadow-sm"
             style={"border-color: #{@kid.color}"}
           >
             +{@r + if(@early_bird?, do: @e, else: 0) + if(@night_owl?, do: @n, else: 0)}
           </span>
-          <%!-- Early bird / Night Owl pill (D100, D104, D136): a white
-               pill under the sun or moon in the kid's own color. Same
-               forfeit rule as the badge — both flags are already false
-               when failed. --%>
-          <.routine_pill :if={@early_bird?} id={"early-bird-#{@kid.id}"} color={@kid.color}>
-            EARLY
-          </.routine_pill>
-          <.routine_pill :if={@night_owl?} id={"night-owl-#{@kid.id}"} color={@kid.color}>
-            NIGHT OWL
-          </.routine_pill>
+          <%!-- EARLY BIRD / SLEEPY BEAR pill (D100, D104, D136, D149,
+               D150): a white pill in the kid's own color with the bird or
+               bear peeking out of it. Same forfeit rule as the badge —
+               both flags are already false when failed — and pill and
+               glyph render together. The night-owl-{id} id is a kept
+               test anchor (D150). --%>
+          <.bonus_pill
+            :if={@early_bird?}
+            id={"early-bird-#{@kid.id}"}
+            routine={:morning}
+            color={@kid.color}
+          >
+            EARLY BIRD
+          </.bonus_pill>
+          <.bonus_pill
+            :if={@night_owl?}
+            id={"night-owl-#{@kid.id}"}
+            routine={:evening}
+            color={@kid.color}
+          >
+            SLEEPY BEAR
+          </.bonus_pill>
         </span>
       </button>
       <h1 class="font-reward text-4xl font-black tracking-tight text-white drop-shadow-sm">

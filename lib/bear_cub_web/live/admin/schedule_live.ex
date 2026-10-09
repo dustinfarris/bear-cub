@@ -216,7 +216,7 @@ defmodule BearCubWeb.Admin.ScheduleLive do
               <p class="-mt-1 text-xs text-base-content/60">0 turns it off</p>
             </div>
             <div>
-              <.input field={@form[:night_owl_bonus]} type="number" min="0" label="Night owl bonus" />
+              <.input field={@form[:night_owl_bonus]} type="number" min="0" label="Sleepy bear bonus" />
               <p class="-mt-1 text-xs text-base-content/60">0 turns it off</p>
             </div>
           </section>
@@ -249,7 +249,7 @@ defmodule BearCubWeb.Admin.ScheduleLive do
               </div>
 
               <fieldset class="mt-1">
-                <legend class="label mb-1">Night owl (blank = no Night Owl)</legend>
+                <legend class="label mb-1">Sleepy bear (blank = no Sleepy Bear)</legend>
                 <div class="grid grid-cols-2 gap-x-3">
                   <div
                     :for={{kid, kid_index} <- Enum.with_index(@kids)}
