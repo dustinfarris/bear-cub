@@ -151,4 +151,48 @@ defmodule BearCub.CountdownTest do
       assert Countdown.next_edge(@cutoff, now, @lead, switch) |> edge_ms() == 90_000
     end
   end
+
+  describe "validate_config!/1 and config_from_env/1" do
+    test "defaults are 30 and 5" do
+      assert Countdown.config_from_env(%{}) == [lead_minutes: 30, seconds_minutes: 5]
+    end
+
+    test "good values pass" do
+      env = %{
+        "BEAR_CUB_COUNTDOWN_LEAD_MINUTES" => "45",
+        "BEAR_CUB_COUNTDOWN_SECONDS_MINUTES" => "10"
+      }
+
+      assert Countdown.config_from_env(env) == [lead_minutes: 45, seconds_minutes: 10]
+      assert Countdown.validate_config!(lead_minutes: 2, seconds_minutes: 1)
+    end
+
+    test "zero, negative and non-integer values refuse" do
+      for bad <- [0, -1, 1.5, "5", nil] do
+        assert_raise ArgumentError, fn ->
+          Countdown.validate_config!(lead_minutes: 30, seconds_minutes: bad)
+        end
+
+        assert_raise ArgumentError, fn ->
+          Countdown.validate_config!(lead_minutes: bad, seconds_minutes: 1)
+        end
+      end
+    end
+
+    test "seconds at or above lead refuses" do
+      for switch <- [30, 31] do
+        assert_raise ArgumentError, fn ->
+          Countdown.validate_config!(lead_minutes: 30, seconds_minutes: switch)
+        end
+      end
+    end
+
+    test "non-numeric env values refuse instead of falling back" do
+      for raw <- ["abc", "5.5", "", "0", "-3"] do
+        assert_raise ArgumentError, fn ->
+          Countdown.config_from_env(%{"BEAR_CUB_COUNTDOWN_SECONDS_MINUTES" => raw})
+        end
+      end
+    end
+  end
 end

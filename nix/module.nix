@@ -77,6 +77,20 @@ in
       };
     };
 
+    countdown = {
+      leadMinutes = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 30;
+        description = "The bonus countdown appears this many minutes before the cutoff. Must exceed secondsMinutes.";
+      };
+
+      secondsMinutes = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 5;
+        description = "At or below this many minutes left, the countdown switches to seconds.";
+      };
+    };
+
     ntfyServer = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = "https://ntfy.sh";
@@ -106,6 +120,8 @@ in
         BEAR_CUB_WEATHER_HOT_AT = toString cfg.weather.hotAt;
         BEAR_CUB_WEATHER_COLD_BELOW = toString cfg.weather.coldBelow;
         BEAR_CUB_WEATHER_PRECIP_CHANCE_AT = toString cfg.weather.precipChanceAt;
+        BEAR_CUB_COUNTDOWN_LEAD_MINUTES = toString cfg.countdown.leadMinutes;
+        BEAR_CUB_COUNTDOWN_SECONDS_MINUTES = toString cfg.countdown.secondsMinutes;
         # Single node, no clustering: skip epmd/distribution entirely.
         RELEASE_DISTRIBUTION = "none";
         RELEASE_COOKIE = "bear-cub-no-distribution";

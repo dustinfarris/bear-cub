@@ -31,6 +31,11 @@ for {key, value} <- BearCub.Weather.Config.from_env(System.get_env()) do
   config :bear_cub, :"weather_#{key}", value
 end
 
+# Bonus countdown (SC-1, SC-2, D147): lead time and seconds switch, in minutes,
+# set once in the NixOS module. Invalid values raise here, so the app refuses
+# to start.
+config :bear_cub, :bonus_countdown, BearCub.Countdown.config_from_env(System.get_env())
+
 # Calendar refresh pipeline (design §6): fetch interval within the ~15-minute
 # freshness target (FR-18), and the staleness threshold (FR-20, ~2h proposed).
 config :bear_cub,
