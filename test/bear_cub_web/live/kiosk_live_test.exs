@@ -1227,6 +1227,36 @@ defmodule BearCubWeb.KioskLiveTest do
       assert mode_of(view, kid) == nil
     end
 
+    test "a :countdown_tick runs no query, re-arm included", %{conn: conn, kid_a: kid} do
+      morning_race(10)
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert mode_of(view, kid) == :minutes
+
+      test_pid = self()
+      view_pid = view.pid
+      handler_id = make_ref()
+
+      # the handler runs in the querying process, so only the view's own
+      # queries are counted
+      :telemetry.attach(
+        handler_id,
+        [:bear_cub, :repo, :query],
+        fn _event, _measurements, _metadata, _config ->
+          if self() == view_pid, do: send(test_pid, :view_query)
+        end,
+        nil
+      )
+
+      try do
+        send(view.pid, :countdown_tick)
+        _ = :sys.get_state(view.pid)
+      after
+        :telemetry.detach(handler_id)
+      end
+
+      refute_received :view_query
+    end
+
     test "a tick shows the state for the actual time, not a step from the last",
          %{conn: conn, kid_a: kid} do
       morning_race(10)

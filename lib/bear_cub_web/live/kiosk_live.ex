@@ -451,8 +451,8 @@ defmodule BearCubWeb.KioskLive do
     versions = Schedules.versions()
     version = Routines.in_force(versions, local_now)
 
-    {routine_state, auto} =
-      Routines.current(local_now, Routines.day(version, DateTime.to_date(local_now)))
+    day_entry = Routines.day(version, DateTime.to_date(local_now))
+    {routine_state, auto} = Routines.current(local_now, day_entry)
 
     night? = routine_state == :upcoming
     today = DateTime.to_date(local_now)
@@ -547,7 +547,8 @@ defmodule BearCubWeb.KioskLive do
       weather: weather,
       pending_collapse: pending_collapse,
       counting: still_counting,
-      calendars_stale?: Calendars.any_stale?(local_now)
+      calendars_stale?: Calendars.any_stale?(local_now),
+      day_entry: day_entry
     )
     |> schedule_boundary(local_now)
   end
@@ -937,12 +938,14 @@ defmodule BearCubWeb.KioskLive do
   # and any column's next countdown edge, and the message names the winner
   # (D145): `:boundary` reloads everything, `:countdown_tick` only the
   # countdown. Cutoffs sit strictly inside their window, so a countdown edge
-  # never ties with a window edge.
+  # never ties with a window edge. The day entry is the one `load/3` cached,
+  # so a tick's re-arm costs no query; a tick never crosses midnight, which
+  # is a `:boundary` and reloads it.
   defp schedule_boundary(socket, now) do
     if socket.assigns.boundary_timer, do: Process.cancel_timer(socket.assigns.boundary_timer)
 
     if connected?(socket) do
-      entry = Schedules.day_entry(now)
+      entry = socket.assigns.day_entry
       window_ms = DateTime.diff(Routines.next_boundary(now, entry), now, :millisecond)
       {lead_ms, switch_ms} = socket.assigns.countdown_ms
 
