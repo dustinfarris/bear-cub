@@ -601,7 +601,10 @@ defmodule BearCubWeb.KioskLive do
     Map.new(kids, fn kid ->
       streak = Map.get(streaks, kid.id, %{current: 0, longest: 0})
       lifetime = get_in(history, [kid.id, :lifetime]) || 0
-      {kid.id, %{current: streak.current, longest: streak.longest, lifetime: lifetime}}
+      months = get_in(history, [kid.id, :months]) || []
+
+      {kid.id,
+       %{current: streak.current, longest: streak.longest, lifetime: lifetime, months: months}}
     end)
   end
 

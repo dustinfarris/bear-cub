@@ -142,6 +142,9 @@
 .kid-scope {
   --kid-tint: color-mix(in oklab, var(--kid) 12%, var(--color-base-100));
   --kid-edge: color-mix(in oklab, var(--kid) 45%, var(--color-base-100));
+  /* The record chart's small kid-coloured text (tick values) and gridlines. */
+  --kid-ink: color-mix(in oklab, var(--kid) 72%, var(--color-base-content));
+  --kid-grid: color-mix(in oklab, var(--kid) 22%, var(--color-base-200));
 }
 
 /* Reward layer type (D105): Nunito, self-hosted (SIL OFL; latin and

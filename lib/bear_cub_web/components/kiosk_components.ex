@@ -13,6 +13,7 @@ defmodule BearCubWeb.KioskComponents do
 
   alias BearCub.LocalTime
   alias BearCub.Messages
+  alias BearCubWeb.RecordChart
 
   @doc """
   Night screen (D56, supersedes D32's per-column Good Night message): the
@@ -109,7 +110,7 @@ defmodule BearCubWeb.KioskComponents do
         <header class="flex h-20 items-center justify-center" style={"background-color: #{kid.color}"}>
           <h1 class="font-reward text-[40px] font-black leading-none text-white">{kid.name}</h1>
         </header>
-        <div class="flex flex-col gap-4 p-5">
+        <div class="flex min-h-0 flex-1 flex-col gap-4 p-5">
           <.streak_tile
             kid={kid}
             current={@data[kid.id].current}
@@ -119,6 +120,7 @@ defmodule BearCubWeb.KioskComponents do
             <.longest_tile kid={kid} longest={@data[kid.id].longest} />
             <.lifetime_tile kid={kid} lifetime={@data[kid.id].lifetime} />
           </div>
+          <.month_chart kid={kid} months={@data[kid.id].months} />
         </div>
       </section>
       <button
@@ -232,6 +234,101 @@ defmodule BearCubWeb.KioskComponents do
     </div>
     """
   end
+
+  attr :kid, :map, required: true
+  attr :months, :list, required: true
+
+  # Points each month, one bar per month on this kid's own scale (never shared
+  # between columns). Bars are positioned from the baseline, 30 px above the
+  # plot box's bottom, with the month labels in the zone beneath. No value
+  # labels, no animation (D159).
+  defp month_chart(assigns) do
+    layout = RecordChart.layout(assigns.months)
+    assigns = assign(assigns, layout: layout, wide?: not layout.gridlines?)
+
+    ~H"""
+    <div
+      id={"month-chart-#{@kid.id}"}
+      class="flex min-h-0 flex-1 flex-col rounded-2xl bg-base-200 px-[18px] py-4"
+    >
+      <div class="flex items-center justify-between">
+        <span class="text-[17px] font-bold leading-none">Points each month</span>
+        <span class="flex items-center gap-2">
+          <span
+            class="block h-[14px] w-[22px] rounded-t-[4px]"
+            style="background-color: var(--kid-tint); border: 3px dashed var(--kid); border-bottom: 0"
+          ></span>
+          <span class="text-[15px] font-bold leading-none">so far</span>
+        </span>
+      </div>
+      <div class="relative mt-3 min-h-[120px] flex-1">
+        <%= if @layout.gridlines? do %>
+          <div
+            :for={value <- [div(@layout.top, 2), @layout.top]}
+            data-gridline
+            class="absolute left-10 right-0 h-[2px]"
+            style={"bottom: #{30 + RecordChart.bar_height(value, @layout.top, false)}px; background-color: var(--kid-grid)"}
+          >
+          </div>
+          <span
+            :for={value <- [div(@layout.top, 2), @layout.top]}
+            data-tick
+            class="absolute left-0 w-9 -translate-y-1/2 text-right text-[14px] font-bold leading-none"
+            style={"bottom: #{30 + RecordChart.bar_height(value, @layout.top, false)}px; color: var(--kid-ink)"}
+          >
+            {value}
+          </span>
+        <% end %>
+        <div
+          data-wide={@wide? && ""}
+          class={[
+            "absolute inset-y-0 right-0 flex",
+            if(@wide?, do: "left-0 justify-center gap-6", else: "left-10")
+          ]}
+        >
+          <div
+            :for={bar <- @layout.bars}
+            class={["relative h-full", if(@wide?, do: "w-32 shrink-0", else: "flex-1")]}
+          >
+            <div
+              data-bar
+              data-current={bar.current? && ""}
+              class={[
+                "absolute bottom-[30px] left-1/2 -translate-x-1/2 rounded-t-[10px]",
+                if(@wide?, do: "w-[88px]", else: "w-11")
+              ]}
+              style={bar_style(bar)}
+            >
+            </div>
+            <span
+              data-label
+              class="absolute inset-x-0 bottom-0 flex h-[30px] items-center justify-center text-[16px] font-bold leading-none text-base-content/70"
+            >
+              {bar.label}
+            </span>
+          </div>
+        </div>
+        <div
+          class={[
+            "absolute bottom-[26px] h-1",
+            if(@wide?, do: "left-1/2 -translate-x-1/2", else: "left-10 right-0")
+          ]}
+          style={"background-color: var(--kid-edge)#{if @wide?, do: "; width: #{wide_width(@layout.bars)}px"}"}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Slots 128 px wide with a 24 px gap: the baseline spans the group only.
+  defp wide_width(bars), do: length(bars) * 128 + (length(bars) - 1) * 24
+
+  defp bar_style(%{current?: true, height: h}),
+    do:
+      "height: #{h}px; background-color: var(--kid-tint); border: 3px dashed var(--kid); border-bottom: 0"
+
+  defp bar_style(%{height: h}), do: "height: #{h}px; background-color: var(--kid)"
 
   attr :id, :string, required: true
   attr :routine, :atom, required: true

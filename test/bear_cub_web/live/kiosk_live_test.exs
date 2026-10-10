@@ -3629,7 +3629,10 @@ defmodule BearCubWeb.KioskLiveTest do
 
       rest =
         text
-        |> String.replace(~r/Kid A|Kid B|Chores/, "")
+        |> String.replace(
+          ~r/Kid A|Kid B|Chores|Points each month|so far|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/,
+          ""
+        )
         |> String.replace(
           ~r/days? in a row|Start again today!|Start today!|Best ever!|longest ever|earned in all|days?/,
           ""
@@ -3756,6 +3759,74 @@ defmodule BearCubWeb.KioskLiveTest do
                  view,
                  "#record-column-#{kid.id}.kid-scope[style*='--kid: #{kid.color}']"
                )
+      end
+    end
+  end
+
+  describe "monthly chart on the record screen (Story 06)" do
+    setup do
+      morning_active()
+      kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      kid_b = kid_fixture(%{name: "Kid B", color: "#0ea5e9", position: 1})
+      %{kid_a: kid_a, kid_b: kid_b}
+    end
+
+    defp stage_record(state, kids) do
+      for kid <- kids, routine <- ["morning", "evening"] do
+        chore_fixture(kid, %{name: "#{routine} chore", routine: routine})
+      end
+
+      BearCub.Dev.Scenarios.record(state)
+    end
+
+    defp month_abbr(date), do: Calendar.strftime(date, "%b")
+
+    test "a kid with no completions gets one wide dashed current-month slot",
+         %{conn: conn, kid_a: kid_a} do
+      view = open_record(conn, kid_a)
+
+      assert has_element?(view, "#month-chart-#{kid_a.id}", "Points each month")
+      assert has_element?(view, "#month-chart-#{kid_a.id}", "so far")
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-label]", month_abbr(today()))
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-bar][data-current]")
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-bar][style*='height: 18px']")
+      refute has_element?(view, "#month-chart-#{kid_a.id} [data-gridline]")
+      refute has_element?(view, "#month-chart-#{kid_a.id} [data-tick]")
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-wide]")
+    end
+
+    test "eight months of history draw gridlines at half and full scale, per kid",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      stage_record(:c, [kid_a, kid_b])
+      view = open_record(conn, kid_a)
+
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-label]", month_abbr(today()))
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-gridline]")
+      assert has_element?(view, "#month-chart-#{kid_a.id} [data-tick]")
+      refute has_element?(view, "#month-chart-#{kid_a.id} [data-wide]")
+
+      count = fn id ->
+        view |> element("#month-chart-#{id}") |> render() |> String.split("data-bar") |> length()
+      end
+
+      assert count.(kid_a.id) > count.(kid_b.id)
+      assert has_element?(view, "#month-chart-#{kid_b.id} [data-wide]")
+      refute has_element?(view, "#month-chart-#{kid_b.id} [data-gridline]")
+    end
+
+    test "bars carry no value labels and the current bar is dashed with no bottom border",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      stage_record(:a, [kid_a, kid_b])
+      view = open_record(conn, kid_a)
+
+      bars = view |> element("#month-chart-#{kid_a.id}") |> render() |> LazyHTML.from_fragment()
+      current = LazyHTML.query(bars, "[data-bar][data-current]")
+      style = current |> LazyHTML.attribute("style") |> hd()
+      assert style =~ "border-bottom: 0"
+      assert style =~ "dashed"
+
+      for bar <- bars |> LazyHTML.query("[data-bar]") |> Enum.to_list() do
+        assert LazyHTML.text(bar) == ""
       end
     end
   end
