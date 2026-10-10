@@ -1,0 +1,30 @@
+#+title: Retro — streaks-and-stats
+
+* Batch 1 — Streaks and stats — 2026-10-10
+
+** Metrics
+
+| Story | Impl min | Closeout min | Update-design min | Test runs | Verifier | Out tokens | Δcode | Δtest | Note |
+|-------+----------+--------------+-------------------+-----------+----------+------------+-------+-------+------|
+| story-01 | 2 | 3 | 1 | 8 | 2(1.9m) | 49.3k | 168 | 283 | also read story-01 |
+| story-02 | 1 | 1 | 1 | 5 | 1(0.7m) | 33.9k | 95 | 212 | also read story-06 |
+| story-03 | 3 | 1 | 1 | 5 | 1(0.8m) | 39.5k | 156 | 124 |  |
+| story-04 | 4 | 2 | 1 | 7 | 1(1.2m) | 44.2k | 131 | 184 |  |
+| story-05 | 4 | 1 | 1 | 9 | 1(0.9m) | 57.9k | 155 | 132 |  |
+| story-06 | 5 | 1 | 0 | 16 | 1(0.9m) | 46.7k | 150 | 138 |  |
+| total | 20 | 9 | 5 | 50 | 7(6.5m) | 271.6k | 855 | 1073 | |
+
+Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch count (total minutes). Δ is net lines in commits inside the session window, docs/ excluded. Note lists other story files the sessions referenced — reads count, so it is not evidence of edits.
+
+** Observations
+
+- One fix loop: Story 01's verifier ran twice, the second dispatch labelled "Re-verify story 01 after fix"; every other story passed on its first verification.
+- No human questions in any story session: each session's only user turns were the implement prompt and =commit=. The batch's human rulings (the kid-colour tokens, the empty state, the ~:e~ scenario row) were made before implementation, in the stories commits.
+- Story 06 ran 16 test runs, about double any sibling, and had the longest implementation (5 min).
+- Stories 01, 02 and 06 invoked the TDD skill; the timelines for 03, 04 and 05 show no TDD skill invocation.
+- Story 05's session committed the kid-colour token refactor (~78e992a~, which the story opened with) before close-out, then the code and close-out commits at the end (~2e28fd3~, ~2b72c55~), which its timeline shows as a single commit event; Story 04's timeline shows its two end commits (~c4d0024~ code, ~f47de2a~ docs) as two events.
+- No deferred discoveries: PLAN's Deferred section is empty.
+- All six transcripts were found on this machine; the six sessions ran back to back in about 34 minutes of wall time.
+- The gate found one chain gap the per-story passes missed: D162 reversed effort-multiplier's D118 without a supersession notice; repaired at the gate as D164 on the human's ruling.
+
+** Retro

@@ -197,7 +197,7 @@ Backlog items this initiative closes at its gate: "Streaks like completing your 
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D154–D163)
+Decisions for this initiative: [[file:../decisions.org]] (D154–D164; D164 is the gate's supersession notice for D118)
 
 * Advisories
 
