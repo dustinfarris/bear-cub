@@ -74,21 +74,69 @@ As a kid at the kiosk, I need my current good-standing streak and my longest one
 
 * Acceptance Criteria
 
-** [ ] A day counts toward a kid's streak exactly when it is a good-standing day: the evening of the day before and that day's morning both complete and unfailed, judged against the rosters in force on those days; a parity test over staged history agrees day for day with ~Chores.standing/2~. (SC-2)
-** [ ] A failed-then-redone routine, a non-empty roster with no completion, and an incomplete evening or morning each break the run; a day whose roster is empty passes; a chore archived mid-run leaves the days after its archive judged on the smaller roster. (SC-2)
-** [ ] Weekends are judged like any other day. (SC-2)
-** [ ] A kid's history starts at their first completion: no day before it counts, and a kid with no completions has a current and longest streak of 0. (SC-2, SC-6)
-** [ ] Today is reported as standing, pending or failed per the three-valued table: standing shows the run through today; failed (last night's evening incomplete or failed, this morning failed, or the morning window closed with this morning incomplete) shows 0; pending shows the run ending yesterday. (SC-2)
-** [ ] The longest streak is the longest run over all history, includes today's run only when today is standing, and is unchanged after the current streak resets to 0. (SC-3)
-** [ ] Streaks cover completions recorded before this feature existed, with no stored streak, flag, job, table or migration. (SC-6)
-** [ ] Computing streaks for all kids takes a fixed number of queries regardless of how much history exists, and a schedule change never alters a past streak. (SC-2)
+** [X] A day counts toward a kid's streak exactly when it is a good-standing day: the evening of the day before and that day's morning both complete and unfailed, judged against the rosters in force on those days; a parity test over staged history agrees day for day with ~Chores.standing/2~. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~Streaks.standing?/2~ and ~status_fun/2~ (~lib/bear_cub/streaks.ex~) judge each day from ~Chores.routine_day_facts/1~, the rows earnings also read, under the D81 roster bound in ~live?/3~. Parity test "agrees day for day over staged history" compares ~Streaks.by_kid/2~ with ~Chores.standing/2~ for two kids, one with a failed chore. ~mix precommit~ green, 1006 tests.
+:END:
+** [X] A failed-then-redone routine, a non-empty roster with no completion, and an incomplete evening or morning each break the run; a day whose roster is empty passes; a chore archived mid-run leaves the days after its archive judged on the smaller roster. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: tests "an incomplete evening breaks the run", "a failed-then-redone morning breaks the run", "a day whose roster is empty passes" and "a chore archived mid-run leaves later days on the smaller roster" in ~test/bear_cub/streaks_test.exs~; a non-empty roster with no completion is the missing-evening case, ~streaks.ex~ ~status_fun/2~ nil-row branch.
+:END:
+** [X] Weekends are judged like any other day. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: test "weekends are judged like any other day" runs 2026-09-03 to 09-10 across Saturday and Sunday and expects a run of 7; no weekday filter exists in ~streaks.ex~.
+:END:
+** [X] A kid's history starts at their first completion: no day before it counts, and a kid with no completions has a current and longest streak of 0. (SC-2, SC-6)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: tests "the scan starts at the kid's first completion", "a first completion today scans no earlier day" and "a kid with no completions has no streak". The middle one answers the first verifier pass's finding: ~Date.range(today, yesterday)~ counted down and scored two days outside the bound when the first completion was today; fixed with an explicit step 1 at ~streaks.ex:67~, test written first and watched fail (current 3, expected 1).
+:END:
+** [X] Today is reported as standing, pending or failed per the three-valued table: standing shows the run through today; failed (last night's evening incomplete or failed, this morning failed, or the morning window closed with this morning incomplete) shows 0; pending shows the run ending yesterday. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~today_state/4~ implements the D156 table; tests cover standing, pending, overnight evening miss, failed morning today, closed morning window pinned with ~put_windows/2~ (09:59 pending, 10:00 failed), and a completed morning staying standing after the window closes.
+:END:
+** [X] The longest streak is the longest run over all history, includes today's run only when today is standing, and is unchanged after the current streak resets to 0. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: tests "longest counts today's run only when standing, and past runs otherwise" and the ~longest: 4~ assertions beside ~current: 0~ in the failed-today tests.
+:END:
+** [X] Streaks cover completions recorded before this feature existed, with no stored streak, flag, job, table or migration. (SC-6)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~Streaks~ reads only ~completions~ and ~chores~; no migration (newest is still 20261008181036), no schema, flag or job added.
+:END:
+** [X] Computing streaks for all kids takes a fixed number of queries regardless of how much history exists, and a schedule change never alters a past streak. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~by_kid/2~ issues four queries; test "the query count does not grow with history" counts them by telemetry and asserts equal counts for short and long history; test "a schedule change never alters a past streak"; only ~entry.morning_end~ is read.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: all eight Acceptance Criteria met, none removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~test/bear_cub/streaks_test.exs~, 18 tests, all passing in the full run.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier pass: ~mix format --check-formatted~ clean, docs wrapped at 80, no clock reads in ~Streaks~, ~Chores~ does not depend on ~Calendars~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:10] \\
+  Verifier ran ~mix precommit~ on the final tree: 1006 tests, 0 failures, exit 0.
+:END:
 
 * Technical Notes
 
