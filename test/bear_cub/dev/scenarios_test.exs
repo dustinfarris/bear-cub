@@ -261,6 +261,130 @@ defmodule BearCub.Dev.ScenariosTest do
     end
   end
 
+  describe "record/2" do
+    import BearCub.ScheduleHelpers, only: [morning_active: 0]
+
+    alias BearCub.Points
+    alias BearCub.Streaks
+
+    setup do
+      morning_active()
+      :ok
+    end
+
+    # {current, longest} of the first two kids after staging `state`
+    defp staged(state) do
+      [one, two | _] = Scenarios.record(state, now())
+      standing = Streaks.by_kid(now(), entry_now())
+      {one, two, standing}
+    end
+
+    defp pair(standing, kid), do: {standing[kid.id].current, standing[kid.id].longest}
+
+    defp first_completion(kid) do
+      import Ecto.Query
+
+      BearCub.Repo.one(
+        from c in BearCub.Chores.Completion,
+          join: ch in BearCub.Chores.Chore,
+          on: ch.id == c.chore_id,
+          where: ch.kid_id == ^kid.id,
+          select: min(c.local_date)
+      )
+    end
+
+    defp span_days(kid), do: Date.diff(today(), first_completion(kid))
+
+    test ":a stages 12 / 19 and 3 / 3 with history over eight months" do
+      {one, two, standing} = staged(:a)
+
+      assert pair(standing, one) == {12, 19}
+      assert pair(standing, two) == {3, 3}
+      assert standing[one.id].today == :pending
+      assert span_days(one) >= 245
+      assert span_days(two) >= 245
+    end
+
+    test ":b leaves last night's evening undone: 0 / 19 and 6 / 9" do
+      {one, two, standing} = staged(:b)
+
+      assert pair(standing, one) == {0, 19}
+      assert standing[one.id].today == :failed
+      assert pair(standing, two) == {6, 9}
+      assert span_days(one) >= 245
+      assert span_days(two) >= 245
+    end
+
+    test ":c gives kid 2 a first completion in the previous calendar month" do
+      {one, two, standing} = staged(:c)
+
+      assert pair(standing, one) == {12, 19}
+      assert pair(standing, two) == {4, 4}
+
+      assert Date.beginning_of_month(first_completion(two)) ==
+               Date.beginning_of_month(Date.add(Date.beginning_of_month(today()), -1))
+
+      assert [_, _] = Points.earned_history(today())[two.id].months
+    end
+
+    test ":d stages three-digit streaks and four-digit lifetime totals" do
+      {one, two, standing} = staged(:d)
+
+      assert pair(standing, one) == {112, 118}
+      assert pair(standing, two) == {104, 104}
+      assert span_days(one) >= 245
+      assert span_days(two) >= 245
+
+      history = Points.earned_history(today())
+      assert history[one.id].lifetime >= 1000
+      assert history[two.id].lifetime >= 1000
+    end
+
+    test ":e stages kid 1 as :a and kid 2 as brand new" do
+      {one, two, standing} = staged(:e)
+
+      assert pair(standing, one) == {12, 19}
+      assert pair(standing, two) == {0, 0}
+      assert first_completion(two) == nil
+
+      assert %{lifetime: 0, months: [{month, 0}]} = Points.earned_history(today())[two.id]
+      assert month == Date.beginning_of_month(today())
+    end
+
+    test "replaces the two kids' past completions and leaves today's alone" do
+      Scenarios.early_bird(now())
+      today_before = Chores.current_completions(today())
+
+      [one, _two | _] = Scenarios.record(:a, now())
+      Scenarios.record(:d, now())
+      Scenarios.record(:a, now())
+
+      assert Chores.current_completions(today()) == today_before
+      # early_bird/1 finished kid 1's morning today, so today extends the run
+      assert pair(Streaks.by_kid(now(), entry_now()), one) == {13, 19}
+    end
+
+    test "touches only the first two kids by id" do
+      [_, _ | _] = kids = Scenarios.reset(now())
+      {:ok, third} = Chores.create_kid(%{name: "Third", color: "#336699", position: length(kids)})
+
+      {:ok, chore} =
+        Chores.create_chore(
+          third,
+          %{name: "Third chore", icon: "🧹", routine: "morning", points: 1},
+          now()
+        )
+
+      date = Date.add(today(), -3)
+      at = DateTime.new!(date, ~T[07:00:00], now().time_zone)
+      {:ok, _} = Chores.complete_chore(chore, at, "kiosk")
+
+      Scenarios.record(:a, now())
+
+      assert first_completion(third) == date
+    end
+  end
+
   defp flush_mailbox do
     receive do
       _ -> flush_mailbox()

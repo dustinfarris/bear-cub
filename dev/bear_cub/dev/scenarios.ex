@@ -26,6 +26,7 @@ defmodule BearCub.Dev.Scenarios do
       BearCub.Dev.Scenarios.slow_weekend()   # /admin/schedule with a "custom" weekend
       BearCub.Dev.Scenarios.weather_chore()  # flag each kid's first morning chore
       BearCub.Dev.Scenarios.weather({:cold, :snow})   # any of nine readings; nil for none
+      BearCub.Dev.Scenarios.record(:a)       # record screen: :a normal, :b reset, :c two months, :d big, :e empty
       BearCub.Dev.Scenarios.restore()        # the schedule from before open/cutoff/slow_weekend
       BearCub.Dev.Scenarios.reset()
 
@@ -39,7 +40,7 @@ defmodule BearCub.Dev.Scenarios do
   import Ecto.Query
 
   alias BearCub.Chores
-  alias BearCub.Chores.Completion
+  alias BearCub.Chores.{Chore, Completion, Kid}
   alias BearCub.LocalTime
   alias BearCub.Repo
   alias BearCub.Schedules
@@ -135,6 +136,161 @@ defmodule BearCub.Dev.Scenarios do
     Repo.delete_all(from c in Completion, where: c.local_date == ^today)
     broadcast()
     Chores.list_kids()
+  end
+
+  # Per state, per kid (first two by id): the streak runs newest first, as
+  # `{current, longest, span_days}`; each run is followed by one missed
+  # morning. Filler runs, never longer than `longest`, stretch the history
+  # to `span_days`. `:b` additionally leaves kid 1's last evening undone.
+  @record_states %{
+    a: [{12, 19, 250}, {3, 3, 250}],
+    b: [{12, 19, 250}, {6, 9, 250}],
+    c: [{12, 19, 250}, {4, 4, 0}],
+    d: [{112, 118, 250}, {104, 104, 250}],
+    e: [{12, 19, 250}, nil]
+  }
+
+  @doc """
+  Stages the kiosk's record screen (streaks, longest, lifetime points and
+  the monthly chart) in one of five states by replacing the first two
+  kids' completions dated before today with seeded history; today's
+  completions are left alone. With `open(:morning)` and no completion
+  today (`reset/1`) the two kids show:
+
+    * `:a` — 12 / 19 and 3 / 3 (current / longest): normal, kid 2 on a
+      best-ever streak
+    * `:b` — 0 / 19 (last night's evening undone, so today is failed) and
+      6 / 9: the reset state
+    * `:c` — 12 / 19 and 4 / 4 whose first completion falls in the
+      previous calendar month: the two-month chart
+    * `:d` — 112 / 118 and 104 / 104: three-digit streaks, four-digit totals
+    * `:e` — 12 / 19 and a brand-new kid with no completions: the empty state
+
+  Runs are separated by single missed mornings, and history spans over
+  eight months except in `:c` (kid 2) and `:e` (kid 2). Seeded days are
+  judged against the roster in force: the kids' live routine chores are
+  backdated to the oldest seeded day and each day gets a completion for
+  every routine chore live on it. Destroys the dev database's real past
+  completions for those two kids. Returns the kids in id order.
+  """
+  def record(state, %DateTime{} = local_now \\ LocalTime.now())
+      when state in [:a, :b, :c, :d, :e] do
+    seed_if_empty()
+    today = DateTime.to_date(local_now)
+    kids = Repo.all(from k in Kid, order_by: k.id, limit: 2)
+
+    for {kid, spec} <- Enum.zip(kids, Map.fetch!(@record_states, state)) do
+      Repo.delete_all(
+        from c in Completion,
+          where:
+            c.local_date < ^today and
+              c.chore_id in subquery(from ch in Chore, where: ch.kid_id == ^kid.id, select: ch.id)
+      )
+
+      if spec, do: seed_history(kid, spec, state == :b and kid == hd(kids), today, local_now)
+    end
+
+    broadcast()
+    kids
+  end
+
+  defp seed_history(kid, {current, longest, span}, evening_undone?, today, local_now) do
+    {mornings, oldest} = standing_days(current, longest, span, today)
+    # kid 2 of `:c` has no span: one lone morning chore last month, unless
+    # the short run already reaches back that far
+    lone = if span == 0, do: lone_date(today, oldest)
+    first = Enum.min([oldest | List.wrap(lone)], Date) |> Date.add(-1)
+
+    # the evening before a standing day is done on every day from `first`
+    # to yesterday, the missed days included
+    evenings =
+      Date.range(first, Date.add(today, -1))
+      |> Enum.reject(&(evening_undone? and &1 == Date.add(today, -1)))
+
+    chores = backdate_roster(kid, first)
+
+    rows =
+      for {routine, days} <- [{"morning", mornings}, {"evening", evenings}],
+          day <- days,
+          chore <- chores,
+          chore.routine == routine,
+          live_on?(chore, day),
+          do: completion_row(chore, day, routine, local_now)
+
+    lone_rows =
+      for day <- List.wrap(lone),
+          chore <- Enum.take(Enum.filter(chores, &(&1.routine == "morning" and live_on?(&1, day))), 1),
+          do: completion_row(chore, day, "morning", local_now)
+
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    for chunk <- Enum.chunk_every(rows ++ lone_rows, 500) do
+      Repo.insert_all(Completion, Enum.map(chunk, &Map.merge(&1, %{inserted_at: now, updated_at: now})))
+    end
+  end
+
+  # Standing days newest first by run, with one missed day between runs:
+  # `current` ending yesterday, then `longest` (when different), then
+  # filler runs up to `span` days back. Returns the days and the oldest.
+  defp standing_days(current, longest, span, today) do
+    base = if current == longest, do: [current], else: [current, longest]
+    filler = Stream.cycle([longest - 4, longest - 9, longest - 1, longest - 6])
+    lengths = take_runs(base, Stream.map(filler, &max(&1, 1)), span, 0, [])
+
+    {days, _edge} =
+      Enum.reduce(lengths, {[], Date.add(today, -1)}, fn len, {days, edge} ->
+        run = Date.range(edge, Date.add(edge, -(len - 1)), -1)
+        {Enum.to_list(run) ++ days, Date.add(edge, -len - 1)}
+      end)
+
+    {days, Enum.min(days, Date)}
+  end
+
+  # Runs (newest first): `base`, then filler until the history reaches
+  # `span` days, each run costing its length plus the missed day after it.
+  defp take_runs([len | base], filler, span, total, acc),
+    do: take_runs(base, filler, span, total + len + 1, [len | acc])
+
+  defp take_runs([], filler, span, total, acc) do
+    if total >= span do
+      Enum.reverse(acc)
+    else
+      [len] = Enum.take(filler, 1)
+      take_runs([], Stream.drop(filler, 1), span, total + len + 1, [len | acc])
+    end
+  end
+
+  defp lone_date(today, oldest) do
+    date = today |> Date.beginning_of_month() |> Date.add(-1)
+    if Date.compare(date, Date.add(oldest, -1)) == :lt, do: date
+  end
+
+  # The kid's routine chores, live ones backdated so history before the
+  # seed date is judged against a roster that had them.
+  defp backdate_roster(kid, first) do
+    chores =
+      Repo.all(from c in Chore, where: c.kid_id == ^kid.id and not is_nil(c.routine))
+
+    for chore <- chores do
+      if is_nil(chore.archived_on) and Date.compare(chore.active_from, first) == :gt do
+        Repo.update_all(from(c in Chore, where: c.id == ^chore.id), set: [active_from: first])
+        %{chore | active_from: first}
+      else
+        chore
+      end
+    end
+  end
+
+  defp live_on?(chore, day) do
+    Date.compare(chore.active_from, day) != :gt and
+      (is_nil(chore.archived_on) or Date.compare(chore.archived_on, day) == :gt)
+  end
+
+  defp completion_row(chore, day, routine, local_now) do
+    time = if routine == "morning", do: ~T[07:30:00], else: ~T[19:30:00]
+    at = day |> DateTime.new!(time, local_now.time_zone) |> DateTime.shift_zone!("Etc/UTC")
+
+    %{chore_id: chore.id, local_date: day, completed_at: at, source: "kiosk"}
   end
 
   @doc """
