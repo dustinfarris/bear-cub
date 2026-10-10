@@ -1,4 +1,4 @@
-#+title: Story 03 — Staging the four record-screen states for review
+#+title: Story 03 — Staging the five record-screen states for review
 #+date: 2026-10-10
 
 * Design
@@ -31,8 +31,11 @@ As the person reviewing the kiosk before a deploy, I need one call per record-sc
 ** [ ] ~record(:a)~, ~record(:b)~, ~record(:c)~ and ~record(:d)~ each stage the first two kids (by id) at the current / longest streaks in the table above when paired with ~open(:morning)~ and with no completion today. (SC-2, SC-3)
 ** [ ] In ~:b~, kid 1's last-night evening is left undone, so kid 1's today is failed and the current streak is 0 while the longest stays 19. (SC-3)
 ** [ ] In ~:c~, kid 2's first completion falls in the previous calendar month, so kid 2's history covers two months; in ~:a~, ~:b~ and ~:d~ the history spans at least 8 months. (SC-4)
+** [ ] ~record(:e)~ stages kid 1 as in ~:a~ (12 / 19) and kid 2 with no completions before today, so with no completion today kid 2's column is the empty state: current 0, longest 0, lifetime 0 and a single current month at 0. (SC-2, SC-4)
 ** [ ] Each call replaces those two kids' completions dated before today and leaves today's completions untouched, so it composes with ~reset/1~ and ~open/1~. (SC-2)
 ** [ ] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~, asserting each state's current / longest through ~Streaks.by_kid/2~, and is listed in the ~Scenarios~ moduledoc usage list and the CLAUDE.md scenario list. (SC-2, SC-3)
+
+# Ruled by the human at the handoff (2026-10-10): ~record/1~ gains a fifth state, ~:e~ (kid 1 normal, kid 2 brand new with no completions), matching frame E of the my-record empty-state handoff, so Stories 05 and 06 can review the empty column through the scenario rather than by hand-staging. The DESIGN's Dev scenario table lists four states; Story 03's update-design pass adds the row (a D-entry is due only if the pass judges it a decision rather than an additive edit).
 
 * Definition of Done
 
@@ -45,8 +48,9 @@ As the person reviewing the kiosk before a deploy, I need one call per record-sc
 
 - The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
 - Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
-- This story depends on Story 01 because its tests assert each state through ~Streaks.by_kid/2~. It sits before the screen stories so their local reviews can stage these states; ~:c~ and ~:d~'s chart and lifetime checks become visible only once Stories 05 and 06 land.
+- This story depends on Story 01 because its tests assert each state through ~Streaks.by_kid/2~, and on Story 02 because ~:e~ also asserts through ~Points.earned_history/1~. It sits before the screen stories so their local reviews can stage these states; ~:c~ and ~:d~'s chart and lifetime checks become visible only once Stories 05 and 06 land.
 - ~dev/bear_cub/dev/scenarios.ex~: model it on the existing scenarios (~reset/1~ near line 132, ~open/1~ near line 147). Seed through the existing routine chores of each kid, respecting each chore's ~active_from~ / ~archived_on~ so seeded days are judged against the roster in force.
+- ~:e~ leaves today's completions alone like every state, so kid 2 is only truly empty with no completion today; pair it with ~reset/1~ in dev, and in its test assert through both ~Streaks.by_kid/2~ (0 / 0) and ~Points.earned_history/1~ (lifetime 0, one month at 0).
 - In tests, "morning window open and no completion today" means today is pending, so pin the window with ~put_windows/2~ (~test/support/schedule_helpers.ex~); in dev, pair with ~open(:morning)~.
 - Running ~record/1~ through Tidewave ~project_eval~ deletes the dev database's real past completions for the first two kids. Warn the human before the first run, and run it through ~project_eval~ so broadcasts land in the running server (CLAUDE.md).
 - The household-data rule in the excerpt binds whoever captures screenshots (Stories 04–06 and the gate); this story captures none.

@@ -84,6 +84,6 @@ As a kid at the kiosk, I need a bar for each recent month showing the points I e
 - Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
 - This story depends on Story 05 (which loads ~Points.earned_history/1~ under ~@record~ and settles the kid-token mechanism) and Story 02 (the ~months~ list).
 - The pixel figures in the excerpt are the spec; the ACs state the behaviour. Keep the scale, height and minimum-height arithmetic in a small pure helper so it can be unit-tested apart from the markup (e.g. ~top~ for a max of 0, 40, 41; the 12 px / 18 px floors).
-- Local review: ~record(:a)~ for the full 8-month chart with gridlines, ~record(:c)~ for kid 2's two wide bars with no gridlines, ~record(:d)~ for large values. Pair each with ~open(:morning)~. Hide kid names and calendar event text in the page before capturing (CLAUDE.md household-data rule).
+- Local review: ~record(:a)~ for the full 8-month chart with gridlines, ~record(:c)~ for kid 2's two wide bars with no gridlines, ~record(:d)~ for large values, ~record(:e)~ (with ~reset/1~) for the single current-month slot. Pair each with ~open(:morning)~. Hide kid names and calendar event text in the page before capturing (CLAUDE.md household-data rule).
 - No animation: no transition on bar height when an open screen refreshes.
 - Read ~docs/design-language.org~ before any styling (CLAUDE.md).
