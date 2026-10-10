@@ -53,32 +53,49 @@ defmodule BearCubWeb.KioskComponents do
         <%= if @streak > 0 do %>
           🔥 {@streak}
         <% else %>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            class="size-5"
-            fill="none"
-            stroke="white"
-            stroke-width="2"
-            stroke-dasharray="3 2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12 3c1 3.5-3.5 5.5-3.5 10a3.5 3.5 0 0 0 7 0c0-1.8-.6-2.8-1.4-3.8-.2 1.2-.8 1.8-1.5 2 .4-3-.1-5.7-.6-8.2z" />
-          </svg>
+          <.flame_outline class="size-5" stroke="white" />
         <% end %>
       </span>
     </button>
     """
   end
 
+  attr :class, :string, required: true
+  attr :stroke, :string, required: true
+
+  # The flame at a streak of 0 (D103): a dashed outline as inline SVG, so no
+  # font has to cover it. The chip and the record screen's streak tile share it.
+  defp flame_outline(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      class={@class}
+      fill="none"
+      stroke={@stroke}
+      stroke-width="2"
+      stroke-dasharray="3 2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3c1 3.5-3.5 5.5-3.5 10a3.5 3.5 0 0 0 7 0c0-1.8-.6-2.8-1.4-3.8-.2 1.2-.8 1.8-1.5 2 .4-3-.1-5.7-.6-8.2z" />
+    </svg>
+    """
+  end
+
   attr :kids, :list, required: true
+
+  attr :data, :map,
+    required: true,
+    doc: "`%{kid_id => %{current:, longest:, lifetime:}}`, loaded only while the screen is open"
 
   @doc """
   The record screen (D157, D159): one identical column per kid under a solid
   kid-colour banner, and the one control, a Chores button straddling the
-  gutter. The body is empty until the tiles and chart land.
+  gutter. Each body holds the streak tile and the longest/lifetime row; a
+  tile with no value yet keeps its place and size and goes dashed. Nothing
+  ranks or compares the two columns.
   """
   def record_screen(assigns) do
     ~H"""
@@ -86,12 +103,23 @@ defmodule BearCubWeb.KioskComponents do
       <section
         :for={kid <- @kids}
         id={"record-column-#{kid.id}"}
-        class="flex flex-col overflow-hidden rounded-lg bg-base-100"
+        style={"--kid: #{kid.color}"}
+        class="kid-scope flex flex-col overflow-hidden rounded-lg bg-base-100"
       >
         <header class="flex h-20 items-center justify-center" style={"background-color: #{kid.color}"}>
           <h1 class="font-reward text-[40px] font-black leading-none text-white">{kid.name}</h1>
         </header>
-        <div class="flex flex-col gap-4 p-5"></div>
+        <div class="flex flex-col gap-4 p-5">
+          <.streak_tile
+            kid={kid}
+            current={@data[kid.id].current}
+            longest={@data[kid.id].longest}
+          />
+          <div class="grid h-28 grid-cols-2 gap-4">
+            <.longest_tile kid={kid} longest={@data[kid.id].longest} />
+            <.lifetime_tile kid={kid} lifetime={@data[kid.id].lifetime} />
+          </div>
+        </div>
       </section>
       <button
         type="button"
@@ -104,6 +132,103 @@ defmodule BearCubWeb.KioskComponents do
         </span>
         <span class="font-reward text-[30px] font-black leading-none text-base-content">Chores</span>
       </button>
+    </div>
+    """
+  end
+
+  attr :kid, :map, required: true
+  attr :current, :integer, required: true
+  attr :longest, :integer, required: true
+
+  defp streak_tile(assigns) do
+    ~H"""
+    <div
+      id={"streak-tile-#{@kid.id}"}
+      class="relative flex h-48 items-center gap-6 rounded-2xl border-[3px] px-8"
+      style="background-color: var(--kid-tint); border-color: var(--kid-edge)"
+    >
+      <div
+        :if={@current > 0 and @current == @longest}
+        id={"best-ever-#{@kid.id}"}
+        class="absolute -top-[19px] right-5 flex items-center gap-1.5 rounded-full border-[3px] bg-base-100 px-3 py-0.5"
+        style="border-color: var(--kid)"
+      >
+        <span class="text-[22px] leading-none">🏆</span>
+        <span class="font-reward text-[19px] font-extrabold leading-none text-base-content">
+          Best ever!
+        </span>
+      </div>
+      <span :if={@current > 0} class="text-[108px] leading-none">🔥</span>
+      <.flame_outline :if={@current == 0} class="size-[108px]" stroke="var(--kid)" />
+      <div class="flex flex-col">
+        <span
+          class="font-reward text-[140px] font-black leading-[.86]"
+          style="color: var(--kid)"
+        >
+          {@current}
+        </span>
+        <span class="mt-2 font-reward text-[28px] font-extrabold leading-none text-base-content">
+          {streak_label(@current, @longest)}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp streak_label(0, 0), do: "Start today!"
+  defp streak_label(0, _longest), do: "Start again today!"
+  defp streak_label(1, _longest), do: "day in a row"
+  defp streak_label(_current, _longest), do: "days in a row"
+
+  attr :kid, :map, required: true
+  attr :longest, :integer, required: true
+
+  # Identical in every state but one: only while the longest streak is 0 does
+  # the border go dashed and faint. A reset never touches it (D159).
+  defp longest_tile(assigns) do
+    ~H"""
+    <div
+      id={"longest-tile-#{@kid.id}"}
+      class={[
+        "flex items-center gap-3 rounded-2xl border-4 bg-base-100 px-5",
+        if(@longest == 0, do: "border-dashed", else: "border-solid")
+      ]}
+      style={"border-color: #{if @longest == 0, do: "var(--kid-edge)", else: "var(--kid)"}"}
+    >
+      <span class="text-[48px] leading-none">🏆</span>
+      <div class="flex flex-col">
+        <div class="flex items-baseline gap-2">
+          <span class="font-reward text-[52px] font-black leading-none">{@longest}</span>
+          <span class="font-reward text-[22px] font-extrabold leading-none">
+            {if @longest == 1, do: "day", else: "days"}
+          </span>
+        </div>
+        <span class="mt-1 text-[17px] font-bold leading-none">longest ever</span>
+      </div>
+    </div>
+    """
+  end
+
+  attr :kid, :map, required: true
+  attr :lifetime, :integer, required: true
+
+  # Points earned in all, never lowered by spending. The paid family is the
+  # "earned something" signal (design-language entry 7).
+  defp lifetime_tile(assigns) do
+    ~H"""
+    <div
+      id={"lifetime-tile-#{@kid.id}"}
+      class={[
+        "flex items-center gap-3 rounded-2xl border-4 px-5",
+        if(@lifetime == 0, do: "border-dashed", else: "border-solid")
+      ]}
+      style="background-color: var(--paid-tint); border-color: var(--paid-edge); color: var(--paid-content)"
+    >
+      <.icon name="hero-star-solid" class="size-12 shrink-0" />
+      <div class="flex flex-col">
+        <span class="font-reward text-[52px] font-black leading-none">{@lifetime}</span>
+        <span class="mt-1 text-[17px] font-bold leading-none">earned in all</span>
+      </div>
     </div>
     """
   end

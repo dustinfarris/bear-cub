@@ -76,6 +76,7 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
      |> assign(:record, false)
+     |> assign(:record_data, nil)
      |> assign(:record_timer, nil)
      |> assign(:counting, %{})
      |> assign(:boundary_timer, nil)
@@ -543,6 +544,12 @@ defmodule BearCubWeb.KioskLive do
     columns =
       Enum.map(columns, &Map.put(&1, :streak, get_in(streaks, [&1.kid.id, :current]) || 0))
 
+    # The record screen's figures: the lifetime history is read only while
+    # the screen is open, and every load refreshes it (D157).
+    record_data =
+      if socket.assigns.record and not night?,
+        do: record_data(Chores.list_kids(), streaks, Points.earned_history(today))
+
     # Collapse-delay (Story 07, SC-7): a kid newly added to
     # `pending_collapse` this pass just had their last routine chore
     # completed — schedule the delayed reveal, once per transition.
@@ -584,9 +591,18 @@ defmodule BearCubWeb.KioskLive do
       pending_collapse: pending_collapse,
       counting: still_counting,
       calendars_stale?: Calendars.any_stale?(local_now),
-      day_entry: day_entry
+      day_entry: day_entry,
+      record_data: record_data
     )
     |> schedule_boundary(local_now)
+  end
+
+  defp record_data(kids, streaks, history) do
+    Map.new(kids, fn kid ->
+      streak = Map.get(streaks, kid.id, %{current: 0, longest: 0})
+      lifetime = get_in(history, [kid.id, :lifetime]) || 0
+      {kid.id, %{current: streak.current, longest: streak.longest, lifetime: lifetime}}
+    end)
   end
 
   defp build_column(
@@ -1060,7 +1076,11 @@ defmodule BearCubWeb.KioskLive do
       >
         <.night_screen :if={@night?} />
 
-        <.record_screen :if={@record and not @night?} kids={Enum.map(@columns, & &1.kid)} />
+        <.record_screen
+          :if={@record and not @night?}
+          kids={Enum.map(@columns, & &1.kid)}
+          data={@record_data}
+        />
 
         <%!-- Corner glyph (D4): dim when the calendar cache has gone stale.
              Global, not per-calendar or per-column — per-calendar diagnosis

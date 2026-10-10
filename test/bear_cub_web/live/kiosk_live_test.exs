@@ -3614,7 +3614,9 @@ defmodule BearCubWeb.KioskLiveTest do
       refute render(view) =~ "/admin"
     end
 
-    test "the record screen carries only the names and Chores", %{conn: conn, kid_a: kid_a} do
+    test "the record screen carries only the names, Chores and the tile strings",
+         %{conn: conn, kid_a: kid_a} do
+      give_streak(kid_a)
       {:ok, view, _html} = live(conn, ~p"/")
       view |> element("#streak-chip-#{kid_a.id}") |> render_click()
 
@@ -3625,7 +3627,136 @@ defmodule BearCubWeb.KioskLiveTest do
         |> LazyHTML.from_fragment()
         |> LazyHTML.text()
 
-      assert text == "Kid AKid BChores"
+      rest =
+        text
+        |> String.replace(~r/Kid A|Kid B|Chores/, "")
+        |> String.replace(
+          ~r/days? in a row|Start again today!|Start today!|Best ever!|longest ever|earned in all|days?/,
+          ""
+        )
+        |> String.replace(~r/[\d\s🔥🏆]/u, "")
+
+      assert rest == ""
+    end
+
+    defp tile_text(view, selector) do
+      view
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.replace(~r/(?<=\d)(?=[A-Za-z])/, " ")
+      |> String.replace(~r/\s+/, " ")
+      |> String.trim()
+    end
+
+    # Yesterday-but-three: a run of 1, then nothing — current 0, longest 1.
+    defp give_reset(kid) do
+      evening = chore_fixture(kid, %{name: "Bath", routine: "evening"})
+      morning = chore_fixture(kid, %{name: "Brush", routine: "morning"})
+      day = fn n, time -> DateTime.new!(Date.add(today(), n), time, tz()) end
+      {:ok, _} = BearCub.Chores.complete_chore(evening, day.(-6, ~T[19:00:00]), "kiosk")
+      {:ok, _} = BearCub.Chores.complete_chore(morning, day.(-5, ~T[07:00:00]), "kiosk")
+      {:ok, _} = BearCub.Chores.complete_chore(evening, day.(-5, ~T[19:00:00]), "kiosk")
+    end
+
+    defp open_record(conn, kid) do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid.id}") |> render_click()
+      view
+    end
+
+    test "the streak tile shows the flame, the count and the label with Best ever!",
+         %{conn: conn, kid_a: kid_a} do
+      give_streak(kid_a)
+      view = open_record(conn, kid_a)
+
+      assert tile_text(view, "#streak-tile-#{kid_a.id}") =~ "🔥"
+      assert tile_text(view, "#streak-tile-#{kid_a.id}") =~ "1 day in a row"
+
+      assert has_element?(
+               view,
+               "#streak-tile-#{kid_a.id}[style*='var(--kid-tint)'][style*='var(--kid-edge)']"
+             )
+
+      assert has_element?(view, "#best-ever-#{kid_a.id}", "Best ever!")
+      assert tile_text(view, "#longest-tile-#{kid_a.id}") =~ "1 day longest ever"
+      refute has_element?(view, "#longest-tile-#{kid_a.id}.border-dashed")
+    end
+
+    test "a reset shows 0, Start again today! and an unchanged longest tile, no chip",
+         %{conn: conn, kid_a: kid_a} do
+      give_reset(kid_a)
+      view = open_record(conn, kid_a)
+
+      tile = tile_text(view, "#streak-tile-#{kid_a.id}")
+      assert tile =~ "0"
+      refute tile =~ "in a row"
+      assert tile =~ "Start again today!"
+      refute tile =~ "Start today!"
+      refute tile =~ "🔥"
+      assert has_element?(view, "#streak-tile-#{kid_a.id} svg[stroke-dasharray]")
+      refute has_element?(view, "#best-ever-#{kid_a.id}")
+      assert tile_text(view, "#longest-tile-#{kid_a.id}") =~ "1 day longest ever"
+      refute has_element?(view, "#longest-tile-#{kid_a.id}.border-dashed")
+    end
+
+    test "a kid with no completions gets the same tiles in dashed language",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      give_streak(kid_a)
+      view = open_record(conn, kid_a)
+
+      assert tile_text(view, "#streak-tile-#{kid_b.id}") =~ "Start today!"
+      refute tile_text(view, "#streak-tile-#{kid_b.id}") =~ "Start again"
+      assert tile_text(view, "#streak-tile-#{kid_b.id}") =~ "0"
+      refute has_element?(view, "#best-ever-#{kid_b.id}")
+      assert tile_text(view, "#longest-tile-#{kid_b.id}") =~ "0 days longest ever"
+      assert has_element?(view, "#longest-tile-#{kid_b.id}.border-dashed")
+      assert tile_text(view, "#lifetime-tile-#{kid_b.id}") =~ "0 earned in all"
+      assert has_element?(view, "#lifetime-tile-#{kid_b.id}.border-dashed")
+      assert has_element?(view, "#lifetime-tile-#{kid_b.id} .hero-star-solid")
+      refute has_element?(view, "#lifetime-tile-#{kid_a.id}.border-dashed")
+    end
+
+    test "the lifetime tile shows the earned-in-all total and is not lowered by spending",
+         %{conn: conn, kid_a: kid_a} do
+      give_streak(kid_a)
+      lifetime = BearCub.Points.earned_history(today())[kid_a.id].lifetime
+      assert lifetime > 0
+      view = open_record(conn, kid_a)
+
+      assert tile_text(view, "#lifetime-tile-#{kid_a.id}") =~ "#{lifetime} earned in all"
+    end
+
+    test "the history loads only while the record screen is open, and refreshes on a completion",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert :sys.get_state(view.pid).socket.assigns.record_data == nil
+
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+      assert :sys.get_state(view.pid).socket.assigns.record_data != nil
+      assert tile_text(view, "#lifetime-tile-#{kid_a.id}") =~ "0 earned in all"
+
+      # stand-in for admin: any context write broadcasts
+      give_streak(kid_a)
+      lifetime = BearCub.Points.earned_history(today())[kid_a.id].lifetime
+      assert lifetime > 0
+      assert tile_text(view, "#streak-tile-#{kid_a.id}") =~ "1 day in a row"
+      assert tile_text(view, "#lifetime-tile-#{kid_a.id}") =~ "#{lifetime} earned in all"
+
+      view |> element("#record-back") |> render_click()
+      assert :sys.get_state(view.pid).socket.assigns.record_data == nil
+    end
+
+    test "each record column is a kid scope", %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      view = open_record(conn, kid_a)
+
+      for kid <- [kid_a, kid_b] do
+        assert has_element?(
+                 view,
+                 "#record-column-#{kid.id}.kid-scope[style*='--kid: #{kid.color}']"
+               )
+      end
     end
   end
 end
