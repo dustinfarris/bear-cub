@@ -1,0 +1,8 @@
+#+title: SKETCH — Streaks and stats
+#+date: 2026-10-09
+
+# Scratch: mechanism material parked during the PRD conversation, one thought per line in the order it came up, and the starting material for the design brainstorm. No authority — no chain document cites this file, anyone may edit it, and DESIGN.org supersedes it on contact.
+
+- Entry point: tapping the kiosk points badge (its tap gesture is unbound today, per rewards/redemption DESIGN).
+- Side-by-side layout reusing the existing per-kid kiosk columns, the way the reward shop reuses them.
+- Points side: a running total plus a month-by-month breakdown.

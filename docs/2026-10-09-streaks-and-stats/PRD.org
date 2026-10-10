@@ -1,0 +1,32 @@
+#+title: PRD — Bear Cub: Streaks and stats
+#+date: 2026-10-09
+
+# IMMUTABLE: This document is the invariant contract for the project. Agents never edit this file (enforced by the prd-lock hook). Changes happen only through the Amendment protocol below, performed by a human.
+
+* Problem
+
+The kids' screen only ever shows the present: today's chores, and a points balance that drops every time a kid spends on a reward. Nothing lets a kid look back at what they have done, so there is nothing to be proud of. A good run of mornings disappears from view the day after, and points earned months ago are invisible once spent. One of the kids has asked for exactly this twice, for streaks ("you've completed your morning routine 7 days in a row!") and for stats on their points, and still wants it. Nothing off the shelf fits, because the record that matters is this family's own: good standing as this app defines it, and points as this app derives them.
+
+* Success Criteria
+
+# Numbers are stable handles (cited downstream as SC-1, SC-2, ...): never renumber. An amendment that removes a criterion retires its number rather than reassigning it.
+
+1. From the kiosk, a kid can open a view showing their own record and their sibling's side by side, and get back to their chores from it.
+2. Each kid sees their current good-standing streak and their longest one ever. A streak day means exactly what good standing already means: last night's evening routine and that morning's morning routine both finished, neither marked failed.
+3. Ending a streak never takes a record away: the longest streak stays on view after the current one resets.
+4. Each kid sees a running total of every point they have ever earned, which spending never lowers, and a breakdown of points earned by month.
+5. Nothing in the view ranks, compares, or picks a winner between the kids; each column reads as its own record.
+6. On the day it ships, streaks, records, the running total and the monthly breakdown already reflect all recorded history.
+
+* Out of Scope
+
+- Away days: a sleepover, trip or sick day breaks a streak like any other missed day.
+- Any parent or admin surface for streaks or points history; this is the kids' view.
+- Streaks or records earning points, unlocking rewards, or gating anything.
+- Today's point-by-point progress.
+
+* Amendments
+
+# Protocol: Amendments are human-only, rare, and deliberately expensive. Each amendment gets a timestamped entry below stating what outcome changed and why. An amendment invalidates downstream artifacts: DESIGN.org must be re-reviewed against the new criteria, and all open stories re-checked for AC traceability before implementation resumes.
+
+# (no amendments)
