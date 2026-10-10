@@ -848,21 +848,73 @@ defmodule BearCub.Chores do
 
   defp routine_days_by_kid(%Date{} = local_date, versions) do
     local_date
-    |> routine_day_facts()
-    |> Enum.reduce(%{}, fn row, acc ->
-      complete? = row.chore_count > 0 and row.live_count == row.chore_count
+    |> routine_day_contributions(versions)
+    |> Enum.reduce(%{}, fn {kid_id, _date, contribution}, acc ->
+      Map.update(acc, kid_id, contribution, &(&1 + contribution))
+    end)
+  end
 
+  # One `{kid_id, local_date, contribution}` per routine-day, each priced by
+  # the version in force at its own instant (D121). The kid total and the
+  # month bucketing both reduce this list, so they cannot price differently.
+  defp routine_day_contributions(%Date{} = local_date, versions) do
+    for row <- routine_day_facts(local_date) do
       facts = %{
         kid_id: row.kid_id,
-        earned?: complete?,
+        earned?: row.chore_count > 0 and row.live_count == row.chore_count,
         failed?: row.any_failed == 1,
         last_completed_at: row.last_completed_at,
         first_failed_at: row.first_failed_at
       }
 
-      contribution = contribution(versions, row.routine, row.local_date, facts)
+      {row.kid_id, row.local_date, contribution(versions, row.routine, row.local_date, facts)}
+    end
+  end
 
-      Map.update(acc, row.kid_id, contribution, &(&1 + contribution))
+  @doc """
+  Every kid's signed, unfloored earnings bucketed by the month of each
+  contribution's `local_date` (D158): `%{kid_id => %{first_of_month =>
+  integer}}`. A month appears for every month holding a completion on or
+  before `local_date`, even one that nets to 0. The months of a kid sum to
+  their `earnings_by_kid/1` figure. Two queries, whatever the history.
+  """
+  def earnings_by_kid_month(%Date{} = local_date) do
+    versions = Schedules.versions()
+
+    routine =
+      for {kid_id, date, contribution} <- routine_day_contributions(local_date, versions) do
+        {kid_id, Date.beginning_of_month(date), contribution}
+      end
+
+    (extras_by_kid_month(local_date) ++ routine)
+    |> Enum.reduce(%{}, fn {kid_id, month, amount}, acc ->
+      Map.update(acc, kid_id, %{month => amount}, fn months ->
+        Map.update(months, month, amount, &(&1 + amount))
+      end)
     end)
+  end
+
+  defp extras_by_kid_month(%Date{} = local_date) do
+    from(c in Completion,
+      join: ch in Chore,
+      on: ch.id == c.chore_id,
+      where: is_nil(ch.routine) and c.local_date <= ^local_date,
+      group_by: [ch.kid_id, fragment("strftime('%Y-%m', ?)", c.local_date)],
+      select:
+        {ch.kid_id, fragment("strftime('%Y-%m', ?)", c.local_date),
+         fragment(
+           "SUM(CASE WHEN ? IS NOT NULL THEN (0 - (? + COALESCE(?, 0) * COALESCE(?, 0))) WHEN ? IS NOT NULL THEN 0 ELSE (? + COALESCE(?, 0) * COALESCE(?, 0)) END)",
+           c.failed_at,
+           ch.points,
+           c.effort_count,
+           ch.unit_rate,
+           c.undone_at,
+           ch.points,
+           c.effort_count,
+           ch.unit_rate
+         )}
+    )
+    |> Repo.all()
+    |> Enum.map(fn {kid_id, ym, amount} -> {kid_id, Date.from_iso8601!(ym <> "-01"), amount} end)
   end
 end
