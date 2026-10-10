@@ -46,7 +46,7 @@ From §Key Behaviors / Points history (verbatim, the shape this story renders):
 #+begin_src elixir
 Points.earned_history(local_date)
 #=> %{kid_id => %{lifetime: non_neg_integer, months: [{~D[2026-03-01], non_neg_integer}, ...]}}
-#    months: the last 8 ending with local_date's month, none before the kid's first completion month, each floored at 0
+#    months: the last 8 ending with local_date's month, none before the kid's first completion month, always including the current month (a kid with no completions gets that one month at 0), each floored at 0
 #    lifetime: max(0, sum of the unfloored months)
 #+end_src
 #+end_quote

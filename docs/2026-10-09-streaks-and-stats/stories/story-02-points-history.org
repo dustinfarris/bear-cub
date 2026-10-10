@@ -59,23 +59,71 @@ As a kid at the kiosk, I need every point I have ever earned added up, and broke
 
 * Acceptance Criteria
 
-** [ ] Each kid has a lifetime "earned" total that counts every routine-day and extra contribution over all history, net of fail penalties, and that spending on rewards never lowers. (SC-4, SC-6)
-** [ ] Each kid has a per-month breakdown keyed by the month of each contribution's date, so a contribution on the last day of a month and one on the first day of the next land in different months. (SC-4)
-** [ ] The breakdown lists the last 8 months ending with the current month, never a month before the kid's first completion month, and a month inside the kid's history with no net earnings appears with 0. (SC-4)
-** [ ] The breakdown always contains the current month, at 0 if needed, so a kid with no completions gets a one-month list, never an empty one. (SC-4)
+** [X] Each kid has a lifetime "earned" total that counts every routine-day and extra contribution over all history, net of fail penalties, and that spending on rewards never lowers. (SC-4, SC-6)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified by story-verifier: ~Points.earned_history/1~ (~lib/bear_cub/points.ex~) sets ~lifetime~ to ~max(0, sum of unfloored months)~ with no redemptions leg; failed extras and routine-days sign negative. Tests ~spending never lowers the history~ (lifetime 20 after a redemption) and ~a month whose fails exceed its earnings...~ in ~test/bear_cub/points_history_test.exs~.
+:END:
+** [X] Each kid has a per-month breakdown keyed by the month of each contribution's date, so a contribution on the last day of a month and one on the first day of the next land in different months. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: routine days bucket by ~Date.beginning_of_month~, extras by ~strftime('%Y-%m', local_date)~ in ~Chores.earnings_by_kid_month/1~. Test ~buckets a last-of-month and a first-of-next-month contribution apart~ (Sep 30 and Oct 1 land in separate months).
+:END:
+** [X] The breakdown lists the last 8 months ending with the current month, never a month before the kid's first completion month, and a month inside the kid's history with no net earnings appears with 0. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ~window_start~ is 7 months back, ~start~ is ~max(first, window_start)~. Tests ~months run from the first completion month to the current one; earlier months are absent~ (Aug 4, Sep 0, Oct 0) and ~lists at most the last 8 months...~ (length 8, first 2026-03-01 at 0).
+:END:
+** [X] The breakdown always contains the current month, at 0 if needed, so a kid with no completions gets a one-month list, never an empty one. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ~earned_history/1~ falls back to the current month when a kid has no keys. Test ~a kid with no completions gets the current month at 0 and lifetime 0~ asserts ~[{~D[2026-10-01], 0}]~.
+:END:
 
 # Ruled by the human at the handoff (2026-10-10), from the my-record empty-state handoff: the month list always includes the current month, even for a kid with no completions (whose history otherwise has no first-completion month to start from), so Story 06's chart always has a slot to draw. The DESIGN's shape comment ("none before the kid's first completion month") is silent on the no-completions case; Story 02's update-design pass records the clarification.
-** [ ] A month whose fail penalties exceed its earnings shows 0, never a negative figure, and the lifetime total never goes below 0. (SC-4)
-** [ ] Contributions keep the price set by the schedule version in force when each was earned, across a schedule change. (SC-4)
-** [ ] For every kid, the unfloored lifetime figure minus their approved, unreversed spend equals their raw points balance before the floor. (SC-4)
-** [ ] Computing the history for all kids takes a fixed number of queries regardless of how much history exists. (SC-4)
+** [X] A month whose fail penalties exceed its earnings shows 0, never a negative figure, and the lifetime total never goes below 0. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ~max(0, ...)~ applies per month and to the lifetime. Test ~a month whose fails exceed its earnings shows 0...~ asserts the Sep month at 0 and lifetime 0, including after a further fail.
+:END:
+** [X] Contributions keep the price set by the schedule version in force when each was earned, across a schedule change. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ~earnings_by_kid_month/1~ reuses ~routine_day_contributions~, which prices each day via ~contribution(versions, ...)~. Test ~each contribution keeps the price of the version in force...~ (Sep 5, Oct 9, lifetime 14 after the bonus change).
+:END:
+** [X] For every kid, the unfloored lifetime figure minus their approved, unreversed spend equals their raw points balance before the floor. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: test ~unfloored lifetime minus approved unreversed spend equals the raw balance~ asserts ~unfloored + spend == Points.balance(kid, today)~ and ~lifetime == unfloored~.
+:END:
+** [X] Computing the history for all kids takes a fixed number of queries regardless of how much history exists. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: test ~takes the same number of queries whatever the history length~ counts ~[:bear_cub, :repo, :query]~ telemetry events before and after adding 16 completions and asserts equality.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ACs 1–8 all met by the verifier pass, no removals or deferrals.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: 11 tests in ~test/bear_cub/points_history_test.exs~ (3 for ~Chores.earnings_by_kid_month/1~, 8 for ~Points.earned_history/1~), all passing, covering every bullet of the Design's points-history testing line.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: new code formatted (~mix format --check-formatted~ passes), no ~DateTime.utc_now()~, takes a local date, docstrings wrapped at 80, routine-day reduce shared per the Technical Notes.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  Verified: ~mix precommit~ run by the verifier ended with ~Result: 1017 passed~; ~mix format --check-formatted~ separately passed.
+:END:
 
 * Technical Notes
 

@@ -131,7 +131,7 @@ Streaks.by_kid(local_now, %DayEntry{} = entry)
 
 ** Points history
 
-[[file:../decisions.org::#d158][D158]].
+[[file:../decisions.org::#d158][D158]], [[file:../decisions.org::#d161][D161]].
 
 - *"Earned" is net of fail penalties, without the redemptions leg.* "Earned in all" and the monthly bars use the signed contribution of ~Chores.earnings_by_kid~ — a failed routine-day contributes −R, a failed extra −value — so spending never lowers them, and a parent's fail does.
 - *Floors.* Each month's bar floors at 0, and the lifetime total floors at 0, mirroring D41 per bucket: a month with more failures than earnings shows a 0 bar, never a negative one.
@@ -143,7 +143,7 @@ Chores.earnings_by_kid_month(local_date)
 
 Points.earned_history(local_date)
 #=> %{kid_id => %{lifetime: non_neg_integer, months: [{~D[2026-03-01], non_neg_integer}, ...]}}
-#    months: the last 8 ending with local_date's month, none before the kid's first completion month, each floored at 0
+#    months: the last 8 ending with local_date's month, none before the kid's first completion month, always including the current month (a kid with no completions gets that one month at 0), each floored at 0
 #    lifetime: max(0, sum of the unfloored months)
 #+end_src
 
@@ -196,7 +196,7 @@ Backlog items this initiative closes at its gate: "Streaks like completing your 
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D154–D160)
+Decisions for this initiative: [[file:../decisions.org]] (D154–D161)
 
 * Advisories
 
@@ -206,3 +206,9 @@ Decisions for this initiative: [[file:../decisions.org]] (D154–D160)
 # (deleted) at gates once no reader could plausibly reintroduce the old
 # position; git keeps the permanent record. Every advisory pairs with a body
 # edit; decision-driven advisories cite their D-number.
+
+** [2026-10-10 Sat 08:13] §Points history no longer lets a kid with no completions have an empty month list (D161)
+
+/Sections affected: Key Behaviors (Points history)/
+
+The ~Points.earned_history/1~ shape comment used to say only "the last 8 ending with local_date's month, none before the kid's first completion month". Read literally, a kid with no completions has no first-completion month, so their ~months~ list was empty, and a chart or test written from that text would draw nothing or assert ~[]~. It still looks right because it follows straight from the "none before" rule. The current month is always present: a kid with no completions gets ~[{current_month, 0}]~. Rationale: [[file:../decisions.org::#d161][D161]].

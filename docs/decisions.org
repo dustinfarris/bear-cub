@@ -743,3 +743,10 @@ Each column's chart scale is computed from that kid's months alone (~top = max(4
 :END:
 
 Taken from the Claude Design handoff and accepted by the human during design. 🔥 (streak) and 🏆 (longest) are emoji, so D103's inline-SVG rule for non-emoji glyphs is untouched; the 0-streak flame is an inline-SVG dashed outline; the lifetime star is ~hero-star-solid~, the glyph that already means points, rather than the ⭐ emoji the handoff drew. Two derived tokens join the kid mixes: ~--kid-ink~ (kid 72% into base-content, small kid-coloured text at 4.5:1) and ~--kid-grid~ (kid 22% into base-200), no new hexes. =Start again today!= and =Best ever!= are accepted knowingly as more words on the kids' view, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; =Best ever!= is what makes current-equals-longest read as a celebration rather than a repeat. The pending slot's dashed edge extends its meaning to "not finished yet" for the current month's bar, in the kid's own colour. The longest tile is identical in every state so it never reads as a consolation prize. Rejected: a numberless or wordless reset state — a lone 0 with no words reads as a penalty. → streaks-and-stats/Screens / Interfaces (Design-language entries this initiative adds).
+
+* D161 (2026-10-10) — The points-history month list always includes the current month, even for a kid with no completions
+:PROPERTIES:
+:CUSTOM_ID: d161
+:END:
+
+Ruled by the human at the my-record empty-state handoff. ~Points.earned_history/1~'s ~months~ runs from the later of the kid's first completion month and seven months back, through the current month, so a kid with no completions gets a one-month list at 0 rather than an empty one, and the monthly chart always has a slot to draw. The design's "none before the kid's first completion month" was silent on a kid with no first completion. Rejected: an empty list for such a kid — it leaves the chart to special-case a missing slot that the empty-state design draws. Settles streaks-and-stats/SC-4. → streaks-and-stats/Key Behaviors (Points history).

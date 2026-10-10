@@ -18,7 +18,11 @@ Design: [[file:DESIGN.org]]
   For Story 02: the shared routine-day query is now the public ~Chores.routine_day_facts/1~ (~lib/bear_cub/chores.ex~), returning the raw rows (~kid_id~, ~routine~, ~local_date~, ~chore_count~, ~live_count~, ~any_failed~, ~last_completed_at~, ~first_failed_at~); the private ~routine_days_by_kid/2~ keeps the pricing reduce and calls it. Build the month-keyed earnings on ~routine_day_facts/1~, not a second copy of the query. \\
   For Stories 03–05: ~Streaks.by_kid/2~ returns an entry for every kid; a kid with no completions gets ~%{current: 0, longest: 0, today: :pending}~ without the three-valued table being evaluated (the design is silent on ~today~ there). Nothing reads ~today~ for such a kid yet; a screen that does should treat it as "no streak yet", not as a lost day.
 :END:
-** TODO [[file:stories/story-02-points-history.org][Story 02 — Points earned in all and by month, derived from all recorded history]]
+** DONE [[file:stories/story-02-points-history.org][Story 02 — Points earned in all and by month, derived from all recorded history]]
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:13] \\
+  For Stories 03, 05 and 06: ~Points.earned_history/1~ returns an entry for every kid on the roster, months oldest first as ~{first_of_month, points}~ tuples, and a kid with no completions gets ~%{lifetime: 0, months: [{current_month, 0}]}~ (D161). The routine-day pricing now runs through one private ~routine_day_contributions/2~ in ~Chores~, shared by ~earnings_by_kid/1~ and the new ~earnings_by_kid_month/1~, so the kid total and the month buckets cannot price differently. A month holding only undone completions still has a key at 0 in ~earnings_by_kid_month/1~ and so counts as the kid's first completion month for the window start; the design's "first completion month" was read as "first month with any completion row".
+:END:
 ** TODO [[file:stories/story-03-record-scenario.org][Story 03 — Staging the five record-screen states for review]]
 ** TODO [[file:stories/story-04-chip-and-record-screen.org][Story 04 — The streak chip opens a side-by-side record screen and Chores comes back]]
 ** TODO [[file:stories/story-05-record-tiles.org][Story 05 — The streak, longest-ever and earned-in-all tiles on the record screen]]
