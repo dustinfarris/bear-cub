@@ -57,26 +57,78 @@ As a kid at the kiosk, I need a bar for each recent month showing the points I e
 
 * Acceptance Criteria
 
-** [ ] Each column's remaining space holds a chart headed =Points each month= with a dashed swatch labelled =so far=. (SC-4)
-** [ ] The chart shows one bar per month for the last 8 months ending with the current month, starting no earlier than the kid's first completion month, each labelled with its three-letter month abbreviation; a month in the kid's history with no net earnings shows a minimal 0 bar, and no bar carries a value label. (SC-4)
-** [ ] Bars are filled in the kid's colour and sized against that kid's own scale, with gridlines and tick values at half and full scale; the two columns never share a scale. (SC-4, SC-5)
-** [ ] The current month's bar is drawn in the kid's tint with a dashed kid-colour border and no bottom border, and is never shorter than the minimum current-month height. (SC-4)
-** [ ] A kid with fewer than 5 months of history gets wide, centred bars with no gridlines or tick values. (SC-4)
-** [ ] Across the whole record screen, the only words are the kid names, =Chores=, the tile strings, =Points each month=, =so far=, the month abbreviations and the tick values; no ~font-reward~ text is below 14 px and nothing animates. (SC-5)
-** [ ] ~docs/design-language.org~ records entries 3 and 5 of the design-language list above. (SC-4, SC-5)
+** [X] Each column's remaining space holds a chart headed =Points each month= with a dashed swatch labelled =so far=. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~month_chart/1~ (~kiosk_components.ex~) renders =Points each month= (17 px bold) and a 22 × 14 dashed swatch labelled =so far=; LiveView test "a kid with no completions gets one wide dashed current-month slot" asserts both inside ~#month-chart-<id>~; seen in ~story-06-record-a.png~ and ~story-06-record-c.png~.
+:END:
+** [X] The chart shows one bar per month for the last 8 months ending with the current month, starting no earlier than the kid's first completion month, each labelled with its three-letter month abbreviation; a month in the kid's history with no net earnings shows a minimal 0 bar, and no bar carries a value label. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~RecordChart.layout/1~ builds one bar per ~months~ entry labelled with ~%b~; ~record_chart_test.exs~ covers Jan–Aug labels, the 12 px / 18 px floors and a 0 current month; the LiveView test "bars carry no value labels…" asserts every ~[data-bar]~ has empty text; ~record(:c)~ screenshot shows kid 2 with only Sep and Oct.
+:END:
+** [X] Bars are filled in the kid's colour and sized against that kid's own scale, with gridlines and tick values at half and full scale; the two columns never share a scale. (SC-4, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: bars use ~var(--kid)~ and ~layout/1~ is computed per kid; ~top/1~ and ~bar_height/3~ unit tests (40, 41, 121); LiveView test "eight months of history…" asserts ~[data-gridline]~ and ~[data-tick]~ for the full chart; the ~record(:a)~ screenshot shows kid 1 at 360/180 and kid 2 at 280/140. Noted by the verifier: tick text and per-kid scale values are asserted at the helper level and in the screenshot, not through the LiveView.
+:END:
+** [X] The current month's bar is drawn in the kid's tint with a dashed kid-colour border and no bottom border, and is never shorter than the minimum current-month height. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~bar_style/1~ gives the current bar ~--kid-tint~ fill, 3 px dashed ~--kid~ border and ~border-bottom: 0~; the 18 px floor is unit-tested; LiveView test "current bar is dashed with no bottom border" asserts both; dashed tinted Oct bars in both screenshots.
+:END:
+** [X] A kid with fewer than 5 months of history gets wide, centred bars with no gridlines or tick values. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~gridlines?~ is false below five months, with ~data-wide~, 128 px slots, 88 px bars and a baseline of n × 128 + (n − 1) × 24 centred under the group; tests "fewer than five months: no gridlines", "five months is the first with gridlines" and the kid B ~[data-wide]~ / no-gridline assertions; ~record(:c)~ screenshot.
+:END:
+** [X] Across the whole record screen, the only words are the kid names, =Chores=, the tile strings, =Points each month=, =so far=, the month abbreviations and the tick values; no ~font-reward~ text is below 14 px and nothing animates. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: the "record screen carries only the names, Chores and the tile strings" test, extended with the chart strings and month abbreviations, passes with no residue; the chart has no ~font-reward~ text and its smallest text is 14 px (ticks); no transition or animation classes in ~month_chart~.
+:END:
+** [X] ~docs/design-language.org~ records entries 3 and 5 of the design-language list above. (SC-4, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~docs/design-language.org~ has the new ~--kid-ink~ / ~--kid-grid~ paragraph (entry 3) and the dashed in-progress outline paragraph (entry 5); ~app.css~ ~.kid-scope~ carries exactly the two ruled ~color-mix~ definitions, no ~@supports~, no new hex.
+:END:
 
-** [ ] A kid with no completions gets the few-months chart with a single current-month slot: wide, at the current month's minimum height, dashed, above its month label, with the baseline under it only and no gridlines or tick values. (SC-4)
+** [X] A kid with no completions gets the few-months chart with a single current-month slot: wide, at the current month's minimum height, dashed, above its month label, with the baseline under it only and no gridlines or tick values. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: LiveView test "a kid with no completions gets one wide dashed current-month slot" asserts the month label, ~height: 18px~ on the current bar, no gridline or tick, ~[data-wide]~; ~layout([{~D[2026-10-01], 0}])~ is unit-tested as one bar, height 18, current, no gridlines.
+:END:
 
 # Ruled by the human at the handoff (2026-10-10), resolving this story's GAP on a kid with no completions, from the my-record empty-state handoff: the empty chart is the existing fewer-than-5-months path with one month at 0. Story 02 now always includes the current month, so no separate empty-chart code is needed.
 # Ruled by the human at the handoff (2026-10-10), resolving this story's GAP on where ~--kid-ink~ and ~--kid-grid~ live: Story 05 sets ~--kid~ once per column ~<section>~ under a ~kid-scope~ class and derives ~--kid-tint~ / ~--kid-edge~ in a ~.kid-scope~ rule in ~app.css~, with no ~@supports~ fallback. Add ~--kid-ink~ (~color-mix(in oklab, var(--kid) 72%, var(--color-base-content))~) and ~--kid-grid~ (~color-mix(in oklab, var(--kid) 22%, var(--color-base-200))~) to that same rule.
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: AC items 1–8 above are all met.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: new ~record_chart_test.exs~ and the "monthly chart on the record screen (Story 06)" describe plus the extended words test, all within the passing suite.
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: moduledoc wrapped at 80, no inline kid ~color-mix~, no new hex, arithmetic in a pure helper per the Technical Notes.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ran ~mix precommit~ once on the final code: compile with warnings as errors, format check and tests, 1054 passed, 0 failures.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:38] \\
+  Verifier pass: ~story-06-record-a.png~ and ~story-06-record-c.png~ are 1280 × 800 captures of the ~record(:a)~ and ~record(:c)~ states staged through ~BearCub.Dev.Scenarios~ with kid names hidden. ~record(:d)~ and ~record(:e)~ were not captured; the story names them as review options, and ~:e~ is covered by the LiveView test.
+:END:
 
 * Technical Notes
 

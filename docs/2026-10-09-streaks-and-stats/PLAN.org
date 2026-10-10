@@ -40,7 +40,11 @@ Design: [[file:DESIGN.org]]
   For Story 06: ~record_screen/1~ now takes ~data~, a map ~%{kid_id => %{current:, longest:, lifetime:}}~ built in ~KioskLive.load/3~ (~record_data/3~) only while ~@record~ is open; ~Points.earned_history/1~ is already called there, so widen ~record_data/3~ to keep ~months~ rather than calling it again. Each record column is already a ~kid-scope~ with ~--kid~ set, so ~--kid-ink~ / ~--kid-grid~ only need adding to the ~.kid-scope~ rule in ~app.css~. The chart goes below the ~h-28~ record row in the column body. The dashed flame is the private ~flame_outline/1~ component, shared by the chip and the tile. \\
   Gaps the close-out verifier noted, none blocking: no test for current > 0 but below longest (chip hidden), none for the longest tile's dashed-to-solid switch, and the "spending does not lower it" claim rests on Story 02's derivation with no redemption in this story's tests. Only ~record(:a)~ and ~record(:e)~ were captured; the gate captures all five states.
 :END:
-** TODO [[file:stories/story-06-monthly-chart.org][Story 06 — Points each month as a bar chart in each kid's column]]
+** DONE [[file:stories/story-06-monthly-chart.org][Story 06 — Points each month as a bar chart in each kid's column]]
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:39] \\
+  For the gate: the chart's arithmetic lives in the pure ~BearCubWeb.RecordChart~ (~top/1~, ~bar_height/3~, ~layout/1~), and ~record_data/3~ now carries each kid's ~months~. Bars stand on the baseline's top edge (30 px above the plot box's bottom), and gridlines sit at that edge plus ~round(v / top * 186)~, so the top gridline meets a full-scale bar. In the few-months layout the baseline is drawn under the bar group only, n × 128 + (n − 1) × 24 px wide. The chart box measures 576 × 312 at 1280 × 800, a little over the design's ≈ 296, because it fills the rest of the column. Only ~record(:a)~ and ~record(:c)~ were captured (~story-06-record-a.png~, ~story-06-record-c.png~); ~:d~ and ~:e~ remain for the gate. Both captures show the dev toolbar overlay at bottom left, which is not part of the kiosk.
+:END:
 
 * Deferred
 
