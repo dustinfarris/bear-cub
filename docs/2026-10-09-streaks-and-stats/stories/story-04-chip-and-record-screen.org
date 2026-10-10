@@ -88,26 +88,94 @@ As a kid at the kiosk, I need a 🔥 chip in my banner showing my current streak
 
 * Acceptance Criteria
 
-** [ ] Each kid's banner shows a streak chip left of the ★ badge, so the right-hand group reads chip, ★ badge, 🎁; it shows 🔥 and the current streak, or a dashed white flame outline and no number at 0, and appears in the rows, band and shop states. (SC-2)
-** [ ] The chip is a tap target at least 64 px tall that reads as tappable beside the ★ badge, the banner keeps its 80 px height, and the ★ badge's tap stays unbound. (SC-1)
-** [ ] Tapping either kid's chip replaces the chores view with the record screen: two equal columns, one per kid, each topped by an 80 px banner in that kid's colour with the kid's name centred and nothing else in it. (SC-1, SC-5)
-** [ ] The record screen's only control is a =Chores= button straddling the gutter between the two banners, overlapping both equally; tapping it returns to the chores view. (SC-1, SC-5)
-** [ ] The record screen returns to the chores view by itself 30 s after it opens, and does nothing if it has already been closed. (SC-1)
-** [ ] Opening the record screen while a kid is in the reward shop closes the shop, so the shop is not open behind the record screen or on return. (SC-1)
-** [ ] The night screen takes precedence over the record screen, and a routine boundary or a schedule change closes an open record screen. (SC-1)
-** [ ] Nothing on the record screen ranks, compares or singles out either kid: the two columns are built identically. (SC-5)
-** [ ] Every tap target on the chip and the record screen is at least 64 px, no ~font-reward~ text is below 14 px, the record screen has no animation, and its only words so far are the two kid names and =Chores=. (SC-1, SC-5)
-** [ ] Neither the chip nor the record screen contains a link or navigation to ~/admin~. (SC-1)
-** [ ] Streaks are loaded for the chip on every kiosk load with a fixed number of queries, and the once-a-second countdown tick still runs no query. (SC-2)
-** [ ] ~docs/design-language.org~ records entries 1, 2 and 6 of the design-language list above, entry 1 as an amendment to the Banner gift button entry. (SC-1, SC-5)
+** [X] Each kid's banner shows a streak chip left of the ★ badge, so the right-hand group reads chip, ★ badge, 🎁; it shows 🔥 and the current streak, or a dashed white flame outline and no number at 0, and appears in the rows, band and shop states. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: tests in the ~streak chip and record screen~ describe of ~test/bear_cub_web/live/kiosk_live_test.exs~ (chip at N, dashed flame and no number at 0, DOM order chip / ★ badge / 🎁, chip present in the shop state); ~streak_chip/1~ and its place in ~banner/1~ in ~kiosk_components.ex~. Rows and band are covered by construction, the banner rendering the chip unconditionally.
+:END:
+** [X] The chip is a tap target at least 64 px tall that reads as tappable beside the ★ badge, the banner keeps its 80 px height, and the ★ badge's tap stays unbound. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~streak_chip/1~ is ~h-16~ around an ~h-10~ pill with a 2 px inset white/55 ring; the ★ badge test refutes ~phx-click~. Screenshot at 1280 × 800 shows the banners unchanged, and the chip measured 64 px tall with the banner at 80 px.
+:END:
+** [X] Tapping either kid's chip replaces the chores view with the record screen: two equal columns, one per kid, each topped by an 80 px banner in that kid's colour with the kid's name centred and nothing else in it. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: test "tapping either chip shows both kids' columns, built identically" (both ~#record-column-*~ present, no ~#kid-column-*~, stripped markup equal); ~h-20~ kid-colour header with only the name; ~story-04-record-screen.png~.
+:END:
+** [X] The record screen's only control is a =Chores= button straddling the gutter between the two banners, overlapping both equally; tapping it returns to the chores view. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~#record-back~ is ~absolute left-[532px] top-5~, 216 × 72, the only button on the screen; test "Chores returns to the chores view"; screenshot shows it straddling the gutter.
+:END:
+** [X] The record screen returns to the chores view by itself 30 s after it opens, and does nothing if it has already been closed. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: test "the idle message returns to chores, and is a no-op once closed" delivers ~:record_idle~ twice; test "closing cancels the idle timer"; ~@record_idle_ms~ is 30_000.
+:END:
+** [X] Opening the record screen while a kid is in the reward shop closes the shop, so the shop is not open behind the record screen or on return. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: test "opening while a kid is in the shop closes the shop" asserts ~rewards~ and ~rewards_timers~ emptied and no shop behind the screen after Chores.
+:END:
+** [X] The night screen takes precedence over the record screen, and a routine boundary or a schedule change closes an open record screen. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: tests "the night screen wins over the record screen" and ":boundary and :schedule_changed close it"; render guard ~@record and not @night?~; ~close_record/1~ in both handlers.
+:END:
+** [X] Nothing on the record screen ranks, compares or singles out either kid: the two columns are built identically. (SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: the column-equality assertion above; no rank, difference or leader styling in ~record_screen/1~.
+:END:
+** [X] Every tap target on the chip and the record screen is at least 64 px, no ~font-reward~ text is below 14 px, the record screen has no animation, and its only words so far are the two kid names and =Chores=. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: test "the record screen carries only the names and Chores" (text is exactly the two names and Chores); 64 px chip and 72 px button; ~font-reward~ at 18, 40 and 30 px; no animation or transition class (source inspection).
+:END:
+** [X] Neither the chip nor the record screen contains a link or navigation to ~/admin~. (SC-1)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: test "no link to /admin on the chip or the record screen" refutes ~/admin~ in the kiosk and record-screen markup; both controls are ~phx-click~.
+:END:
+** [X] Streaks are loaded for the chip on every kiosk load with a fixed number of queries, and the once-a-second countdown tick still runs no query. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~Streaks.by_kid/2~ called once in ~load/3~ (fixed four queries, ~streaks_test.exs~); the existing test "a :countdown_tick runs no query, re-arm included" passes in the full run.
+:END:
+** [X] ~docs/design-language.org~ records entries 1, 2 and 6 of the design-language list above, entry 1 as an amendment to the Banner gift button entry. (SC-1, SC-5)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~docs/design-language.org~ carries the chip entry (amending the Banner gift button entry to chip + ★ badge + 🎁), the 🔥 / 🏆 / ~hero-star-solid~ / inline-SVG entry and the back-button entry.
+:END:
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
-** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: all twelve Acceptance Criteria met; no removal or deferral needed.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: the new LiveView tests and the updated banner component fixtures pass in the ~mix precommit~ run (1037 passed).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~mix precommit~ exit 0 with no warnings; no style breaches found. Nit left as is: ~@record_idle_ms~ has no comment, unlike ~@rewards_idle_ms~.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: ~mix precommit~ run twice, exit 0, 1037 tests passed, no warnings.
+:END:
+** [X] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:24] \\
+  Verifier pass: viewed ~story-04-chip.png~ (chip at N beside the ★ pill and 🎁) and ~story-04-record-screen.png~ at 1280 × 800, staged with ~BearCub.Dev.Scenarios.record(:a)~; names and event text hidden, so no household data. The 0-streak chip and the shop state were not captured; the 0 state is covered by a LiveView test.
+:END:
 
 * Technical Notes
 

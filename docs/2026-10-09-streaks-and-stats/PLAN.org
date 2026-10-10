@@ -28,7 +28,12 @@ Design: [[file:DESIGN.org]]
 - Note taken on [2026-10-10 Sat 08:18] \\
   For Stories 04–06 and the gate: ~record/1~ also backdates the ~active_from~ of the two kids' live routine chores to the day before the oldest seeded day, so the seeded days count against a roster that had those chores (a fresh seed stamps ~active_from~ today, which would otherwise leave every past completion off-roster). Archived chores are left as they are and seeded only on the days they were live. This is a dev-only change to chore rows on top of the completion deletion the design already accepts. Each state costs one ~insert_all~ of a few thousand rows, so expect ~:d~ to take a moment in ~project_eval~. The ~:e~ row is now in DESIGN's Dev scenario table as an additive edit following the human's 2026-10-10 ruling; it needed no D-entry.
 :END:
-** TODO [[file:stories/story-04-chip-and-record-screen.org][Story 04 — The streak chip opens a side-by-side record screen and Chores comes back]]
+** DONE [[file:stories/story-04-chip-and-record-screen.org][Story 04 — The streak chip opens a side-by-side record screen and Chores comes back]]
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:25] \\
+  For Story 05: each kiosk column now carries ~streak~, the current streak only (an integer), set in ~load/3~ from one ~Streaks.by_kid/2~ call. The longest tile will need that map's ~longest~ too, so widen what ~load/3~ keeps rather than calling ~by_kid/2~ again. ~record_screen/1~ (~kiosk_components.ex~) takes only ~kids~ and leaves each column's ~p-5 flex flex-col gap-4~ body empty, so the tiles go there and get new attrs. ~load/3~ skips ~Streaks.by_kid/2~ at night, when no chip renders. \\
+  Clarifications that need no DESIGN edit: the idle timer is a second assign, ~:record_timer~, next to the ~:record~ boolean the design names, mirroring ~:rewards_timers~. The design specifies the =Chores= button's 216 × 72 box but not its fill, so it is a ~rounded-full bg-base-100~ pill to keep the ~text-base-content~ label legible where it crosses the two kid-colour banners. The chip's 2 px ring is an inset box-shadow, which is the same mechanism as Tailwind's ~ring-inset~. The pill and the ring are visible in ~story-04-record-screen.png~ and ~story-04-chip.png~.
+:END:
 ** TODO [[file:stories/story-05-record-tiles.org][Story 05 — The streak, longest-ever and earned-in-all tiles on the record screen]]
 ** TODO [[file:stories/story-06-monthly-chart.org][Story 06 — Points each month as a bar chart in each kid's column]]
 
