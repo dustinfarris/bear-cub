@@ -36,7 +36,7 @@ From §Screens / My record screen, Rules this screen serves (verbatim):
 From §Screens / Design-language entries this initiative adds — entries 3 and 5 (verbatim):
 
 #+begin_quote
-3. *Two new derived tokens* in the ~app.css~ token block beside the existing kid mixes: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). ~--kid-tint~ is kid 12% into base-100 and ~--kid-edge~ kid 45% into base-100, the pending-extra mixes. No new hex values.
+3. *Derived kid tokens* in a ~.kid-scope~ rule in ~app.css~: each kid column (kiosk and record screen) sets ~--kid~ once from the kid's colour under a ~kid-scope~ class, and the rule derives ~--kid-tint~ (kid 12% into base-100) and ~--kid-edge~ (kid 45% into base-100) — the pending-extra mixes, now named and used by the pending extra card — plus two new ones: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). All plain ~color-mix~ in oklab, no ~@supports~ fallback, like the routine tokens; no kid ~color-mix~ inline in templates ([[file:../../decisions.org::#d162][D162]]). No new hex values.
 5. *The dashed outline for an in-progress month* — the pending slot's edge extends from "pending today" to "not finished yet", in the kid's own colour (the extras' language: whose it is).
 #+end_quote
 

@@ -55,11 +55,11 @@ Page 1280 × 800, ~grid h-dvh grid-cols-2 gap-4 p-4 bg-base-300~; each column a 
 |------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Banner           | 80 px, solid kid colour (the kiosk banner's height, so the kid colours hold still across the swap); kid name centred, ~font-reward font-black~ 40 px, white; nothing else                                |
 | Streak tile      | h 192, ~rounded-2xl~, 3 px ~--kid-edge~ border, ~--kid-tint~ ground; 🔥 108 px + count ~font-reward font-black~ 140 px (line-height .86) in the kid colour + =days in a row= (=day in a row= at 1), ~font-reward~ 800 28 px |
-| Streak at 0      | a dashed flame outline (inline SVG) in place of 🔥, =0=, and =Start again today!=                                                                                                                         |
+| Streak at 0      | a dashed flame outline (inline SVG) in place of 🔥, =0=, and =Start again today!= after a reset (longest > 0), =Start today!= while longest is also 0 ([[file:../decisions.org::#d163][D163]])                  |
 | Best-ever chip   | 🏆 22 px + =Best ever!= (~font-reward~ 800 19 px) on the streak tile's top edge (top −19, right 20), 3 px kid-colour border on ~bg-base-100~; shown only when ~current > 0 and current == longest~      |
 | Record row       | h 112, ~grid grid-cols-2 gap-4~, two cells below                                                                                                                                                         |
-| Longest tile     | ~bg-base-100~, 4 px solid kid-colour border; 🏆 48 px, count ~font-reward font-black~ 52 px + unit =days= / =day= (800 22 px), =longest ever= (sans bold 17 px); *identical in every state*            |
-| Lifetime tile    | ~--paid-tint~ ground, 4 px ~--paid-edge~ border; ~hero-star-solid~ 48 px, count ~font-reward font-black~ 52 px in ~--paid-content~, =earned in all= (sans bold 17 px, ~--paid-content~)               |
+| Longest tile     | ~bg-base-100~, 4 px solid kid-colour border; 🏆 48 px, count ~font-reward font-black~ 52 px + unit =days= / =day= (800 22 px), =longest ever= (sans bold 17 px); *identical in every state but one*: while longest is 0 it shows =0 days= with a 4 px dashed ~--kid-edge~ border, turning solid once the first streak day counts ([[file:../decisions.org::#d163][D163]]) |
+| Lifetime tile    | ~--paid-tint~ ground, 4 px ~--paid-edge~ border (dashed while the total is 0, solid once above 0, [[file:../decisions.org::#d163][D163]]); ~hero-star-solid~ 48 px, count ~font-reward font-black~ 52 px in ~--paid-content~, =earned in all= (sans bold 17 px, ~--paid-content~) |
 | Monthly chart    | fills the rest (≈ 296 px); ~rounded-2xl bg-base-200~, padding 16 / 18; header =Points each month= (sans bold 17 px) and a dashed 22 × 14 swatch labelled =so far= (sans bold 15 px)               |
 | Back button      | 216 × 72 at left 532, top 20 — centred on the gutter between the two banners, overlapping both equally; ~hero-home~ white in a 48 px ~bg-base-content~ disc + =Chores= (~font-reward font-black~ 30 px); the screen's only control |
 
@@ -76,7 +76,7 @@ Monthly chart, vertical bars:
 Rules this screen serves:
 
 - Nothing ranks, compares or crowns: no shared scale, no differences, no leader styling; each column reads as its own record ([[file:../decisions.org::#d159][D159]]).
-- No shaming state: a reset shows =0= and =Start again today!=; the longest tile never changes, dims or shrinks.
+- No shaming state: a reset shows =0= and =Start again today!=; the longest tile never changes, dims or shrinks once a streak has counted. A column with no data yet keeps every element's place and size and shows each empty element in the dashed "not yet" language, each switching back on its own value ([[file:../decisions.org::#d163][D163]]).
 - Every tap target is at least 64 px; ~font-reward~ never below 14 px; no animation on this screen.
 - The only words on the screen are the strings in the table above, the month abbreviations and the tick values.
 - The kiosk/admin fence holds: the chip and the button are =phx-click= events; nothing links to ~/admin~.
@@ -87,8 +87,8 @@ Recorded in ~docs/design-language.org~ by the story that builds each surface (ra
 
 1. *The streak chip joins the banner's right-hand group* — amends the Banner gift button entry's "badge plus gift" to chip + ★ badge + 🎁; the badge's tap stays unbound.
 2. *🔥 and 🏆 emoji* on the kids' view (both are in the emoji set, so D103's inline-SVG rule is untouched); the 0-streak dashed flame is inline SVG; the lifetime star is ~hero-star-solid~, the glyph that already means points, not the ⭐ emoji.
-3. *Two new derived tokens* in the ~app.css~ token block beside the existing kid mixes: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). ~--kid-tint~ is kid 12% into base-100 and ~--kid-edge~ kid 45% into base-100, the pending-extra mixes. No new hex values.
-4. *Words on the screen*: =Start again today!= and =Best ever!= are accepted knowingly, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; the screen carries no other copy beyond the table above.
+3. *Derived kid tokens* in a ~.kid-scope~ rule in ~app.css~: each kid column (kiosk and record screen) sets ~--kid~ once from the kid's colour under a ~kid-scope~ class, and the rule derives ~--kid-tint~ (kid 12% into base-100) and ~--kid-edge~ (kid 45% into base-100) — the pending-extra mixes, now named and used by the pending extra card — plus two new ones: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). All plain ~color-mix~ in oklab, no ~@supports~ fallback, like the routine tokens; no kid ~color-mix~ inline in templates ([[file:../decisions.org::#d162][D162]]). No new hex values.
+4. *Words on the screen*: =Start again today!=, =Start today!= ([[file:../decisions.org::#d163][D163]]) and =Best ever!= are accepted knowingly, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; the screen carries no other copy beyond the table above.
 5. *The dashed outline for an in-progress month* — the pending slot's edge extends from "pending today" to "not finished yet", in the kid's own colour (the extras' language: whose it is).
 6. *The back button straddles both banners* — the one kiosk control spanning the gutter, deliberately symmetric so neither kid owns it.
 7. *Kid tint and edge frame the record tiles* as D117 frames extras (the kid colour means whose record this is); the lifetime tile takes the paid family (the "earned something" signal of the ~+N~ chip and bonus badge).
@@ -197,7 +197,7 @@ Backlog items this initiative closes at its gate: "Streaks like completing your 
 
 # No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
 
-Decisions for this initiative: [[file:../decisions.org]] (D154–D161)
+Decisions for this initiative: [[file:../decisions.org]] (D154–D163)
 
 * Advisories
 
@@ -213,3 +213,16 @@ Decisions for this initiative: [[file:../decisions.org]] (D154–D161)
 /Sections affected: Key Behaviors (Points history)/
 
 The ~Points.earned_history/1~ shape comment used to say only "the last 8 ending with local_date's month, none before the kid's first completion month". Read literally, a kid with no completions has no first-completion month, so their ~months~ list was empty, and a chart or test written from that text would draw nothing or assert ~[]~. It still looks right because it follows straight from the "none before" rule. The current month is always present: a kid with no completions gets ~[{current_month, 0}]~. Rationale: [[file:../decisions.org::#d161][D161]].
+
+** [2026-10-10 Sat 08:32] §Design-language entries no longer put the kid tokens in the ~app.css~ token block (D162)
+
+/Sections affected: Screens / Interfaces (Design-language entries this initiative adds, entry 3)/
+
+Entry 3 used to say the new tokens go "in the ~app.css~ token block beside the existing kid mixes", and called ~--kid-tint~ / ~--kid-edge~ existing tokens. No kid tokens existed: the pending extra mixed the kid colour inline in its ~style~, and ~:root~ cannot hold a value that differs per kid. Adding ~--kid-ink~ / ~--kid-grid~ to ~:root~ still looks natural because every other token lives there. They live on a ~.kid-scope~ rule instead, deriving from a ~--kid~ each column sets once; ~--kid-ink~ and ~--kid-grid~ join that rule. Rationale: [[file:../decisions.org::#d162][D162]].
+
+** [2026-10-10 Sat 08:32] §My record screen no longer keeps the longest tile identical in every state, nor =Start again today!= as the only zero label (D163)
+
+/Sections affected: Screens / Interfaces (My record screen table rows Streak at 0, Longest tile, Lifetime tile; Rules this screen serves; Design-language entry 4)/
+
+The record screen used to say the longest tile is "identical in every state" and "never changes, dims or shrinks", that the streak at 0 always reads =Start again today!=, that the lifetime tile has a solid ~--paid-edge~ border, and that entry 4's two phrases are the screen's only copy. Built that way, a kid with no completions sees =Start again today!= for a streak they never had and a solid =0 days= record tile. Now =Start today!= replaces it while longest is 0, and the longest tile (dashed ~--kid-edge~) and the lifetime tile (dashed ~--paid-edge~) take the dashed "not yet" edge while their value is 0. The longest tile still never changes on a reset, since a reset cannot bring longest back to 0, so SC-3 holds. Rationale: [[file:../decisions.org::#d163][D163]].
+

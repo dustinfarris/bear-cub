@@ -750,3 +750,18 @@ Taken from the Claude Design handoff and accepted by the human during design. �
 :END:
 
 Ruled by the human at the my-record empty-state handoff. ~Points.earned_history/1~'s ~months~ runs from the later of the kid's first completion month and seven months back, through the current month, so a kid with no completions gets a one-month list at 0 rather than an empty one, and the monthly chart always has a slot to draw. The design's "none before the kid's first completion month" was silent on a kid with no first completion. Rejected: an empty list for such a kid — it leaves the chart to special-case a missing slot that the empty-state design draws. Settles streaks-and-stats/SC-4. → streaks-and-stats/Key Behaviors (Points history).
+
+* D162 (2026-10-10) — The kid tokens live on a per-column ~.kid-scope~ rule, derived from one ~--kid~
+:PROPERTIES:
+:CUSTOM_ID: d162
+:END:
+
+Ruled by the human at the Story 05 handoff. The design called ~--kid-tint~ and ~--kid-edge~ existing tokens in the ~app.css~ token block; none existed — the pending extra mixed the kid colour inline because the colour is data. Each kid column (kiosk and record screen) now sets ~--kid~ once under a ~kid-scope~ class, and a ~.kid-scope~ rule in ~app.css~ derives ~--kid-tint~ (12%) and ~--kid-edge~ (45%) as plain oklab ~color-mix~ values, with no ~@supports~ fallback, matching the routine tokens; the pending extra card uses them; ~--kid-ink~ and ~--kid-grid~ join the same rule. The mixes are unchanged from [[#d117][D117]], so nothing looks different. Rejected: keeping the mix inline per template — every new kid-coloured surface would repeat it — and ~:root~ tokens, which cannot vary per kid. Settles streaks-and-stats/SC-2. → streaks-and-stats/Screens / Interfaces (Design-language entries this initiative adds).
+
+* D163 (2026-10-10) — A record column with no data yet keeps its layout and shows each empty element dashed; =Start today!= joins the screen's words
+:PROPERTIES:
+:CUSTOM_ID: d163
+:END:
+
+Ruled by the human at the my-record empty-state handoff. Every element of a column keeps its place and size with no data, and each empty one takes the dashed "not yet" edge, switching back on its own value: the streak tile reads =Start today!= while current and longest are both 0 (=Start again today!= stays for a reset with longest > 0); the longest tile shows =0 days= with a 4 px dashed ~--kid-edge~ border while longest is 0; the lifetime tile shows =0= on ~--paid-tint~ with a 4 px dashed ~--paid-edge~ border while the total is 0. This amends [[#d160][D160]]'s "longest tile identical in every state" only in a state no reset can reach, so SC-3's unchanging longest tile holds, and adds =Start today!= to the screen's accepted copy. The lifetime star stays ~hero-star-solid~ ([[#d160][D160]]), not the handoff's ⭐. Rejected: =Start again today!= for a kid who never had a streak — it tells them they lost something — and hiding empty tiles, which leaves blank space beside a full column. Settles streaks-and-stats/SC-2, SC-3, SC-4. → streaks-and-stats/Screens / Interfaces (My record screen; Design-language entries this initiative adds).
+
