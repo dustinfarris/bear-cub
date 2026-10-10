@@ -1,0 +1,87 @@
+#+title: Story 06 — Points each month as a bar chart in each kid's column
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / My record screen (the Monthly chart row, the Monthly chart, vertical bars list, and Rules this screen serves); §Screens / Design-language entries 3 and 5; ~Points.earned_history/1~'s shape from §Key Behaviors / Points history.
+
+From §Screens / My record screen — the table row this story builds (verbatim):
+
+#+begin_quote
+| Region           | Spec |
+|------------------+------|
+| Monthly chart    | fills the rest (≈ 296 px); ~rounded-2xl bg-base-200~, padding 16 / 18; header =Points each month= (sans bold 17 px) and a dashed 22 × 14 swatch labelled =so far= (sans bold 15 px)               |
+#+end_quote
+
+From §Screens / My record screen, Monthly chart, vertical bars (verbatim):
+
+#+begin_quote
+- *Months shown:* the last 8 months ending with the current (partial) month. A kid with fewer months of history (counted from the month of their first completion) shows only those; never draw empty columns before history begins. A month inside a kid's history with no net earnings is a 0 bar.
+- *Scale, per column, never shared between kids:* ~top = max(40, ceil(max(values) / 40) * 40)~.
+- *Plot box:* ≈ 244 px (flex-fill; everything below measured from its bottom), 40 px left gutter for tick labels. Baseline 4 px ~--kid-edge~, 26 px above the plot box's bottom; below it a 30 px zone for month labels — three-letter abbreviations, sans bold 16 px, base-content at 70%.
+- *Bars:* max height 186 px from the baseline; height ~round(v / top * 186)~, minimum 12 px (18 px for the current month); 44 px wide in ~flex-1~ slots, 10 px top radius, kid-colour fill. No value labels on bars.
+- *Current month:* ~--kid-tint~ fill with a 3 px dashed kid-colour border and no bottom border; the header's =so far= swatch explains it.
+- *Gridlines:* 2 px ~--kid-grid~ at ~top/2~ and ~top~, each labelled (sans bold 14 px, ~--kid-ink~, right-aligned in the gutter).
+- *Fewer than 5 months:* no gridlines, no tick labels, no gutter; bars 88 px wide in 128 px slots, gap 24, centred, the baseline only under the group.
+#+end_quote
+
+From §Screens / My record screen, Rules this screen serves (verbatim):
+
+#+begin_quote
+- Nothing ranks, compares or crowns: no shared scale, no differences, no leader styling; each column reads as its own record ([[file:../../decisions.org::#d159][D159]]).
+- Every tap target is at least 64 px; ~font-reward~ never below 14 px; no animation on this screen.
+- The only words on the screen are the strings in the table above, the month abbreviations and the tick values.
+#+end_quote
+
+From §Screens / Design-language entries this initiative adds — entries 3 and 5 (verbatim):
+
+#+begin_quote
+3. *Two new derived tokens* in the ~app.css~ token block beside the existing kid mixes: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). ~--kid-tint~ is kid 12% into base-100 and ~--kid-edge~ kid 45% into base-100, the pending-extra mixes. No new hex values.
+5. *The dashed outline for an in-progress month* — the pending slot's edge extends from "pending today" to "not finished yet", in the kid's own colour (the extras' language: whose it is).
+#+end_quote
+
+From §Key Behaviors / Points history (verbatim, the shape this story renders):
+
+#+begin_quote
+#+begin_src elixir
+Points.earned_history(local_date)
+#=> %{kid_id => %{lifetime: non_neg_integer, months: [{~D[2026-03-01], non_neg_integer}, ...]}}
+#    months: the last 8 ending with local_date's month, none before the kid's first completion month, each floored at 0
+#    lifetime: max(0, sum of the unfloored months)
+#+end_src
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk, I need a bar for each recent month showing the points I earned in it, with this month marked as still going, so that I can see how my points have built up over time.
+
+* Acceptance Criteria
+
+** [ ] Each column's remaining space holds a chart headed =Points each month= with a dashed swatch labelled =so far=. (SC-4)
+** [ ] The chart shows one bar per month for the last 8 months ending with the current month, starting no earlier than the kid's first completion month, each labelled with its three-letter month abbreviation; a month in the kid's history with no net earnings shows a minimal 0 bar, and no bar carries a value label. (SC-4)
+** [ ] Bars are filled in the kid's colour and sized against that kid's own scale, with gridlines and tick values at half and full scale; the two columns never share a scale. (SC-4, SC-5)
+** [ ] The current month's bar is drawn in the kid's tint with a dashed kid-colour border and no bottom border, and is never shorter than the minimum current-month height. (SC-4)
+** [ ] A kid with fewer than 5 months of history gets wide, centred bars with no gridlines or tick values. (SC-4)
+** [ ] Across the whole record screen, the only words are the kid names, =Chores=, the tile strings, =Points each month=, =so far=, the month abbreviations and the tick values; no ~font-reward~ text is below 14 px and nothing animates. (SC-5)
+** [ ] ~docs/design-language.org~ records entries 3 and 5 of the design-language list above. (SC-4, SC-5)
+
+# GAP: a kid with no completions gets ~months: []~ from ~Points.earned_history/1~, and the chart spec does not say what the plot area shows with no bars (an empty plot box, a baseline alone, or no chart region). No AC states it; needs a ruling, or leave it to the implementer as a non-contract detail.
+# GAP: entry 3 places ~--kid-ink~ and ~--kid-grid~ in the ~app.css~ token block "beside the existing kid mixes", but no named kid mixes exist there (see Story 05's GAP on ~--kid-tint~ / ~--kid-edge~): the kid colour is per-kid data, so a ~:root~ token cannot hold it alone. The ACs say "the kid's tint" and leave the gridline and tick-label colours to the excerpt without choosing the mechanism; the ruling on Story 05's GAP decides it for all four.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- This story depends on Story 05 (which loads ~Points.earned_history/1~ under ~@record~ and settles the kid-token mechanism) and Story 02 (the ~months~ list).
+- The pixel figures in the excerpt are the spec; the ACs state the behaviour. Keep the scale, height and minimum-height arithmetic in a small pure helper so it can be unit-tested apart from the markup (e.g. ~top~ for a max of 0, 40, 41; the 12 px / 18 px floors).
+- Local review: ~record(:a)~ for the full 8-month chart with gridlines, ~record(:c)~ for kid 2's two wide bars with no gridlines, ~record(:d)~ for large values. Pair each with ~open(:morning)~. Hide kid names and calendar event text in the page before capturing (CLAUDE.md household-data rule).
+- No animation: no transition on bar height when an open screen refreshes.
+- Read ~docs/design-language.org~ before any styling (CLAUDE.md).

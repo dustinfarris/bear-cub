@@ -1,0 +1,102 @@
+#+title: Story 01 — Current and longest streaks derived from all recorded history
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — the standing canon lines of §Overview, §Data Model's standing paragraph, and §Key Behaviors / Streak derivation (with its subsections Today is three-valued and Shape), plus the ~Streaks~ bullet of §Key Behaviors / Testing.
+
+From §Overview, the canon this story builds on (verbatim):
+
+#+begin_quote
+- *D10 — day state is derived, never stored.* ~completions~ rows are never deleted; undo sets ~undone_at~; a parent's fail sets ~failed_at~. There is no ledger table (D39 rejected one) and no history pruning.
+- *D91 / D92 — good standing.* Day D is in standing when the evening routine of D−1 and the morning routine of D are both complete and neither is failed. An empty roster is vacuously complete but earns no bonus. A failed-then-redone routine is complete and failed, which denies standing.
+- *D81 / D90 — date-bounded roster.* A routine's roster on a day is the kid's chores on that routine with ~active_from <= day~ and (~archived_on~ nil or ~> day~).
+- *D93 — no recourse.* A missed night, a sleepover or a trip breaks a streak; there is no backfill.
+- *D94 — ~routine_day_status/3~* is the per-routine-day status; D94 deferred a grouped standing function as not a measured need.
+- *Every schedule version covers all seven weekdays for both routines* (~ScheduleVersion~ validation), so there is no "unscheduled day": a weekend is an ordinary day.
+#+end_quote
+
+From §Data Model (verbatim):
+
+#+begin_quote
+Standing, and therefore every streak, never reads ~schedule_versions~ for history: a schedule change cannot alter a past streak. The only schedule read on the streak side is today's ~morning_end~, which decides when a pending day becomes failed (Key Behaviors / Today is three-valued).
+#+end_quote
+
+From §Key Behaviors / Streak derivation — ~BearCub.Streaks~ (verbatim):
+
+#+begin_quote
+Rules ([[file:../../decisions.org::#d154][D154]], [[file:../../decisions.org::#d155][D155]]):
+
+- *A streak day is good standing, exactly.* Day D counts when the evening of D−1 and the morning of D are both complete and unfailed, under the roster rules of D81/D90/D92. Nothing about standing is redefined.
+- *Streaks are computed, never stored.* ~longest~ is derived from completions over all history, so it covers days before this feature shipped, cannot be lost when a streak resets, and adds no flag, job or table.
+- *The scan starts at the kid's first completion ever* (the minimum ~completions.local_date~ over the kid's chores). Without the bound, the empty-roster pass (D92) would make every day before the kid had chores a standing day and the streak would run back forever. A kid with no completions has ~current = 0~ and ~longest = 0~.
+- From that first day on, every day is judged — weekends included. A day whose roster is non-empty and has no completion breaks the run; a later day whose roster is empty passes, as D92 rules for the kiosk band.
+#+end_quote
+
+From §Key Behaviors / Streak derivation, subsection Today is three-valued (verbatim):
+
+#+begin_quote
+[[file:../../decisions.org::#d156][D156]]. Before today's standing is decided the streak shows the run ending yesterday; it resets to 0 only once today can no longer be met:
+
+| Today       | When                                                                                                               | ~current~                              |
+|-------------+--------------------------------------------------------------------------------------------------------------------+----------------------------------------|
+| ~:standing~ | last night's evening and this morning are both complete and unfailed                                               | the run through today                  |
+| ~:failed~   | last night's evening is incomplete or failed, *or* this morning is failed, *or* the time is at or past today's ~morning_end~ and this morning is incomplete | 0                                      |
+| ~:pending~  | otherwise                                                                                                          | the run of standing days ending yesterday |
+
+Accepted consequence: a kid who skipped last night's evening routine sees 0 at breakfast, because that day was already lost overnight. ~longest~ counts the run ending today only when today is ~:standing~.
+#+end_quote
+
+From §Key Behaviors / Streak derivation, subsection Shape (verbatim):
+
+#+begin_quote
+#+begin_src elixir
+# Pure over its inputs; no clock reads (the caller passes local_now and today's DayEntry).
+Streaks.by_kid(local_now, %DayEntry{} = entry)
+#=> %{kid_id => %{current: non_neg_integer, longest: non_neg_integer, today: :standing | :pending | :failed}}
+#+end_src
+
+- Not day-by-day through ~Chores.standing/2~ (about four queries per day per kid). Load the routine chores (~kid_id~, ~routine~, ~active_from~, ~archived_on~) and the routine-day facts once, then a *pure* function builds =local_date → {morning, evening}= statuses per kid and walks dates in memory.
+- The routine-day facts already exist: ~Chores.routine_days_by_kid/2~'s query returns one row per =(kid, routine, local_date)= with the roster's ~chore_count~, the ~live_count~ and ~any_failed~ — complete is ~chore_count > 0 and live_count == chore_count~, failed is ~any_failed~. A day with no row is incomplete when the roster that day is non-empty, and vacuously complete when it is empty (decided from the chore lifetimes). Extract that query so earnings and ~Streaks~ share it, and the "exactly good standing" claim holds by construction; a *parity test* compares ~Streaks~ with ~Chores.standing/2~ over staged history.
+- ~Chores~ still never depends on ~Calendars~; ~Streaks~ depends on ~Chores~ (for the shared query) and on nothing calendar-side.
+- Cost: a fixed number of queries for all kids at once, independent of history length, as D72 requires of the earnings path. ~KioskLive.load/3~ calls it on every load for the chip, alongside the balances it already computes.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim, the bullet this story implements):
+
+#+begin_quote
+- *Unit — ~Streaks~:* each row of the three-valued today table, including the overnight evening miss and the closed morning window (pin the window with ~put_windows/2~, never mock the clock); the first-completion bound; a failed-then-redone day breaking the run; a chore archived mid-run; an empty-roster day passing; a non-empty roster with no completion breaking; ~longest~ surviving a reset; and the parity test against ~Chores.standing/2~.
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk, I need my current good-standing streak and my longest one ever worked out from everything the app has already recorded, so that the record I am proud of is there on day one and is never taken away when a streak ends.
+
+* Acceptance Criteria
+
+** [ ] A day counts toward a kid's streak exactly when it is a good-standing day: the evening of the day before and that day's morning both complete and unfailed, judged against the rosters in force on those days; a parity test over staged history agrees day for day with ~Chores.standing/2~. (SC-2)
+** [ ] A failed-then-redone routine, a non-empty roster with no completion, and an incomplete evening or morning each break the run; a day whose roster is empty passes; a chore archived mid-run leaves the days after its archive judged on the smaller roster. (SC-2)
+** [ ] Weekends are judged like any other day. (SC-2)
+** [ ] A kid's history starts at their first completion: no day before it counts, and a kid with no completions has a current and longest streak of 0. (SC-2, SC-6)
+** [ ] Today is reported as standing, pending or failed per the three-valued table: standing shows the run through today; failed (last night's evening incomplete or failed, this morning failed, or the morning window closed with this morning incomplete) shows 0; pending shows the run ending yesterday. (SC-2)
+** [ ] The longest streak is the longest run over all history, includes today's run only when today is standing, and is unchanged after the current streak resets to 0. (SC-3)
+** [ ] Streaks cover completions recorded before this feature existed, with no stored streak, flag, job, table or migration. (SC-6)
+** [ ] Computing streaks for all kids takes a fixed number of queries regardless of how much history exists, and a schedule change never alters a past streak. (SC-2)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there. (This is the first story of the initiative.)
+- No dependency on other stories. Nothing displays the streak yet; Story 04 puts it in the banner chip.
+- The query to extract is the private ~routine_days_by_kid/2~ in ~lib/bear_cub/chores.ex~ (around line 803, with ~live_chore_counts/1~ just above it). It currently takes ~versions~ for the earnings path; ~Streaks~ needs the per-day facts (~chore_count~, ~live_count~, ~any_failed~) and not the pricing, so shape the shared piece so both callers read the same rows. Note its completion-leg roster bound comment — that is the subtlety the parity test guards.
+- "A day with no row" is decided from chore lifetimes (~active_from~ / ~archived_on~), loaded once alongside the facts, not from another per-day query.
+- ~DayEntry~ is ~BearCub.Schedules.DayEntry~; ~BearCub.Routines~ reads its timings (see ~Routines.day/2~ and ~Routines.current/2~). Today's ~morning_end~ comes from the entry the caller passes.
+- Test the closed morning window with ~put_windows/2~ (~test/support/schedule_helpers.ex~), never by mocking the clock (CLAUDE.md: all time logic takes a local datetime argument).
+- New module: ~lib/bear_cub/streaks.ex~, unit tests in ~test/bear_cub/streaks_test.exs~. A query-count assertion (e.g. via telemetry or the repo log, as ~kiosk_live_test.exs~'s "a :countdown_tick runs no query, re-arm included" counts queries) evidences the fixed-query AC.

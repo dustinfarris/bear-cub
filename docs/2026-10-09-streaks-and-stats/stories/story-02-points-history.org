@@ -1,0 +1,84 @@
+#+title: Story 02 — Points earned in all and by month, derived from all recorded history
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — the points canon lines of §Overview, §Data Model's table, §Key Behaviors / Points history, and the points-history bullet of §Key Behaviors / Testing.
+
+From §Overview, the canon this story builds on (verbatim):
+
+#+begin_quote
+- *D57 / D41 / D72 — points.* ~Points~ composes ~Chores.earnings_by_kid(date)~ and ~Rewards.spend_totals_by_kid(date)~; the displayed total floors at ~max(0, balance)~; the grouped forms are a fixed number of queries, independent of history length.
+- *D121 — each points term is priced by the schedule version in force at its own instant.*
+#+end_quote
+
+From §Data Model (verbatim):
+
+#+begin_quote
+No schema change. The derivations read existing tables only:
+
+| Table               | Fields read                                                      | Used by                                  |
+|---------------------+------------------------------------------------------------------+------------------------------------------|
+| ~chores~            | ~kid_id~, ~routine~, ~active_from~, ~archived_on~, ~points~, ~unit_rate~ | rosters (streaks), extras values (points) |
+| ~completions~       | ~chore_id~, ~local_date~, ~completed_at~, ~undone_at~, ~failed_at~, ~effort_count~ | streaks, points                          |
+| ~schedule_versions~ | the version in force (via ~Schedules~)                           | points pricing (D121); today's ~morning_end~ |
+#+end_quote
+
+From §Key Behaviors / Points history (verbatim):
+
+#+begin_quote
+[[file:../../decisions.org::#d158][D158]].
+
+- *"Earned" is net of fail penalties, without the redemptions leg.* "Earned in all" and the monthly bars use the signed contribution of ~Chores.earnings_by_kid~ — a failed routine-day contributes −R, a failed extra −value — so spending never lowers them, and a parent's fail does.
+- *Floors.* Each month's bar floors at 0, and the lifetime total floors at 0, mirroring D41 per bucket: a month with more failures than earnings shows a 0 bar, never a negative one.
+- *Month bucketing* is the contribution's ~local_date~. The routine-day reduce keys by =(kid, month)= instead of =kid=; the extras leg groups by =strftime('%Y-%m', local_date)= in SQL. Pricing stays by the schedule version in force at each term's instant (D121).
+
+#+begin_src elixir
+Chores.earnings_by_kid_month(local_date)
+#=> %{kid_id => %{~D[2026-09-01] => integer, ~D[2026-10-01] => integer, ...}}   # signed, unfloored
+
+Points.earned_history(local_date)
+#=> %{kid_id => %{lifetime: non_neg_integer, months: [{~D[2026-03-01], non_neg_integer}, ...]}}
+#    months: the last 8 ending with local_date's month, none before the kid's first completion month, each floored at 0
+#    lifetime: max(0, sum of the unfloored months)
+#+end_src
+
+- Invariant (a test): for every kid, the unfloored lifetime figure minus the approved-unreversed spend equals the raw ~Points.balance~ before the D41 floor.
+- Loaded only while the record screen is open.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim, the bullet this story implements):
+
+#+begin_quote
+- *Unit — points history:* bucketing across a month boundary; net of penalties; the per-month and lifetime floors; repricing across a schedule version change (D121); the lifetime − spend = balance invariant; months before the first completion absent.
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk, I need every point I have ever earned added up, and broken down by month, from everything the app has already recorded, so that points I earned and then spent still count as something I did.
+
+* Acceptance Criteria
+
+** [ ] Each kid has a lifetime "earned" total that counts every routine-day and extra contribution over all history, net of fail penalties, and that spending on rewards never lowers. (SC-4, SC-6)
+** [ ] Each kid has a per-month breakdown keyed by the month of each contribution's date, so a contribution on the last day of a month and one on the first day of the next land in different months. (SC-4)
+** [ ] The breakdown lists the last 8 months ending with the current month, never a month before the kid's first completion month, and a month inside the kid's history with no net earnings appears with 0. (SC-4)
+** [ ] A month whose fail penalties exceed its earnings shows 0, never a negative figure, and the lifetime total never goes below 0. (SC-4)
+** [ ] Contributions keep the price set by the schedule version in force when each was earned, across a schedule change. (SC-4)
+** [ ] For every kid, the unfloored lifetime figure minus their approved, unreversed spend equals their raw points balance before the floor. (SC-4)
+** [ ] Computing the history for all kids takes a fixed number of queries regardless of how much history exists. (SC-4)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- This story depends on Story 01 only through the shared routine-day query Story 01 extracts from ~Chores~; if Story 01 reshaped ~routine_days_by_kid/2~, build the month-keyed reduce on its result rather than a second copy.
+- ~Chores.earnings_by_kid/1~ is at ~lib/bear_cub/chores.ex~ around line 738; ~Points~ (~lib/bear_cub/points.ex~) has ~balance/2~, ~total/2~, ~balances/1~, ~totals/1~. The invariant test compares against the raw balance before ~total~'s ~max(0, …)~ floor.
+- "Loaded only while the record screen is open" is the caller's obligation (Story 05 wires it); this story only provides the function.
+- Nothing displays the history yet; Stories 05 and 06 render it.

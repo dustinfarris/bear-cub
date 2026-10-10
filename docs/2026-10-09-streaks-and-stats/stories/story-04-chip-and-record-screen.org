@@ -1,0 +1,123 @@
+#+title: Story 04 — The streak chip opens a side-by-side record screen and Chores comes back
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Overview's opening paragraph and kiosk canon lines; §Screens / Streak chip; §Screens / My record screen (page frame, the Banner and Back button rows, Rules this screen serves); §Screens / Design-language entries 1, 2 and 6; §Key Behaviors / Kiosk wiring; the LiveView bullet of §Key Behaviors / Testing.
+
+From §Overview (verbatim):
+
+#+begin_quote
+A kid taps the 🔥 chip in their banner and the kiosk swaps to a "My record" screen: two identical columns, one per kid, each showing a large current good-standing streak, a "longest ever" tile, an "earned in all" points tile and a bar chart of points by month. One button reads =Chores= and goes back. Nothing ranks the kids.
+
+- *D56 — the night screen* takes precedence over every other kiosk state.
+- *D65 / D75 — the reward shop* is a per-column ~:rewards~ state with a 30 s idle return, entered through the banner's 🎁 toggle.
+- *The design-language Banner gift button entry* — the banner's right-hand group is the ★ badge plus the 🎁 button; the badge's own tap stays unbound.
+#+end_quote
+
+From §Screens / Streak chip (kiosk banner) (verbatim):
+
+#+begin_quote
+- A ~<.streak_chip>~ in the banner's right-hand group, left of the ★ badge: the group becomes chip + ★ badge + 🎁 ([[file:../../decisions.org::#d157][D157]]).
+- A 64 px-tall transparent =<button>= around a 40 px pill with a 2 px inset ring (white at 55%), so it reads as tappable beside the plain ★ pill; =phx-click="open-record"=, =id="streak-chip-#{kid.id}"=.
+- Content: 🔥 and the current streak in ~font-reward~; at 0, a dashed white flame outline (inline SVG) and no number.
+- It renders wherever the banner renders (rows, band and shop states). The ★ badge stays unbound.
+- The banner is 80 px tall (~py-5~ around the ~text-4xl~ name; every other banner element is absolutely positioned), so the 64 px target fits without changing its height.
+#+end_quote
+
+From §Screens / My record screen — the page frame and the two table rows this story builds (verbatim):
+
+#+begin_quote
+Page 1280 × 800, ~grid h-dvh grid-cols-2 gap-4 p-4 bg-base-300~; each column a ~<section>~ ~bg-base-100 rounded-lg overflow-hidden flex flex-col~, 616 × 768; an 80 px banner, then a body ~p-5 flex flex-col gap-4~ (576 wide).
+
+| Region           | Spec |
+|------------------+------|
+| Banner           | 80 px, solid kid colour (the kiosk banner's height, so the kid colours hold still across the swap); kid name centred, ~font-reward font-black~ 40 px, white; nothing else                                |
+| Back button      | 216 × 72 at left 532, top 20 — centred on the gutter between the two banners, overlapping both equally; ~hero-home~ white in a 48 px ~bg-base-content~ disc + =Chores= (~font-reward font-black~ 30 px); the screen's only control |
+#+end_quote
+
+From §Screens / My record screen, Rules this screen serves (verbatim):
+
+#+begin_quote
+- Nothing ranks, compares or crowns: no shared scale, no differences, no leader styling; each column reads as its own record ([[file:../../decisions.org::#d159][D159]]).
+- No shaming state: a reset shows =0= and =Start again today!=; the longest tile never changes, dims or shrinks.
+- Every tap target is at least 64 px; ~font-reward~ never below 14 px; no animation on this screen.
+- The only words on the screen are the strings in the table above, the month abbreviations and the tick values.
+- The kiosk/admin fence holds: the chip and the button are =phx-click= events; nothing links to ~/admin~.
+#+end_quote
+
+From §Screens / Design-language entries this initiative adds — the lead-in and entries 1, 2 and 6 (verbatim):
+
+#+begin_quote
+Recorded in ~docs/design-language.org~ by the story that builds each surface (rationale [[file:../../decisions.org::#d157][D157]], [[file:../../decisions.org::#d159][D159]], [[file:../../decisions.org::#d160][D160]]):
+
+1. *The streak chip joins the banner's right-hand group* — amends the Banner gift button entry's "badge plus gift" to chip + ★ badge + 🎁; the badge's tap stays unbound.
+2. *🔥 and 🏆 emoji* on the kids' view (both are in the emoji set, so D103's inline-SVG rule is untouched); the 0-streak dashed flame is inline SVG; the lifetime star is ~hero-star-solid~, the glyph that already means points, not the ⭐ emoji.
+6. *The back button straddles both banners* — the one kiosk control spanning the gutter, deliberately symmetric so neither kid owns it.
+#+end_quote
+
+From §Key Behaviors / Kiosk wiring — ~KioskLive~ (verbatim):
+
+#+begin_quote
+[[file:../../decisions.org::#d157][D157]].
+
+- *State.* One new assign, ~:record~ (boolean), screen-wide rather than per-kid because the screen shows both kids at once. The night screen always wins (D56): the record screen renders only when ~not night?~, and the kid columns render only when neither the night screen nor the record screen does.
+- *Events and messages:*
+  - ~"open-record"~ — the chip on either banner. Clears ~:rewards~ and cancels the shop's idle timers, so nothing stays half-open behind the screen, then arms the record idle timer.
+  - ~"close-record"~ — the =Chores= button; cancels the timer.
+  - ~:record_idle~ — sent 30 s after open (the shop's ~@rewards_idle_ms~ constant and pattern); returns to chores, and is a no-op if the screen is already closed.
+  - ~:boundary~ and ~:schedule_changed~ clear ~:record~ and its timer, exactly as they clear the shop.
+- *Rendering.* A new ~<.record_screen>~ in ~kiosk_components.ex~ renders the two columns and the button (Screens / My record screen). The record-only data (~Points.earned_history/1~) loads only while ~@record~ is true; the streaks are already loaded for the chips. PubSub-driven reloads refresh an open screen for free.
+#+end_quote
+
+From §Key Behaviors / Streak derivation, Shape (verbatim, the one line about the kiosk):
+
+#+begin_quote
+- Cost: a fixed number of queries for all kids at once, independent of history length, as D72 requires of the earnings path. ~KioskLive.load/3~ calls it on every load for the chip, alongside the balances it already computes.
+#+end_quote
+
+From §Key Behaviors / Testing (verbatim, the bullet this story implements all but one case of):
+
+#+begin_quote
+- *LiveView:* the chip at N and at 0; tapping either chip shows both kids' columns; =Chores= returns; the idle return (prove it by delivering ~:record_idle~ and asserting the chores columns are back, not by asserting a timer ref exists); night screen precedence; ~:boundary~ and ~:schedule_changed~ close it; opening while a kid is in the shop closes the shop; an admin completion while open refreshes the numbers; no link to ~/admin~.
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk, I need a 🔥 chip in my banner showing my current streak that opens a screen with my record beside my sibling's, and a =Chores= button that brings me straight back, so that I can see my streak every day and look at my record whenever I want.
+
+* Acceptance Criteria
+
+** [ ] Each kid's banner shows a streak chip left of the ★ badge, so the right-hand group reads chip, ★ badge, 🎁; it shows 🔥 and the current streak, or a dashed white flame outline and no number at 0, and appears in the rows, band and shop states. (SC-2)
+** [ ] The chip is a tap target at least 64 px tall that reads as tappable beside the ★ badge, the banner keeps its 80 px height, and the ★ badge's tap stays unbound. (SC-1)
+** [ ] Tapping either kid's chip replaces the chores view with the record screen: two equal columns, one per kid, each topped by an 80 px banner in that kid's colour with the kid's name centred and nothing else in it. (SC-1, SC-5)
+** [ ] The record screen's only control is a =Chores= button straddling the gutter between the two banners, overlapping both equally; tapping it returns to the chores view. (SC-1, SC-5)
+** [ ] The record screen returns to the chores view by itself 30 s after it opens, and does nothing if it has already been closed. (SC-1)
+** [ ] Opening the record screen while a kid is in the reward shop closes the shop, so the shop is not open behind the record screen or on return. (SC-1)
+** [ ] The night screen takes precedence over the record screen, and a routine boundary or a schedule change closes an open record screen. (SC-1)
+** [ ] Nothing on the record screen ranks, compares or singles out either kid: the two columns are built identically. (SC-5)
+** [ ] Every tap target on the chip and the record screen is at least 64 px, no ~font-reward~ text is below 14 px, the record screen has no animation, and its only words so far are the two kid names and =Chores=. (SC-1, SC-5)
+** [ ] Neither the chip nor the record screen contains a link or navigation to ~/admin~. (SC-1)
+** [ ] Streaks are loaded for the chip on every kiosk load with a fixed number of queries, and the once-a-second countdown tick still runs no query. (SC-2)
+** [ ] ~docs/design-language.org~ records entries 1, 2 and 6 of the design-language list above, entry 1 as an amendment to the Banner gift button entry. (SC-1, SC-5)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- This story depends on Story 01 because the chip shows ~Streaks.by_kid/2~'s ~current~. Its local review uses Story 03's ~record/1~ (states ~:a~ and ~:b~ give a chip at N and at 0).
+- The chip and its handlers land together on purpose: a rendered =phx-click="open-record"= with no ~handle_event~ clause would crash the kiosk LiveView on a tap. Every control this story renders must be handled by the end of it.
+- The record screen's body (streak tile, record row, chart) is empty in this story; Story 05 fills the tiles and Story 06 the chart. Leave the column's body container per the page-frame line so they slot in. Not loading ~Points.earned_history/1~ yet is correct: Story 05 adds it under ~@record~.
+- The design-language entry 2 mentions 🏆 and ~hero-star-solid~, which first render in Story 05; it is recorded whole here because the chip is the first surface it governs.
+- ~KioskLive~ (~lib/bear_cub_web/live/kiosk_live.ex~): ~@rewards_idle_ms~ (line 41), ~arm_rewards_idle_timer/2~ / ~cancel_rewards_idle_timer/2~ / ~cancel_all_rewards_idle_timers/1~ (around line 981), and the ~:schedule_changed~ / ~:boundary~ clauses (around lines 327 and 365) are the pattern to mirror. ~load/3~ (line 446) already computes ~day_entry~ (line 454), which ~Streaks.by_kid/2~ takes. Keep the streak load off the ~:countdown_tick~ path; the test "a :countdown_tick runs no query, re-arm included" (~test/bear_cub_web/live/kiosk_live_test.exs~ around line 1230) guards that.
+- ~banner/1~ is in ~lib/bear_cub_web/components/kiosk_components.ex~ around line 231; the badge + gift group comment is around line 308.
+- The LiveView case "an admin completion while open refreshes the numbers" is Story 05's: there are no numbers on the screen until then. Likewise the no-shaming rule (=0=, =Start again today!=, the longest tile never dimming) lands with the tiles in Story 05.
+- Read ~docs/design-language.org~ before any styling (CLAUDE.md). Screenshots carry kid names in both banners and the kiosk's calendar overlay: hide names and event text in the page before capturing, per CLAUDE.md's household-data rule.

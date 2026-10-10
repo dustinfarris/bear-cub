@@ -1,0 +1,52 @@
+#+title: Story 03 — Staging the four record-screen states for review
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Key Behaviors / Dev scenario.
+
+From §Key Behaviors / Dev scenario — ~BearCub.Dev.Scenarios.record/1~ (verbatim):
+
+#+begin_quote
+The gate reviews the record screen in four states; one scenario call stages each exactly, so no state is hand-staged through ~project_eval~. ~record(state)~ deletes the completions dated before today for the first two kids (by id) and seeds backdated completions on their existing routine chores so that, with ~open(:morning)~ and no completion today, the screen shows:
+
+| State | Kid 1 (current / longest)                                 | Kid 2 (current / longest)                                                  | Checks                                                      |
+|-------+-----------------------------------------------------------+----------------------------------------------------------------------------+-------------------------------------------------------------|
+| ~:a~  | 12 / 19                                                   | 3 / 3                                                                      | normal; Kid 2 carries =Best ever!=                          |
+| ~:b~  | 0 / 19 (last night's evening left undone, so today is ~:failed~) | 6 / 9                                                                      | reset: dashed flame, =0=, =Start again today!=, longest tile unchanged |
+| ~:c~  | 12 / 19                                                   | 4 / 4, first completion in the previous calendar month (two months shown)  | few-months chart: two wide bars, no gridlines               |
+| ~:d~  | 112 / 118                                                 | 104 / 104                                                                  | three-digit streaks and four-digit lifetime totals fit      |
+
+Seeded runs are separated by single missed days; history spans at least 8 months in ~:a~, ~:b~ and ~:d~ so the full chart renders. Lifetime figures follow from the seeded completions and the kids' chore values; they are not pinned. Today's completions are left alone, so the scenario pairs with ~reset/1~ and ~open/1~. Deleting past completions destroys the dev database's history, which no scenario has done before; it is dev-only and accepted for staging. Add the scenario to ~test/bear_cub/dev/scenarios_test.exs~ (assert each state's current/longest through ~Streaks.by_kid/2~), the moduledoc usage list and the CLAUDE.md scenario list.
+
+Screenshots of this screen carry the kids' names in both banners. Until the review-mask scenario on the backlog exists, hide them in the page before capturing, per CLAUDE.md's household-data rule.
+#+end_quote
+
+* User Story
+
+As the person reviewing the kiosk before a deploy, I need one call per record-screen state that seeds exactly the streak history that state needs, so that every state the gate asks for can be staged on the running dev server without hand-writing completions.
+
+* Acceptance Criteria
+
+** [ ] ~record(:a)~, ~record(:b)~, ~record(:c)~ and ~record(:d)~ each stage the first two kids (by id) at the current / longest streaks in the table above when paired with ~open(:morning)~ and with no completion today. (SC-2, SC-3)
+** [ ] In ~:b~, kid 1's last-night evening is left undone, so kid 1's today is failed and the current streak is 0 while the longest stays 19. (SC-3)
+** [ ] In ~:c~, kid 2's first completion falls in the previous calendar month, so kid 2's history covers two months; in ~:a~, ~:b~ and ~:d~ the history spans at least 8 months. (SC-4)
+** [ ] Each call replaces those two kids' completions dated before today and leaves today's completions untouched, so it composes with ~reset/1~ and ~open/1~. (SC-2)
+** [ ] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~, asserting each state's current / longest through ~Streaks.by_kid/2~, and is listed in the ~Scenarios~ moduledoc usage list and the CLAUDE.md scenario list. (SC-2, SC-3)
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- This story depends on Story 01 because its tests assert each state through ~Streaks.by_kid/2~. It sits before the screen stories so their local reviews can stage these states; ~:c~ and ~:d~'s chart and lifetime checks become visible only once Stories 05 and 06 land.
+- ~dev/bear_cub/dev/scenarios.ex~: model it on the existing scenarios (~reset/1~ near line 132, ~open/1~ near line 147). Seed through the existing routine chores of each kid, respecting each chore's ~active_from~ / ~archived_on~ so seeded days are judged against the roster in force.
+- In tests, "morning window open and no completion today" means today is pending, so pin the window with ~put_windows/2~ (~test/support/schedule_helpers.ex~); in dev, pair with ~open(:morning)~.
+- Running ~record/1~ through Tidewave ~project_eval~ deletes the dev database's real past completions for the first two kids. Warn the human before the first run, and run it through ~project_eval~ so broadcasts land in the running server (CLAUDE.md).
+- The household-data rule in the excerpt binds whoever captures screenshots (Stories 04–06 and the gate); this story captures none.

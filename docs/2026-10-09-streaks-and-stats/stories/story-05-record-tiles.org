@@ -1,0 +1,90 @@
+#+title: Story 05 — The streak, longest-ever and earned-in-all tiles on the record screen
+#+date: 2026-10-10
+
+* Design
+
+Source: [[file:../DESIGN.org][DESIGN.org]] — §Screens / My record screen (the Streak tile, Streak at 0, Best-ever chip, Record row, Longest tile and Lifetime tile rows, and Rules this screen serves); §Screens / Design-language entries 3 (its ~--kid-tint~ / ~--kid-edge~ sentence), 4 and 7; the Rendering bullet of §Key Behaviors / Kiosk wiring; the record-screen line of §Key Behaviors / Points history; one case of the LiveView testing bullet.
+
+From §Screens / My record screen — the table rows this story builds (verbatim):
+
+#+begin_quote
+| Region           | Spec |
+|------------------+------|
+| Streak tile      | h 192, ~rounded-2xl~, 3 px ~--kid-edge~ border, ~--kid-tint~ ground; 🔥 108 px + count ~font-reward font-black~ 140 px (line-height .86) in the kid colour + =days in a row= (=day in a row= at 1), ~font-reward~ 800 28 px |
+| Streak at 0      | a dashed flame outline (inline SVG) in place of 🔥, =0=, and =Start again today!=                                                                                                                         |
+| Best-ever chip   | 🏆 22 px + =Best ever!= (~font-reward~ 800 19 px) on the streak tile's top edge (top −19, right 20), 3 px kid-colour border on ~bg-base-100~; shown only when ~current > 0 and current == longest~      |
+| Record row       | h 112, ~grid grid-cols-2 gap-4~, two cells below                                                                                                                                                         |
+| Longest tile     | ~bg-base-100~, 4 px solid kid-colour border; 🏆 48 px, count ~font-reward font-black~ 52 px + unit =days= / =day= (800 22 px), =longest ever= (sans bold 17 px); *identical in every state*            |
+| Lifetime tile    | ~--paid-tint~ ground, 4 px ~--paid-edge~ border; ~hero-star-solid~ 48 px, count ~font-reward font-black~ 52 px in ~--paid-content~, =earned in all= (sans bold 17 px, ~--paid-content~)               |
+#+end_quote
+
+From §Screens / My record screen, Rules this screen serves (verbatim):
+
+#+begin_quote
+- Nothing ranks, compares or crowns: no shared scale, no differences, no leader styling; each column reads as its own record ([[file:../../decisions.org::#d159][D159]]).
+- No shaming state: a reset shows =0= and =Start again today!=; the longest tile never changes, dims or shrinks.
+- Every tap target is at least 64 px; ~font-reward~ never below 14 px; no animation on this screen.
+- The only words on the screen are the strings in the table above, the month abbreviations and the tick values.
+#+end_quote
+
+From §Screens / Design-language entries this initiative adds — entries 3 (the sentence on the existing mixes), 4 and 7 (verbatim):
+
+#+begin_quote
+3. … ~--kid-tint~ is kid 12% into base-100 and ~--kid-edge~ kid 45% into base-100, the pending-extra mixes. No new hex values.
+4. *Words on the screen*: =Start again today!= and =Best ever!= are accepted knowingly, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; the screen carries no other copy beyond the table above.
+7. *Kid tint and edge frame the record tiles* as D117 frames extras (the kid colour means whose record this is); the lifetime tile takes the paid family (the "earned something" signal of the ~+N~ chip and bonus badge).
+#+end_quote
+
+From §Key Behaviors / Kiosk wiring, Rendering (verbatim):
+
+#+begin_quote
+- *Rendering.* A new ~<.record_screen>~ in ~kiosk_components.ex~ renders the two columns and the button (Screens / My record screen). The record-only data (~Points.earned_history/1~) loads only while ~@record~ is true; the streaks are already loaded for the chips. PubSub-driven reloads refresh an open screen for free.
+#+end_quote
+
+From §Key Behaviors / Points history (verbatim, the loading line):
+
+#+begin_quote
+- Loaded only while the record screen is open.
+#+end_quote
+
+From §Key Behaviors / Testing, LiveView bullet (verbatim, the case this story implements):
+
+#+begin_quote
+an admin completion while open refreshes the numbers
+#+end_quote
+
+* User Story
+
+As a kid at the kiosk, I need the record screen to show my current streak big, my longest streak ever and every point I have ever earned, so that I can see how I am doing now and what I have achieved, even after a streak ends or I spend my points.
+
+* Acceptance Criteria
+
+** [ ] Each column shows a streak tile with 🔥, the kid's current streak in the kid's colour and =days in a row= (=day in a row= at 1), framed in the kid's tint and edge. (SC-2)
+** [ ] At a current streak of 0 the tile shows a dashed flame outline in place of 🔥, =0= and =Start again today!=. (SC-2, SC-3)
+** [ ] A =Best ever!= chip with 🏆 sits on the streak tile's top edge only when the current streak is above 0 and equals the longest. (SC-3)
+** [ ] Below the streak tile, a longest-ever tile shows 🏆, the kid's longest streak with =days= (=day= at 1) and =longest ever=, and looks identical whether or not the current streak has just reset — it never dims, shrinks or changes. (SC-3)
+** [ ] Beside it, an earned-in-all tile in the paid colours shows the star glyph that means points, the kid's lifetime earned total and =earned in all=; spending on a reward does not lower it. (SC-4)
+** [ ] Each column's tiles show only that kid's figures, with no comparison, difference or leader styling between the two columns. (SC-5)
+** [ ] The lifetime history is loaded only while the record screen is open, and an admin completion made while the screen is open refreshes the numbers shown. (SC-4)
+** [ ] The tiles add no words beyond =days in a row= / =day in a row=, =Start again today!=, =Best ever!=, =days= / =day=, =longest ever= and =earned in all=; no ~font-reward~ text is below 14 px and nothing animates. (SC-5)
+** [ ] ~docs/design-language.org~ records entries 4 and 7 of the design-language list above. (SC-5)
+
+# GAP: §Screens and design-language entry 3 call ~--kid-tint~ and ~--kid-edge~ existing kid mixes in the ~app.css~ token block, but no such named tokens exist: the only kid mix today is the inline ~style~ string on the pending extra card (~kiosk_components.ex~ around line 932, kid 12% / 45% into base-100). The kid colour is per-kid data, so a ~:root~ token cannot hold it alone; the per-column mechanism (e.g. a per-section custom property the mixes derive from, or inline mixes) is undesigned. The ACs above say "the kid's tint and edge" without choosing the mechanism. Needs a ruling before implementation; Story 06's ~--kid-ink~ / ~--kid-grid~ depend on the same answer.
+
+* Definition of Done
+
+** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
+** [ ] Tests written and passing for the acceptance criteria in this story
+** [ ] Code follows style guidelines in CLAUDE.md
+** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [ ] The story's visual changes were viewed at the repo's declared review viewport, in a state staged through its declared staging mechanism (CLAUDE.md ~Local review:~ line), before close-out — a screenshot at that viewport is the evidence
+
+* Technical Notes
+
+- The Design excerpt above is the source of truth for this story; [[file:../DESIGN.org][DESIGN.org]] is broader context only.
+- Before starting, read the Plan LOGBOOK entries of earlier stories in [[file:../PLAN.org][PLAN.org]] — notes earlier stories left for this one live there.
+- This story depends on Story 04 (the record screen and its body container, the ~:record~ assign), Story 01 (~current~ / ~longest~, already loaded for the chip) and Story 02 (~Points.earned_history/1~'s ~lifetime~).
+- Local review: ~record(:a)~ shows a normal tile and =Best ever!= on kid 2; ~record(:b)~ the reset tile with the longest tile unchanged; ~record(:d)~ three-digit streaks and four-digit lifetime totals fitting. Pair each with ~open(:morning)~. Hide kid names and calendar event text in the page before capturing (CLAUDE.md household-data rule).
+- The paid tokens exist: ~--paid-tint~, ~--paid-edge~, ~--paid-content~ in ~assets/css/app.css~ (around lines 123–127). ~hero-star-solid~ is the existing points glyph.
+- The dashed flame outline is the inline SVG Story 04 built for the chip at 0; reuse it at this size rather than drawing a second one.
+- Read ~docs/design-language.org~ before any styling (CLAUDE.md).
