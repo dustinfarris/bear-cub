@@ -3445,4 +3445,186 @@ defmodule BearCubWeb.KioskLiveTest do
       assert is_integer(Process.read_timer(second))
     end
   end
+
+  describe "streak chip and record screen (Story 04, D157, D159)" do
+    setup do
+      morning_active()
+      kid_a = kid_fixture(%{name: "Kid A", color: "#f59e0b", position: 0})
+      kid_b = kid_fixture(%{name: "Kid B", color: "#0ea5e9", position: 1})
+      %{kid_a: kid_a, kid_b: kid_b}
+    end
+
+    # Yesterday stood (evening before, morning) and last night is done, so
+    # the run is 1 while today is still undecided.
+    defp give_streak(kid) do
+      evening = chore_fixture(kid, %{name: "Bath", routine: "evening"})
+      morning = chore_fixture(kid, %{name: "Brush", routine: "morning"})
+      day = fn n, time -> DateTime.new!(Date.add(today(), n), time, tz()) end
+      {:ok, _} = BearCub.Chores.complete_chore(evening, day.(-2, ~T[19:00:00]), "kiosk")
+      {:ok, _} = BearCub.Chores.complete_chore(morning, day.(-1, ~T[07:00:00]), "kiosk")
+      {:ok, _} = BearCub.Chores.complete_chore(evening, day.(-1, ~T[19:00:00]), "kiosk")
+    end
+
+    test "the chip shows the current streak at N", %{conn: conn, kid_a: kid_a} do
+      give_streak(kid_a)
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert view |> element("#streak-chip-#{kid_a.id}") |> render() =~ "🔥"
+      assert view |> element("#streak-chip-#{kid_a.id}") |> render() =~ "1"
+    end
+
+    test "at 0 the chip is a dashed flame outline and no number", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      chip = view |> element("#streak-chip-#{kid_a.id}") |> render()
+      refute chip =~ "🔥"
+      assert chip =~ "<svg"
+      assert chip =~ "stroke-dasharray"
+      refute chip =~ ~r/>\s*\d+\s*</
+    end
+
+    test "the chip sits left of the star badge and the badge stays unbound",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert html =~
+               ~r/streak-chip-#{kid_a.id}.*points-badge-#{kid_a.id}.*gift-button-#{kid_a.id}/s
+
+      refute view |> element("#points-badge-#{kid_a.id}") |> render() =~ "phx-click"
+    end
+
+    test "tapping either chip shows both kids' columns, built identically",
+         %{conn: conn, kid_a: kid_a, kid_b: kid_b} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("#streak-chip-#{kid_b.id}") |> render_click()
+
+      assert has_element?(view, "#record-screen")
+      assert has_element?(view, "#record-column-#{kid_a.id}")
+      assert has_element?(view, "#record-column-#{kid_b.id}")
+      refute has_element?(view, "#kid-column-#{kid_a.id}")
+      assert has_element?(view, "#record-back")
+
+      strip = fn id ->
+        view
+        |> element("#record-column-#{id}")
+        |> render()
+        |> String.replace(~r/id="[^"]*"|style="[^"]*"|Kid [AB]/, "")
+      end
+
+      assert strip.(kid_a.id) == strip.(kid_b.id)
+    end
+
+    test "Chores returns to the chores view", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+
+      view |> element("#record-back") |> render_click()
+
+      refute has_element?(view, "#record-screen")
+      assert has_element?(view, "#kid-column-#{kid_a.id}")
+    end
+
+    test "the idle message returns to chores, and is a no-op once closed",
+         %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+
+      send(view.pid, :record_idle)
+      refute has_element?(view, "#record-screen")
+      assert has_element?(view, "#kid-column-#{kid_a.id}")
+
+      send(view.pid, :record_idle)
+      assert has_element?(view, "#kid-column-#{kid_a.id}")
+    end
+
+    test "closing cancels the idle timer", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+      ref = :sys.get_state(view.pid).socket.assigns.record_timer
+      assert is_reference(ref)
+
+      view |> element("#record-back") |> render_click()
+
+      assert Process.read_timer(ref) == false
+      assert :sys.get_state(view.pid).socket.assigns.record_timer == nil
+    end
+
+    test "opening while a kid is in the shop closes the shop", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+      assert has_element?(view, "#rewards-#{kid_a.id}")
+
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.rewards == MapSet.new()
+      assert assigns.rewards_timers == %{}
+
+      view |> element("#record-back") |> render_click()
+      refute has_element?(view, "#rewards-#{kid_a.id}")
+      assert has_element?(view, "#chores-#{kid_a.id}")
+    end
+
+    test "the chip is there in the shop state too", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#gift-button-#{kid_a.id}") |> render_click()
+
+      assert has_element?(view, "#streak-chip-#{kid_a.id}")
+    end
+
+    test ":boundary and :schedule_changed close it", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      for message <- [:boundary, :schedule_changed] do
+        view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+        assert has_element?(view, "#record-screen")
+
+        send(view.pid, message)
+
+        refute has_element?(view, "#record-screen")
+        assert :sys.get_state(view.pid).socket.assigns.record_timer == nil
+      end
+    end
+
+    test "the night screen wins over the record screen", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+
+      now = LocalTime.now()
+      time = DateTime.to_time(now)
+
+      put_windows(
+        {Time.add(time, 60, :second), Time.add(time, 90, :second)},
+        {~T[00:00:00], time}
+      )
+
+      send(view.pid, :boundary)
+
+      assert has_element?(view, "#night-screen")
+      refute has_element?(view, "#record-screen")
+    end
+
+    test "no link to /admin on the chip or the record screen", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, html} = live(conn, ~p"/")
+      refute html =~ "/admin"
+
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+
+      refute render(view) =~ "/admin"
+    end
+
+    test "the record screen carries only the names and Chores", %{conn: conn, kid_a: kid_a} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("#streak-chip-#{kid_a.id}") |> render_click()
+
+      text =
+        view
+        |> element("#record-screen")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert text == "Kid AKid BChores"
+    end
+  end
 end

@@ -94,6 +94,7 @@ defmodule BearCubWeb.KioskComponentsTest do
           e: 2,
           n: 3,
           points: 12,
+          streak: 0,
           pending_request?: false,
           countdown: %{mode: :minutes, remaining_ms: 600_000, fraction: 0.5}
         })
@@ -118,6 +119,7 @@ defmodule BearCubWeb.KioskComponentsTest do
             e: 2,
             n: 3,
             points: 12,
+            streak: 0,
             pending_request?: false
           },
           attrs

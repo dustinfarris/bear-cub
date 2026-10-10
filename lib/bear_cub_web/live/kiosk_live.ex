@@ -11,6 +11,7 @@ defmodule BearCubWeb.KioskLive do
   alias BearCub.Rewards
   alias BearCub.Routines
   alias BearCub.Schedules
+  alias BearCub.Streaks
   alias BearCub.Weather
 
   # Collapse-delay (Story 07, SC-7): the pause between the last routine
@@ -39,6 +40,7 @@ defmodule BearCubWeb.KioskLive do
   # off mid-shop. Deliberately not design-pinned — tuned at the on-device
   # gate exactly like @collapse_delay_ms was; 30s is the starting guess.
   @rewards_idle_ms 30_000
+  @record_idle_ms 30_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -73,6 +75,8 @@ defmodule BearCubWeb.KioskLive do
      |> assign(:just_risen, nil)
      |> assign(:rewards, MapSet.new())
      |> assign(:rewards_timers, %{})
+     |> assign(:record, false)
+     |> assign(:record_timer, nil)
      |> assign(:counting, %{})
      |> assign(:boundary_timer, nil)
      |> assign(:countdown_ms, countdown_ms())
@@ -211,6 +215,24 @@ defmodule BearCubWeb.KioskLive do
     {:noreply, load(socket, LocalTime.now())}
   end
 
+  # The streak chip on either banner (D157): swaps the whole kiosk to the
+  # record screen. Anything the shop left open is closed first, so nothing
+  # is half-open behind the screen or on return.
+  def handle_event("open-record", _params, socket) do
+    socket =
+      socket
+      |> cancel_all_rewards_idle_timers()
+      |> assign(:rewards, MapSet.new())
+      |> assign(:record, true)
+      |> arm_record_idle_timer()
+
+    {:noreply, load(socket, LocalTime.now())}
+  end
+
+  def handle_event("close-record", _params, socket) do
+    {:noreply, socket |> close_record() |> load(LocalTime.now())}
+  end
+
   # Explicit ✕ dismiss (D65): cancels the idle timer and returns the
   # column to its normal state.
   def handle_event("dismiss-shop", %{"kid-id" => id}, socket) do
@@ -331,6 +353,7 @@ defmodule BearCubWeb.KioskLive do
       socket
       |> cancel_all_rewards_idle_timers()
       |> assign(:rewards, MapSet.new())
+      |> close_record()
       |> assign(:counting, %{})
       |> load(now)
 
@@ -373,6 +396,7 @@ defmodule BearCubWeb.KioskLive do
       socket
       |> cancel_all_rewards_idle_timers()
       |> assign(:rewards, MapSet.new())
+      |> close_record()
       |> assign(:counting, %{})
       |> load(now)
 
@@ -390,6 +414,11 @@ defmodule BearCubWeb.KioskLive do
       |> assign(:rewards, MapSet.delete(socket.assigns.rewards, kid_id))
 
     {:noreply, load(socket, LocalTime.now())}
+  end
+
+  # Record idle return (D157): a no-op if the screen is already closed.
+  def handle_info(:record_idle, socket) do
+    {:noreply, socket |> close_record() |> load(LocalTime.now())}
   end
 
   # Collapse-delay (Story 07): fires once per kid whose routine just became
@@ -506,6 +535,13 @@ defmodule BearCubWeb.KioskLive do
           {local_now, lead_ms, switch_ms}
         )
       end)
+
+    # The chip's number (D157), loaded here and never on a countdown tick.
+    # Nothing renders it at night.
+    streaks = if night?, do: %{}, else: Streaks.by_kid(local_now, day_entry)
+
+    columns =
+      Enum.map(columns, &Map.put(&1, :streak, get_in(streaks, [&1.kid.id, :current]) || 0))
 
     # Collapse-delay (Story 07, SC-7): a kid newly added to
     # `pending_collapse` this pass just had their last routine chore
@@ -995,6 +1031,20 @@ defmodule BearCubWeb.KioskLive do
     end
   end
 
+  defp arm_record_idle_timer(socket) do
+    cancel_record_timer(socket)
+    assign(socket, :record_timer, Process.send_after(self(), :record_idle, @record_idle_ms))
+  end
+
+  defp cancel_record_timer(socket) do
+    if ref = socket.assigns.record_timer, do: Process.cancel_timer(ref)
+    socket
+  end
+
+  defp close_record(socket) do
+    socket |> cancel_record_timer() |> assign(record: false, record_timer: nil)
+  end
+
   defp cancel_all_rewards_idle_timers(socket) do
     Enum.each(socket.assigns.rewards_timers, fn {_kid_id, ref} -> Process.cancel_timer(ref) end)
     assign(socket, :rewards_timers, %{})
@@ -1009,6 +1059,8 @@ defmodule BearCubWeb.KioskLive do
         class="relative grid h-dvh grid-cols-2 gap-4 p-4 overflow-hidden bg-base-300"
       >
         <.night_screen :if={@night?} />
+
+        <.record_screen :if={@record and not @night?} kids={Enum.map(@columns, & &1.kid)} />
 
         <%!-- Corner glyph (D4): dim when the calendar cache has gone stale.
              Global, not per-calendar or per-column — per-calendar diagnosis
@@ -1047,11 +1099,12 @@ defmodule BearCubWeb.KioskLive do
               points: points,
               pending_request?: pending_request?,
               countdown: countdown,
-              catalog: catalog
+              catalog: catalog,
+              streak: streak
             } <-
               @columns
           }
-          :if={!@night?}
+          :if={!@night? and !@record}
           id={"kid-column-#{kid.id}"}
           class={[
             "grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100 rounded-lg",
@@ -1070,6 +1123,7 @@ defmodule BearCubWeb.KioskLive do
             e={e}
             n={n}
             points={points}
+            streak={streak}
             pending_request?={pending_request?}
             countdown={countdown}
           />

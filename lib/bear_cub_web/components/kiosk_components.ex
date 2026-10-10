@@ -33,6 +33,81 @@ defmodule BearCubWeb.KioskComponents do
     """
   end
 
+  attr :kid, :map, required: true
+  attr :streak, :integer, required: true
+
+  @doc """
+  The 🔥 chip (D157): a 64 px transparent target around a 40 px pill with an
+  inset ring, so it reads as tappable beside the plain ★ badge. At 0 the
+  flame is a dashed outline (inline SVG, D103) and there is no number.
+  """
+  def streak_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"streak-chip-#{@kid.id}"}
+      phx-click="open-record"
+      class="flex h-16 items-center justify-center bg-transparent"
+    >
+      <span class="flex h-10 items-center gap-1 rounded-full px-3 font-reward text-lg font-black text-white shadow-[inset_0_0_0_2px_rgb(255_255_255/0.55)]">
+        <%= if @streak > 0 do %>
+          🔥 {@streak}
+        <% else %>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            class="size-5"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-dasharray="3 2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3c1 3.5-3.5 5.5-3.5 10a3.5 3.5 0 0 0 7 0c0-1.8-.6-2.8-1.4-3.8-.2 1.2-.8 1.8-1.5 2 .4-3-.1-5.7-.6-8.2z" />
+          </svg>
+        <% end %>
+      </span>
+    </button>
+    """
+  end
+
+  attr :kids, :list, required: true
+
+  @doc """
+  The record screen (D157, D159): one identical column per kid under a solid
+  kid-colour banner, and the one control, a Chores button straddling the
+  gutter. The body is empty until the tiles and chart land.
+  """
+  def record_screen(assigns) do
+    ~H"""
+    <div id="record-screen" class="contents">
+      <section
+        :for={kid <- @kids}
+        id={"record-column-#{kid.id}"}
+        class="flex flex-col overflow-hidden rounded-lg bg-base-100"
+      >
+        <header class="flex h-20 items-center justify-center" style={"background-color: #{kid.color}"}>
+          <h1 class="font-reward text-[40px] font-black leading-none text-white">{kid.name}</h1>
+        </header>
+        <div class="flex flex-col gap-4 p-5"></div>
+      </section>
+      <button
+        type="button"
+        id="record-back"
+        phx-click="close-record"
+        class="absolute left-[532px] top-5 z-10 flex h-[72px] w-[216px] items-center justify-center gap-3 rounded-full bg-base-100"
+      >
+        <span class="flex size-12 items-center justify-center rounded-full bg-base-content text-base-100">
+          <.icon name="hero-home" class="size-7" />
+        </span>
+        <span class="font-reward text-[30px] font-black leading-none text-base-content">Chores</span>
+      </button>
+    </div>
+    """
+  end
+
   attr :id, :string, required: true
   attr :routine, :atom, required: true
   attr :color, :string, required: true
@@ -222,6 +297,7 @@ defmodule BearCubWeb.KioskComponents do
   attr :e, :integer, required: true, doc: "the early bird bonus as priced for this routine-day"
   attr :n, :integer, required: true, doc: "the Night Owl bonus as priced for this routine-day"
   attr :points, :integer, required: true
+  attr :streak, :integer, required: true, doc: "the current good-standing streak (D157)"
   attr :pending_request?, :boolean, required: true
 
   attr :countdown, :map,
@@ -313,6 +389,7 @@ defmodule BearCubWeb.KioskComponents do
            opening the shop regardless of the pending state its own
            glyph shows. --%>
       <div class="absolute right-5 flex items-center gap-2">
+        <.streak_chip kid={@kid} streak={@streak} />
         <span
           id={"points-badge-#{@kid.id}"}
           class="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 font-reward text-lg font-black text-white drop-shadow-sm"
