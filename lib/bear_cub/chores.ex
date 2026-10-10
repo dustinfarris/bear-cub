@@ -800,7 +800,18 @@ defmodule BearCub.Chores do
     )
   end
 
-  defp routine_days_by_kid(%Date{} = local_date, versions) do
+  @doc """
+  The routine-day facts every derived consumer reads (D94): one row per
+  `(kid_id, routine, local_date)` that has at least one completion on or
+  before `local_date`, in one query whatever the history. Each row carries
+  the day's roster size (`chore_count`, D81), the `live_count` of roster
+  chores with a live completion, `any_failed` (0 or 1) and the raw
+  `last_completed_at` / `first_failed_at` instants. A routine-day is
+  complete when `chore_count > 0 and live_count == chore_count`. Earnings
+  and `BearCub.Streaks` both read these rows, so they cannot disagree
+  about what a day was.
+  """
+  def routine_day_facts(%Date{} = local_date) do
     # The completion leg carries the same bound as the count leg: a chore
     # completed this morning and archived this afternoon is off today's
     # roster, so its completion must not be weighed against a count that
@@ -833,6 +844,11 @@ defmodule BearCub.Chores do
       }
     )
     |> Repo.all()
+  end
+
+  defp routine_days_by_kid(%Date{} = local_date, versions) do
+    local_date
+    |> routine_day_facts()
     |> Enum.reduce(%{}, fn row, acc ->
       complete? = row.chore_count > 0 and row.live_count == row.chore_count
 
