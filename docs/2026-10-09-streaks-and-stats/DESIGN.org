@@ -164,7 +164,7 @@ Points.earned_history(local_date)
 
 ** Dev scenario — ~BearCub.Dev.Scenarios.record/1~
 
-The gate reviews the record screen in four states; one scenario call stages each exactly, so no state is hand-staged through ~project_eval~. ~record(state)~ deletes the completions dated before today for the first two kids (by id) and seeds backdated completions on their existing routine chores so that, with ~open(:morning)~ and no completion today, the screen shows:
+The gate reviews the record screen in five states; one scenario call stages each exactly, so no state is hand-staged through ~project_eval~. ~record(state)~ deletes the completions dated before today for the first two kids (by id) and seeds backdated completions on their existing routine chores so that, with ~open(:morning)~ and no completion today, the screen shows:
 
 | State | Kid 1 (current / longest)                                 | Kid 2 (current / longest)                                                  | Checks                                                      |
 |-------+-----------------------------------------------------------+----------------------------------------------------------------------------+-------------------------------------------------------------|
@@ -172,8 +172,9 @@ The gate reviews the record screen in four states; one scenario call stages each
 | ~:b~  | 0 / 19 (last night's evening left undone, so today is ~:failed~) | 6 / 9                                                                      | reset: dashed flame, =0=, =Start again today!=, longest tile unchanged |
 | ~:c~  | 12 / 19                                                   | 4 / 4, first completion in the previous calendar month (two months shown)  | few-months chart: two wide bars, no gridlines               |
 | ~:d~  | 112 / 118                                                 | 104 / 104                                                                  | three-digit streaks and four-digit lifetime totals fit      |
+| ~:e~  | 12 / 19                                                   | 0 / 0, no completions before today (lifetime 0, one current month at 0)    | empty column beside a normal one; pair with ~reset/1~       |
 
-Seeded runs are separated by single missed days; history spans at least 8 months in ~:a~, ~:b~ and ~:d~ so the full chart renders. Lifetime figures follow from the seeded completions and the kids' chore values; they are not pinned. Today's completions are left alone, so the scenario pairs with ~reset/1~ and ~open/1~. Deleting past completions destroys the dev database's history, which no scenario has done before; it is dev-only and accepted for staging. Add the scenario to ~test/bear_cub/dev/scenarios_test.exs~ (assert each state's current/longest through ~Streaks.by_kid/2~), the moduledoc usage list and the CLAUDE.md scenario list.
+Seeded runs are separated by single missed days; history spans at least 8 months in ~:a~, ~:b~ and ~:d~ so the full chart renders. In ~:e~ kid 2 is only truly empty with no completion today, hence the ~reset/1~ pairing. Lifetime figures follow from the seeded completions and the kids' chore values; they are not pinned. Today's completions are left alone, so the scenario pairs with ~reset/1~ and ~open/1~. Deleting past completions destroys the dev database's history, which no scenario has done before; it is dev-only and accepted for staging. Add the scenario to ~test/bear_cub/dev/scenarios_test.exs~ (assert each state's current/longest through ~Streaks.by_kid/2~), the moduledoc usage list and the CLAUDE.md scenario list.
 
 Screenshots of this screen carry the kids' names in both banners. Until the review-mask scenario on the backlog exists, hide them in the page before capturing, per CLAUDE.md's household-data rule.
 
@@ -182,7 +183,7 @@ Screenshots of this screen carry the kids' names in both banners. Until the revi
 - *Unit — ~Streaks~:* each row of the three-valued today table, including the overnight evening miss and the closed morning window (pin the window with ~put_windows/2~, never mock the clock); the first-completion bound; a failed-then-redone day breaking the run; a chore archived mid-run; an empty-roster day passing; a non-empty roster with no completion breaking; ~longest~ surviving a reset; and the parity test against ~Chores.standing/2~.
 - *Unit — points history:* bucketing across a month boundary; net of penalties; the per-month and lifetime floors; repricing across a schedule version change (D121); the lifetime − spend = balance invariant; months before the first completion absent.
 - *LiveView:* the chip at N and at 0; tapping either chip shows both kids' columns; =Chores= returns; the idle return (prove it by delivering ~:record_idle~ and asserting the chores columns are back, not by asserting a timer ref exists); night screen precedence; ~:boundary~ and ~:schedule_changed~ close it; opening while a kid is in the shop closes the shop; an admin completion while open refreshes the numbers; no link to ~/admin~.
-- *Gate review:* the four ~record/1~ states at 1280 × 800, viewport confirmed before capture.
+- *Gate review:* the five ~record/1~ states at 1280 × 800, viewport confirmed before capture.
 
 * Out of Scope for This Design
 

@@ -28,21 +28,61 @@ As the person reviewing the kiosk before a deploy, I need one call per record-sc
 
 * Acceptance Criteria
 
-** [ ] ~record(:a)~, ~record(:b)~, ~record(:c)~ and ~record(:d)~ each stage the first two kids (by id) at the current / longest streaks in the table above when paired with ~open(:morning)~ and with no completion today. (SC-2, SC-3)
-** [ ] In ~:b~, kid 1's last-night evening is left undone, so kid 1's today is failed and the current streak is 0 while the longest stays 19. (SC-3)
-** [ ] In ~:c~, kid 2's first completion falls in the previous calendar month, so kid 2's history covers two months; in ~:a~, ~:b~ and ~:d~ the history spans at least 8 months. (SC-4)
-** [ ] ~record(:e)~ stages kid 1 as in ~:a~ (12 / 19) and kid 2 with no completions before today, so with no completion today kid 2's column is the empty state: current 0, longest 0, lifetime 0 and a single current month at 0. (SC-2, SC-4)
-** [ ] Each call replaces those two kids' completions dated before today and leaves today's completions untouched, so it composes with ~reset/1~ and ~open/1~. (SC-2)
-** [ ] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~, asserting each state's current / longest through ~Streaks.by_kid/2~, and is listed in the ~Scenarios~ moduledoc usage list and the CLAUDE.md scenario list. (SC-2, SC-3)
+** [X] ~record(:a)~, ~record(:b)~, ~record(:c)~ and ~record(:d)~ each stage the first two kids (by id) at the current / longest streaks in the table above when paired with ~open(:morning)~ and with no completion today. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified by the story-verifier pass: scenarios_test.exs asserts each of :a (12/19, 3/3), :b (0/19, 6/9), :c (12/19, 4/4) and :d (112/118, 104/104) through ~Streaks.by_kid/2~ with ~morning_active()~ pinning the window and no completion today; table encoded in ~@record_states~ in ~dev/bear_cub/dev/scenarios.ex~.
+:END:
+** [X] In ~:b~, kid 1's last-night evening is left undone, so kid 1's today is failed and the current streak is 0 while the longest stays 19. (SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: the :b test asserts {0, 19} and ~today == :failed~ for kid 1; ~record/2~ drops yesterday's evening only for the first kid in :b.
+:END:
+** [X] In ~:c~, kid 2's first completion falls in the previous calendar month, so kid 2's history covers two months; in ~:a~, ~:b~ and ~:d~ the history spans at least 8 months. (SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: the :c test asserts kid 2's first completion is in the previous calendar month and ~Points.earned_history/1~ gives two months; the :a, :b and :d tests assert ~span_days >= 245~ for both kids (seeded span 250).
+:END:
+** [X] ~record(:e)~ stages kid 1 as in ~:a~ (12 / 19) and kid 2 with no completions before today, so with no completion today kid 2's column is the empty state: current 0, longest 0, lifetime 0 and a single current month at 0. (SC-2, SC-4)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: the :e test asserts kid 1 at {12, 19}, kid 2 at {0, 0} with no completions, and ~Points.earned_history/1~ returning ~lifetime: 0~ and one month at 0.
+:END:
+** [X] Each call replaces those two kids' completions dated before today and leaves today's completions untouched, so it composes with ~reset/1~ and ~open/1~. (SC-2)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: ~record/2~ deletes only ~local_date < today~ completions of each of the first two kids' chores; the test runs ~early_bird/1~ then ~record/2~ three times and asserts ~Chores.current_completions/1~ unchanged, and a separate test shows a third kid's history survives.
+:END:
+** [X] The scenario is covered in ~test/bear_cub/dev/scenarios_test.exs~, asserting each state's current / longest through ~Streaks.by_kid/2~, and is listed in the ~Scenarios~ moduledoc usage list and the CLAUDE.md scenario list. (SC-2, SC-3)
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: seven ~record/2~ tests in scenarios_test.exs assert through ~Streaks.by_kid/2~; the moduledoc usage list and the CLAUDE.md scenario list both gained a ~record~ entry (git diff).
+:END:
 
 # Ruled by the human at the handoff (2026-10-10): ~record/1~ gains a fifth state, ~:e~ (kid 1 normal, kid 2 brand new with no completions), matching frame E of the my-record empty-state handoff, so Stories 05 and 06 can review the empty column through the scenario rather than by hand-staging. The DESIGN's Dev scenario table lists four states; Story 03's update-design pass adds the row (a D-entry is due only if the pass judges it a decision rather than an additive edit).
 
 * Definition of Done
 
-** [ ] All acceptance criteria have been either met or have had a documented removal or deferral
-** [ ] Tests written and passing for the acceptance criteria in this story
-** [ ] Code follows style guidelines in CLAUDE.md
-** [ ] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+** [X] All acceptance criteria have been either met or have had a documented removal or deferral
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: all six acceptance criteria are ticked above; nothing was removed or deferred.
+:END:
+** [X] Tests written and passing for the acceptance criteria in this story
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: the seven ~record/2~ tests pass in ~mix test test/bear_cub/dev/scenarios_test.exs~ (25/25).
+:END:
+** [X] Code follows style guidelines in CLAUDE.md
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified by inspection: new code follows the surrounding scenario conventions; docstrings wrap near 80 columns; ~mix precommit~ prints no warnings or format diffs.
+:END:
+** [X] The repo's declared ~Verify command:~ (CLAUDE.md; default ~mix format --check-formatted~ and ~mix test~) passes without errors
+:LOGBOOK:
+- Note taken on [2026-10-10 Sat 08:18] \\
+  Verified: ~mix precommit~ exited 0 with 1024 tests passed in the verifier's single run.
+:END:
 
 * Technical Notes
 
