@@ -1002,11 +1002,11 @@ defmodule BearCubWeb.KioskComponents do
     do: "background-color: #{kid_color}"
 
   # Pending extra (D117): the kid's color at 12% ground and 45% edge, mixed
-  # into the page surface like the routine tints. The kid's color is data,
-  # so these cannot be tokens.
-  defp chore_card_style(false, true, _slot?, _routine, kid_color),
+  # into the page surface like the routine tints. The column's `kid-scope`
+  # derives both from its one `--kid`, so they are tokens here.
+  defp chore_card_style(false, true, _slot?, _routine, _kid_color),
     do:
-      "background-color: color-mix(in oklab, #{kid_color} 12%, var(--color-base-100)); border-color: color-mix(in oklab, #{kid_color} 45%, var(--color-base-100)); color: var(--extra-card-content)"
+      "background-color: var(--kid-tint); border-color: var(--kid-edge); color: var(--extra-card-content)"
 
   defp chore_card_style(false, false, _slot?, routine, _kid_color),
     do:

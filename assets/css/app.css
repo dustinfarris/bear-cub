@@ -135,6 +135,15 @@
   --extra-card-control: color-mix(in oklab, var(--extra-card-content) 10%, transparent);
 }
 
+/* Kid ownership tokens (D117): a column sets --kid once; the tint (ground) and
+   edge (rule) are that colour pulled into the surface, like the routine
+   tint and edge above. The kid's colour is data, so these live on the scope
+   rather than :root. */
+.kid-scope {
+  --kid-tint: color-mix(in oklab, var(--kid) 12%, var(--color-base-100));
+  --kid-edge: color-mix(in oklab, var(--kid) 45%, var(--color-base-100));
+}
+
 /* Reward layer type (D105): Nunito, self-hosted (SIL OFL; latin and
    latin-ext subsets of the 700–900 variable face from Google Fonts), for the
    large celebratory strings only — kid names, point totals, badges and chips,

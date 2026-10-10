@@ -1106,8 +1106,9 @@ defmodule BearCubWeb.KioskLive do
           }
           :if={!@night? and !@record}
           id={"kid-column-#{kid.id}"}
+          style={"--kid: #{kid.color}"}
           class={[
-            "grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100 rounded-lg",
+            "kid-scope grid grid-rows-[auto_auto_1fr] overflow-hidden bg-base-100 rounded-lg",
             standing? &&
               "ring-4 shadow-[0_0_8px_6px_rgba(245,245,0,0.92)] ring-success"
           ]}

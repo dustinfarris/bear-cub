@@ -695,9 +695,10 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       row = "#extras-#{kid.id} #chore-#{extra.id}"
+      assert has_element?(view, "#kid-column-#{kid.id}.kid-scope[style*='--kid: #{kid.color}']")
       assert has_element?(view, "#{row}.border-dashed.border-\\[3px\\]")
-      assert has_element?(view, "#{row}[style*='#{kid.color} 12%']")
-      assert has_element?(view, "#{row}[style*='#{kid.color} 45%']")
+      assert has_element?(view, "#{row}[style*='var(--kid-tint)']")
+      assert has_element?(view, "#{row}[style*='var(--kid-edge)']")
       refute has_element?(view, "#{row}[style*='var(--extra-card-background)']")
       refute has_element?(view, "#{row}[style*='var(--routine-morning-tint)']")
       refute has_element?(view, "#{row}[class*='border-l-']")
@@ -3074,7 +3075,7 @@ defmodule BearCubWeb.KioskLiveTest do
       {:ok, view, _html} = live(conn, ~p"/")
 
       row = "#extras-#{kid.id} #chore-#{extra.id}"
-      assert has_element?(view, "#{row}.border-dashed[style*='#{kid.color} 12%']")
+      assert has_element?(view, "#{row}.border-dashed[style*='var(--kid-tint)']")
       assert has_element?(view, "#chore-effort-#{extra.id}", "×4")
       assert has_element?(view, "#chore-penalty-#{extra.id}", "−14")
       refute has_element?(view, "#extras-done-#{kid.id}")
@@ -3121,7 +3122,7 @@ defmodule BearCubWeb.KioskLiveTest do
       view |> element("#chore-#{extra.id}") |> render_click()
 
       row = "#chore-#{extra.id}"
-      assert has_element?(view, "#{row}[style*='#{kid.color} 12%']")
+      assert has_element?(view, "#{row}[style*='var(--kid-tint)']")
       refute has_element?(view, "#{row}.border-dashed")
       refute has_element?(view, "#{row}[class*='border-l-']")
     end
@@ -3161,8 +3162,8 @@ defmodule BearCubWeb.KioskLiveTest do
       refute has_element?(view, "#chore-#{extra.id}[data-done]")
 
       # mid-beat the row keeps the panel's ground and edge, not the done fill
-      assert has_element?(view, "#chore-#{extra.id}[style*='#{kid.color} 12%']")
-      assert has_element?(view, "#chore-#{extra.id}[style*='#{kid.color} 45%']")
+      assert has_element?(view, "#chore-#{extra.id}[style*='var(--kid-tint)']")
+      assert has_element?(view, "#chore-#{extra.id}[style*='var(--kid-edge)']")
 
       # inert meanwhile: stepper, close and a second confirm do nothing
       render_click(view, "count-step", %{"kid-id" => "#{kid.id}", "dir" => "inc"})
