@@ -1,0 +1,208 @@
+#+title: DESIGN — Bear Cub: Streaks and stats
+#+date: 2026-10-10
+
+# Mutability: adaptive. Body edits are allowed when implementation surfaces new information, but every body edit is paired per the two-log rules in the workflow-kit org-conventions skill: a Decision Log entry when the edit records a judgment call, and an Advisory for every post-canon body edit. An Advisory without a body edit is never correct.
+
+PRD (invariant contract): [[file:PRD.org]]
+
+* Overview
+
+A kid taps the 🔥 chip in their banner and the kiosk swaps to a "My record" screen: two identical columns, one per kid, each showing a large current good-standing streak, a "longest ever" tile, an "earned in all" points tile and a bar chart of points by month. One button reads =Chores= and goes back. Nothing ranks the kids.
+
+The whole feature is *one pure history derivation (~BearCub.Streaks~), one month-keyed variant of the existing earnings derivation, one banner chip and one screen-wide kiosk mode*. There is no new table, no stored streak and no migration: everything is derived from rows the app already keeps forever, so it reflects all recorded history on the day it ships.
+
+Canon this design builds on, restated so this document stands alone:
+
+- *D10 — day state is derived, never stored.* ~completions~ rows are never deleted; undo sets ~undone_at~; a parent's fail sets ~failed_at~. There is no ledger table (D39 rejected one) and no history pruning.
+- *D91 / D92 — good standing.* Day D is in standing when the evening routine of D−1 and the morning routine of D are both complete and neither is failed. An empty roster is vacuously complete but earns no bonus. A failed-then-redone routine is complete and failed, which denies standing.
+- *D81 / D90 — date-bounded roster.* A routine's roster on a day is the kid's chores on that routine with ~active_from <= day~ and (~archived_on~ nil or ~> day~).
+- *D93 — no recourse.* A missed night, a sleepover or a trip breaks a streak; there is no backfill.
+- *D94 — ~routine_day_status/3~* is the per-routine-day status; D94 deferred a grouped standing function as not a measured need.
+- *D57 / D41 / D72 — points.* ~Points~ composes ~Chores.earnings_by_kid(date)~ and ~Rewards.spend_totals_by_kid(date)~; the displayed total floors at ~max(0, balance)~; the grouped forms are a fixed number of queries, independent of history length.
+- *D121 — each points term is priced by the schedule version in force at its own instant.*
+- *D56 — the night screen* takes precedence over every other kiosk state.
+- *D65 / D75 — the reward shop* is a per-column ~:rewards~ state with a 30 s idle return, entered through the banner's 🎁 toggle.
+- *The design-language Banner gift button entry* — the banner's right-hand group is the ★ badge plus the 🎁 button; the badge's own tap stays unbound.
+- *Every schedule version covers all seven weekdays for both routines* (~ScheduleVersion~ validation), so there is no "unscheduled day": a weekend is an ordinary day.
+
+* Data Model
+
+No schema change. The derivations read existing tables only:
+
+| Table               | Fields read                                                      | Used by                                  |
+|---------------------+------------------------------------------------------------------+------------------------------------------|
+| ~chores~            | ~kid_id~, ~routine~, ~active_from~, ~archived_on~, ~points~, ~unit_rate~ | rosters (streaks), extras values (points) |
+| ~completions~       | ~chore_id~, ~local_date~, ~completed_at~, ~undone_at~, ~failed_at~, ~effort_count~ | streaks, points                          |
+| ~schedule_versions~ | the version in force (via ~Schedules~)                           | points pricing (D121); today's ~morning_end~ |
+
+Standing, and therefore every streak, never reads ~schedule_versions~ for history: a schedule change cannot alter a past streak. The only schedule read on the streak side is today's ~morning_end~, which decides when a pending day becomes failed (Key Behaviors / Today is three-valued).
+
+* Screens / Interfaces
+
+** Streak chip (kiosk banner)
+
+- A ~<.streak_chip>~ in the banner's right-hand group, left of the ★ badge: the group becomes chip + ★ badge + 🎁 ([[file:../decisions.org::#d157][D157]]).
+- A 64 px-tall transparent =<button>= around a 40 px pill with a 2 px inset ring (white at 55%), so it reads as tappable beside the plain ★ pill; =phx-click="open-record"=, =id="streak-chip-#{kid.id}"=.
+- Content: 🔥 and the current streak in ~font-reward~; at 0, a dashed white flame outline (inline SVG) and no number.
+- It renders wherever the banner renders (rows, band and shop states). The ★ badge stays unbound.
+- The banner is 80 px tall (~py-5~ around the ~text-4xl~ name; every other banner element is absolutely positioned), so the 64 px target fits without changing its height.
+
+** My record screen
+
+Page 1280 × 800, ~grid h-dvh grid-cols-2 gap-4 p-4 bg-base-300~; each column a ~<section>~ ~bg-base-100 rounded-lg overflow-hidden flex flex-col~, 616 × 768; an 80 px banner, then a body ~p-5 flex flex-col gap-4~ (576 wide).
+
+| Region           | Spec                                                                                                                                                                                                      |
+|------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Banner           | 80 px, solid kid colour (the kiosk banner's height, so the kid colours hold still across the swap); kid name centred, ~font-reward font-black~ 40 px, white; nothing else                                |
+| Streak tile      | h 192, ~rounded-2xl~, 3 px ~--kid-edge~ border, ~--kid-tint~ ground; 🔥 108 px + count ~font-reward font-black~ 140 px (line-height .86) in the kid colour + =days in a row= (=day in a row= at 1), ~font-reward~ 800 28 px |
+| Streak at 0      | a dashed flame outline (inline SVG) in place of 🔥, =0=, and =Start again today!=                                                                                                                         |
+| Best-ever chip   | 🏆 22 px + =Best ever!= (~font-reward~ 800 19 px) on the streak tile's top edge (top −19, right 20), 3 px kid-colour border on ~bg-base-100~; shown only when ~current > 0 and current == longest~      |
+| Record row       | h 112, ~grid grid-cols-2 gap-4~, two cells below                                                                                                                                                         |
+| Longest tile     | ~bg-base-100~, 4 px solid kid-colour border; 🏆 48 px, count ~font-reward font-black~ 52 px + unit =days= / =day= (800 22 px), =longest ever= (sans bold 17 px); *identical in every state*            |
+| Lifetime tile    | ~--paid-tint~ ground, 4 px ~--paid-edge~ border; ~hero-star-solid~ 48 px, count ~font-reward font-black~ 52 px in ~--paid-content~, =earned in all= (sans bold 17 px, ~--paid-content~)               |
+| Monthly chart    | fills the rest (≈ 296 px); ~rounded-2xl bg-base-200~, padding 16 / 18; header =Points each month= (sans bold 17 px) and a dashed 22 × 14 swatch labelled =so far= (sans bold 15 px)               |
+| Back button      | 216 × 72 at left 532, top 20 — centred on the gutter between the two banners, overlapping both equally; ~hero-home~ white in a 48 px ~bg-base-content~ disc + =Chores= (~font-reward font-black~ 30 px); the screen's only control |
+
+Monthly chart, vertical bars:
+
+- *Months shown:* the last 8 months ending with the current (partial) month. A kid with fewer months of history (counted from the month of their first completion) shows only those; never draw empty columns before history begins. A month inside a kid's history with no net earnings is a 0 bar.
+- *Scale, per column, never shared between kids:* ~top = max(40, ceil(max(values) / 40) * 40)~.
+- *Plot box:* ≈ 244 px (flex-fill; everything below measured from its bottom), 40 px left gutter for tick labels. Baseline 4 px ~--kid-edge~, 26 px above the plot box's bottom; below it a 30 px zone for month labels — three-letter abbreviations, sans bold 16 px, base-content at 70%.
+- *Bars:* max height 186 px from the baseline; height ~round(v / top * 186)~, minimum 12 px (18 px for the current month); 44 px wide in ~flex-1~ slots, 10 px top radius, kid-colour fill. No value labels on bars.
+- *Current month:* ~--kid-tint~ fill with a 3 px dashed kid-colour border and no bottom border; the header's =so far= swatch explains it.
+- *Gridlines:* 2 px ~--kid-grid~ at ~top/2~ and ~top~, each labelled (sans bold 14 px, ~--kid-ink~, right-aligned in the gutter).
+- *Fewer than 5 months:* no gridlines, no tick labels, no gutter; bars 88 px wide in 128 px slots, gap 24, centred, the baseline only under the group.
+
+Rules this screen serves:
+
+- Nothing ranks, compares or crowns: no shared scale, no differences, no leader styling; each column reads as its own record ([[file:../decisions.org::#d159][D159]]).
+- No shaming state: a reset shows =0= and =Start again today!=; the longest tile never changes, dims or shrinks.
+- Every tap target is at least 64 px; ~font-reward~ never below 14 px; no animation on this screen.
+- The only words on the screen are the strings in the table above, the month abbreviations and the tick values.
+- The kiosk/admin fence holds: the chip and the button are =phx-click= events; nothing links to ~/admin~.
+
+** Design-language entries this initiative adds
+
+Recorded in ~docs/design-language.org~ by the story that builds each surface (rationale [[file:../decisions.org::#d157][D157]], [[file:../decisions.org::#d159][D159]], [[file:../decisions.org::#d160][D160]]):
+
+1. *The streak chip joins the banner's right-hand group* — amends the Banner gift button entry's "badge plus gift" to chip + ★ badge + 🎁; the badge's tap stays unbound.
+2. *🔥 and 🏆 emoji* on the kids' view (both are in the emoji set, so D103's inline-SVG rule is untouched); the 0-streak dashed flame is inline SVG; the lifetime star is ~hero-star-solid~, the glyph that already means points, not the ⭐ emoji.
+3. *Two new derived tokens* in the ~app.css~ token block beside the existing kid mixes: ~--kid-ink~ (kid colour 72% into ~--color-base-content~, in oklab — kid-coloured small text passing 4.5:1) and ~--kid-grid~ (kid colour 22% into ~--color-base-200~ — chart gridlines). ~--kid-tint~ is kid 12% into base-100 and ~--kid-edge~ kid 45% into base-100, the pending-extra mixes. No new hex values.
+4. *Words on the screen*: =Start again today!= and =Best ever!= are accepted knowingly, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; the screen carries no other copy beyond the table above.
+5. *The dashed outline for an in-progress month* — the pending slot's edge extends from "pending today" to "not finished yet", in the kid's own colour (the extras' language: whose it is).
+6. *The back button straddles both banners* — the one kiosk control spanning the gutter, deliberately symmetric so neither kid owns it.
+7. *Kid tint and edge frame the record tiles* as D117 frames extras (the kid colour means whose record this is); the lifetime tile takes the paid family (the "earned something" signal of the ~+N~ chip and bonus badge).
+
+* Key Behaviors
+
+** Streak derivation — ~BearCub.Streaks~
+
+Rules ([[file:../decisions.org::#d154][D154]], [[file:../decisions.org::#d155][D155]]):
+
+- *A streak day is good standing, exactly.* Day D counts when the evening of D−1 and the morning of D are both complete and unfailed, under the roster rules of D81/D90/D92. Nothing about standing is redefined.
+- *Streaks are computed, never stored.* ~longest~ is derived from completions over all history, so it covers days before this feature shipped, cannot be lost when a streak resets, and adds no flag, job or table.
+- *The scan starts at the kid's first completion ever* (the minimum ~completions.local_date~ over the kid's chores). Without the bound, the empty-roster pass (D92) would make every day before the kid had chores a standing day and the streak would run back forever. A kid with no completions has ~current = 0~ and ~longest = 0~.
+- From that first day on, every day is judged — weekends included. A day whose roster is non-empty and has no completion breaks the run; a later day whose roster is empty passes, as D92 rules for the kiosk band.
+
+*** Today is three-valued
+
+[[file:../decisions.org::#d156][D156]]. Before today's standing is decided the streak shows the run ending yesterday; it resets to 0 only once today can no longer be met:
+
+| Today       | When                                                                                                               | ~current~                              |
+|-------------+--------------------------------------------------------------------------------------------------------------------+----------------------------------------|
+| ~:standing~ | last night's evening and this morning are both complete and unfailed                                               | the run through today                  |
+| ~:failed~   | last night's evening is incomplete or failed, *or* this morning is failed, *or* the time is at or past today's ~morning_end~ and this morning is incomplete | 0                                      |
+| ~:pending~  | otherwise                                                                                                          | the run of standing days ending yesterday |
+
+Accepted consequence: a kid who skipped last night's evening routine sees 0 at breakfast, because that day was already lost overnight. ~longest~ counts the run ending today only when today is ~:standing~.
+
+*** Shape
+
+#+begin_src elixir
+# Pure over its inputs; no clock reads (the caller passes local_now and today's DayEntry).
+Streaks.by_kid(local_now, %DayEntry{} = entry)
+#=> %{kid_id => %{current: non_neg_integer, longest: non_neg_integer, today: :standing | :pending | :failed}}
+#+end_src
+
+- Not day-by-day through ~Chores.standing/2~ (about four queries per day per kid). Load the routine chores (~kid_id~, ~routine~, ~active_from~, ~archived_on~) and the routine-day facts once, then a *pure* function builds =local_date → {morning, evening}= statuses per kid and walks dates in memory.
+- The routine-day facts already exist: ~Chores.routine_days_by_kid/2~'s query returns one row per =(kid, routine, local_date)= with the roster's ~chore_count~, the ~live_count~ and ~any_failed~ — complete is ~chore_count > 0 and live_count == chore_count~, failed is ~any_failed~. A day with no row is incomplete when the roster that day is non-empty, and vacuously complete when it is empty (decided from the chore lifetimes). Extract that query so earnings and ~Streaks~ share it, and the "exactly good standing" claim holds by construction; a *parity test* compares ~Streaks~ with ~Chores.standing/2~ over staged history.
+- ~Chores~ still never depends on ~Calendars~; ~Streaks~ depends on ~Chores~ (for the shared query) and on nothing calendar-side.
+- Cost: a fixed number of queries for all kids at once, independent of history length, as D72 requires of the earnings path. ~KioskLive.load/3~ calls it on every load for the chip, alongside the balances it already computes.
+
+** Points history
+
+[[file:../decisions.org::#d158][D158]].
+
+- *"Earned" is net of fail penalties, without the redemptions leg.* "Earned in all" and the monthly bars use the signed contribution of ~Chores.earnings_by_kid~ — a failed routine-day contributes −R, a failed extra −value — so spending never lowers them, and a parent's fail does.
+- *Floors.* Each month's bar floors at 0, and the lifetime total floors at 0, mirroring D41 per bucket: a month with more failures than earnings shows a 0 bar, never a negative one.
+- *Month bucketing* is the contribution's ~local_date~. The routine-day reduce keys by =(kid, month)= instead of =kid=; the extras leg groups by =strftime('%Y-%m', local_date)= in SQL. Pricing stays by the schedule version in force at each term's instant (D121).
+
+#+begin_src elixir
+Chores.earnings_by_kid_month(local_date)
+#=> %{kid_id => %{~D[2026-09-01] => integer, ~D[2026-10-01] => integer, ...}}   # signed, unfloored
+
+Points.earned_history(local_date)
+#=> %{kid_id => %{lifetime: non_neg_integer, months: [{~D[2026-03-01], non_neg_integer}, ...]}}
+#    months: the last 8 ending with local_date's month, none before the kid's first completion month, each floored at 0
+#    lifetime: max(0, sum of the unfloored months)
+#+end_src
+
+- Invariant (a test): for every kid, the unfloored lifetime figure minus the approved-unreversed spend equals the raw ~Points.balance~ before the D41 floor.
+- Loaded only while the record screen is open.
+
+** Kiosk wiring — ~KioskLive~
+
+[[file:../decisions.org::#d157][D157]].
+
+- *State.* One new assign, ~:record~ (boolean), screen-wide rather than per-kid because the screen shows both kids at once. The night screen always wins (D56): the record screen renders only when ~not night?~, and the kid columns render only when neither the night screen nor the record screen does.
+- *Events and messages:*
+  - ~"open-record"~ — the chip on either banner. Clears ~:rewards~ and cancels the shop's idle timers, so nothing stays half-open behind the screen, then arms the record idle timer.
+  - ~"close-record"~ — the =Chores= button; cancels the timer.
+  - ~:record_idle~ — sent 30 s after open (the shop's ~@rewards_idle_ms~ constant and pattern); returns to chores, and is a no-op if the screen is already closed.
+  - ~:boundary~ and ~:schedule_changed~ clear ~:record~ and its timer, exactly as they clear the shop.
+- *Rendering.* A new ~<.record_screen>~ in ~kiosk_components.ex~ renders the two columns and the button (Screens / My record screen). The record-only data (~Points.earned_history/1~) loads only while ~@record~ is true; the streaks are already loaded for the chips. PubSub-driven reloads refresh an open screen for free.
+
+** Dev scenario — ~BearCub.Dev.Scenarios.record/1~
+
+The gate reviews the record screen in four states; one scenario call stages each exactly, so no state is hand-staged through ~project_eval~. ~record(state)~ deletes the completions dated before today for the first two kids (by id) and seeds backdated completions on their existing routine chores so that, with ~open(:morning)~ and no completion today, the screen shows:
+
+| State | Kid 1 (current / longest)                                 | Kid 2 (current / longest)                                                  | Checks                                                      |
+|-------+-----------------------------------------------------------+----------------------------------------------------------------------------+-------------------------------------------------------------|
+| ~:a~  | 12 / 19                                                   | 3 / 3                                                                      | normal; Kid 2 carries =Best ever!=                          |
+| ~:b~  | 0 / 19 (last night's evening left undone, so today is ~:failed~) | 6 / 9                                                                      | reset: dashed flame, =0=, =Start again today!=, longest tile unchanged |
+| ~:c~  | 12 / 19                                                   | 4 / 4, first completion in the previous calendar month (two months shown)  | few-months chart: two wide bars, no gridlines               |
+| ~:d~  | 112 / 118                                                 | 104 / 104                                                                  | three-digit streaks and four-digit lifetime totals fit      |
+
+Seeded runs are separated by single missed days; history spans at least 8 months in ~:a~, ~:b~ and ~:d~ so the full chart renders. Lifetime figures follow from the seeded completions and the kids' chore values; they are not pinned. Today's completions are left alone, so the scenario pairs with ~reset/1~ and ~open/1~. Deleting past completions destroys the dev database's history, which no scenario has done before; it is dev-only and accepted for staging. Add the scenario to ~test/bear_cub/dev/scenarios_test.exs~ (assert each state's current/longest through ~Streaks.by_kid/2~), the moduledoc usage list and the CLAUDE.md scenario list.
+
+Screenshots of this screen carry the kids' names in both banners. Until the review-mask scenario on the backlog exists, hide them in the page before capturing, per CLAUDE.md's household-data rule.
+
+** Testing (MVP DESIGN §11 — unit and LiveView layers)
+
+- *Unit — ~Streaks~:* each row of the three-valued today table, including the overnight evening miss and the closed morning window (pin the window with ~put_windows/2~, never mock the clock); the first-completion bound; a failed-then-redone day breaking the run; a chore archived mid-run; an empty-roster day passing; a non-empty roster with no completion breaking; ~longest~ surviving a reset; and the parity test against ~Chores.standing/2~.
+- *Unit — points history:* bucketing across a month boundary; net of penalties; the per-month and lifetime floors; repricing across a schedule version change (D121); the lifetime − spend = balance invariant; months before the first completion absent.
+- *LiveView:* the chip at N and at 0; tapping either chip shows both kids' columns; =Chores= returns; the idle return (prove it by delivering ~:record_idle~ and asserting the chores columns are back, not by asserting a timer ref exists); night screen precedence; ~:boundary~ and ~:schedule_changed~ close it; opening while a kid is in the shop closes the shop; an admin completion while open refreshes the numbers; no link to ~/admin~.
+- *Gate review:* the four ~record/1~ states at 1280 × 800, viewport confirmed before capture.
+
+* Out of Scope for This Design
+
+- Away days; any parent or admin surface for streaks or points history; streaks or records earning points, unlocking rewards or gating anything; today's point-by-point progress (the PRD's Out of Scope).
+- Binding the ★ points badge's tap: it stays reserved ([[file:../decisions.org::#d157][D157]]).
+- The review-mask scenario: it stays on the backlog; this initiative's gate masks names in the page.
+
+Backlog items this initiative closes at its gate: "Streaks like completing your Morning Routine every day" and "tapping on the points should show … stats on your points" — the latter satisfied by the chip and the record screen rather than by the badge tap it named.
+
+* Decision Log
+
+# No entries live here. Judgments about the system being built are Dn-numbered entries in the repo-level shared log, one monotonic sequence across all initiatives — see the workflow-kit org-conventions skill. Design-time entries are minted there freely during promotion; post-canon entries pair with a body edit here and an Advisory below. Cite entries from this document as org links, e.g. [[file:../decisions.org::#d27][D27]].
+
+Decisions for this initiative: [[file:../decisions.org]] (D154–D160)
+
+* Advisories
+
+# Active notices to future sessions: positions this document previously took
+# that no longer hold. Read before proposing changes. The payload is the
+# superseded position — the current position is in the body. Withdrawn
+# (deleted) at gates once no reader could plausibly reintroduce the old
+# position; git keeps the permanent record. Every advisory pairs with a body
+# edit; decision-driven advisories cite their D-number.

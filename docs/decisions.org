@@ -694,3 +694,52 @@ Three CSS animations: ~cd-grow~ (420 ms spring) as the seconds pill mounts, ~cd-
 :END:
 
 Ruled by the human at the story handoff. ~countdown(:evening, minutes)~ gives every kid a Sleepy Bear cutoff for today's weekday, including a kid who had none, and ~countdown(:evening, [{kid_id, minutes}, ...])~ replaces today's cutoffs with exactly the listed ones, so an unlisted kid loses theirs and "a kid with no evening bonus" is staged in the same call as the other kid's countdown. Both evening forms also set ~N~ the way ~night_owl/1~ does (the current ~N~, or 3 when it is 0), so a staged cutoff carries a bonus on a schedule whose ~N~ is 0. The cutoff is now plus ~minutes~, truncated to the second and held at 23:59:59 when it would cross midnight. Rejected — "moves" read literally, touching only kids who already had a cutoff, with the per-kid list merging into the existing cutoffs: staging a kid with no bonus would then need a second scenario or a hand-written version. Settles bonus-countdown/SC-1 (review staging). → bonus-countdown/Key Behaviors (dev scenario).
+
+* D154 (2026-10-10) — A streak day is good standing exactly, and streaks are computed from history, never stored
+:PROPERTIES:
+:CUSTOM_ID: d154
+:END:
+
+A streak day is a day in good standing as D91/D92 define it (last night's evening and this morning both complete, neither failed, under the D81/D90 date-bounded roster), with nothing redefined. Current and longest streaks are derived on read from ~completions~ and chore lifetimes by a new ~BearCub.Streaks~, which shares ~Chores~' existing per-=(kid, routine, local_date)= routine-day query rather than calling ~Chores.standing/2~ once per day (about four queries per day per kid); a parity test holds the two together. Rejected: a stored streak counter or longest-ever field — it breaks D10, needs a job to maintain, and would not cover history from before the feature shipped. Rejected: calling ~standing/2~ day by day — query count grows with history length, which D72 forbids on the points path. Settles streaks-and-stats/SC-2, SC-3, SC-6. → streaks-and-stats/Key Behaviors (Streak derivation).
+
+* D155 (2026-10-10) — A kid's streak history starts at their first completion
+:PROPERTIES:
+:CUSTOM_ID: d155
+:END:
+
+Ruled by the human during design. The streak scan starts at the kid's earliest ~completions.local_date~; from there every day is judged with standing's exact semantics, so a later empty-roster day still passes as D92 rules. Without a bound, D92's vacuous empty-roster pass would make every day before the kid had chores a standing day and the streak would run back forever. Rejected: the kid's earliest chore ~active_from~ — days between setting chores up and the first tap would count as misses and start every history on a broken day. Rejected: requiring a non-empty roster for a streak day — it diverges from the kiosk's standing band on empty-roster days and breaks "exactly what good standing means". Settles streaks-and-stats/SC-2, SC-6. → streaks-and-stats/Key Behaviors (Streak derivation).
+
+* D156 (2026-10-10) — Today is three-valued: the streak shows yesterday's run until today can no longer be met
+:PROPERTIES:
+:CUSTOM_ID: d156
+:END:
+
+Ruled by the human during design. Today is ~:standing~ (both halves done, the run includes today), ~:failed~ (last night's evening incomplete or failed, this morning failed, or the time at or past today's ~morning_end~ with the morning incomplete — current is 0), or ~:pending~ (current is the run ending yesterday). A kid never sees 0 at breakfast merely because the morning is not done yet, and finishing it bumps the count at once. Accepted consequence: a kid who skipped last night's evening sees 0 at breakfast, because that day was lost overnight. Rejected: dropping to 0 as soon as the morning window opens with nothing done — every kid would see 0 first thing every day. Rejected: never counting today — finishing the routine would give no visible payoff until tomorrow. Settles streaks-and-stats/SC-2. → streaks-and-stats/Key Behaviors (Today is three-valued).
+
+* D157 (2026-10-10) — The record screen is a screen-wide kiosk mode entered from a new banner streak chip; the points badge stays unbound
+:PROPERTIES:
+:CUSTOM_ID: d157
+:END:
+
+Ruled by the human during design (the chip). A 🔥 N chip joins each banner's right-hand group, left of the ★ badge, and either kid's chip opens one screen showing both kids' records; a single =Chores= button straddling the two banners, a 30 s idle timer, the ~:boundary~ and ~:schedule_changed~ handlers all return to chores, the night screen always wins, and opening it closes any open shop. The state is one screen-wide ~:record~ assign, not a per-column state like the shop's ~:rewards~, because the screen is both kids side by side. Rejected: binding the ★ points badge's tap — tapping a balance (say 42) would land on a different total (lifetime earned, say 2,310), and it spends the badge's reserved affordance; it stays unbound, as the design-language Banner gift button entry rules. Rejected: both chip and badge as doors — two rulings for one room. Accepted: the chip puts the current streak on the daily view every day. Amends the design-language Banner gift button entry's "badge plus gift" group. Settles streaks-and-stats/SC-1. → streaks-and-stats/Screens / Interfaces, Key Behaviors (Kiosk wiring).
+
+* D158 (2026-10-10) — "Earned" points are net of fail penalties and exclude spending; each month and the lifetime total floor at 0
+:PROPERTIES:
+:CUSTOM_ID: d158
+:END:
+
+Ruled by the human during design (net of penalties). "Earned in all" and the monthly bars are the signed earnings contribution ~Chores.earnings_by_kid~ already computes (a failed routine-day −R, a failed extra −value, terms priced per D121), bucketed by ~local_date~ month, without the redemptions leg — so spending never lowers them and a parent's fail does. Each month's bar and the lifetime total floor at 0, D41 applied per bucket, because the chart has no room for a negative bar and one would read as shame. Rejected: gross positive terms only — needs a second earnings derivation beside the one the balance uses. Rejected: a failed item contributing 0 rather than its penalty — another variant, and the human preferred the figure the balance is built from. Settles streaks-and-stats/SC-4, SC-6. → streaks-and-stats/Key Behaviors (Points history).
+
+* D159 (2026-10-10) — Each kid's monthly chart has its own scale; nothing on the record screen compares the kids
+:PROPERTIES:
+:CUSTOM_ID: d159
+:END:
+
+Each column's chart scale is computed from that kid's months alone (~top = max(40, ceil(max / 40) * 40)~), the two columns are identical in layout, and the screen carries no difference, rank, leader styling or shared axis; the one control straddles both banners symmetrically so neither kid owns it. Rejected: a shared scale across both charts — the natural default for a side-by-side chart, and it turns bar heights into a comparison between siblings. Settles streaks-and-stats/SC-5. → streaks-and-stats/Screens / Interfaces (My record screen).
+
+* D160 (2026-10-10) — The record screen's visual vocabulary: 🔥 and 🏆 emoji, two derived kid tokens, two celebratory phrases, the dashed edge for an unfinished month
+:PROPERTIES:
+:CUSTOM_ID: d160
+:END:
+
+Taken from the Claude Design handoff and accepted by the human during design. 🔥 (streak) and 🏆 (longest) are emoji, so D103's inline-SVG rule for non-emoji glyphs is untouched; the 0-streak flame is an inline-SVG dashed outline; the lifetime star is ~hero-star-solid~, the glyph that already means points, rather than the ⭐ emoji the handoff drew. Two derived tokens join the kid mixes: ~--kid-ink~ (kid 72% into base-content, small kid-coloured text at 4.5:1) and ~--kid-grid~ (kid 22% into base-200), no new hexes. =Start again today!= and =Best ever!= are accepted knowingly as more words on the kids' view, as D104, D136 and D149 accepted EARLY BIRD and SLEEPY BEAR; =Best ever!= is what makes current-equals-longest read as a celebration rather than a repeat. The pending slot's dashed edge extends its meaning to "not finished yet" for the current month's bar, in the kid's own colour. The longest tile is identical in every state so it never reads as a consolation prize. Rejected: a numberless or wordless reset state — a lone 0 with no words reads as a penalty. → streaks-and-stats/Screens / Interfaces (Design-language entries this initiative adds).
