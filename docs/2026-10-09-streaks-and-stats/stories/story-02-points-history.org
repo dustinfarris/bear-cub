@@ -62,6 +62,9 @@ As a kid at the kiosk, I need every point I have ever earned added up, and broke
 ** [ ] Each kid has a lifetime "earned" total that counts every routine-day and extra contribution over all history, net of fail penalties, and that spending on rewards never lowers. (SC-4, SC-6)
 ** [ ] Each kid has a per-month breakdown keyed by the month of each contribution's date, so a contribution on the last day of a month and one on the first day of the next land in different months. (SC-4)
 ** [ ] The breakdown lists the last 8 months ending with the current month, never a month before the kid's first completion month, and a month inside the kid's history with no net earnings appears with 0. (SC-4)
+** [ ] The breakdown always contains the current month, at 0 if needed, so a kid with no completions gets a one-month list, never an empty one. (SC-4)
+
+# Ruled by the human at the handoff (2026-10-10), from the my-record empty-state handoff: the month list always includes the current month, even for a kid with no completions (whose history otherwise has no first-completion month to start from), so Story 06's chart always has a slot to draw. The DESIGN's shape comment ("none before the kid's first completion month") is silent on the no-completions case; Story 02's update-design pass records the clarification.
 ** [ ] A month whose fail penalties exceed its earnings shows 0, never a negative figure, and the lifetime total never goes below 0. (SC-4)
 ** [ ] Contributions keep the price set by the schedule version in force when each was earned, across a schedule change. (SC-4)
 ** [ ] For every kid, the unfloored lifetime figure minus their approved, unreversed spend equals their raw points balance before the floor. (SC-4)
