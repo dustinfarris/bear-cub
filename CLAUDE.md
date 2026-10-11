@@ -59,7 +59,7 @@ A request for a new feature, capability, or initiative goes to `/workflow-kit:cr
 
 Model routing: `.claude/settings.json` sets this repo's default model to Sonnet — builder altitude, where TDD implementation runs. Kit skills and agents pin their own model per stage (story-closeout and its verifier on Sonnet; create-prd, promote-design, user-stories, update-design, phase-close on Opus), so the one human routing step is the brainstorm: run `/model opus` before starting one. When a builder struggles, escalate context (the missing recipe in the story or CLAUDE.md) before escalating model.
 
-An implementation session refuses to start work over a dirty working tree; unexplained working-tree state is surfaced to the human, never classified-and-fixed by the session itself. (A session once misattributed and silently deleted the human's uncommitted scratch code — the incident this rule exists to prevent.)
+An implementation session refuses to start work over a dirty working tree, whatever it believes the changes are: it reports what it found and starts only on the human's word. Only the human decides what the changes are and whether they are committed, stashed, or deleted; a session never classifies them and acts on its own classification, however safe the action looks. (A session once misattributed and silently deleted the human's uncommitted scratch code — the incident this rule exists to prevent. A later session judged leftover changes its own housekeeping, committed them, and reported that as compliance.)
 
 ## Design invariants (do not violate)
 
