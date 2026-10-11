@@ -133,6 +133,11 @@ No scenario stages calendar events. The weather-indicator DESIGN's verification 
 
 Ruled [2026-10-08 Thu] at the weather-indicator Batch 1 retro ("The learning of the day before recurred the next morning").
 
+* TODO [#C] The record screen's dashed flame reads smaller than the 🔥 it replaces
+:PROPERTIES:
+:CREATED:  [2026-10-10 Sat 19:11]
+:END:
+At a streak of 0 the streak tile and chip swap the 🔥 for ~flame_outline/1~, whose path fills about a third of its 108 px box, so the empty state reads smaller than the full one beside it. Observed at the streaks-and-stats Batch 1 gate (~gate-1-record-b.png~, ~gate-1-record-e.png~; the gate record in docs/2026-10-09-streaks-and-stats/PLAN.org calls it an observation, not a divergence). Cosmetic; judge on the tablet before sizing, since the fix is a larger path in the same box and nothing in the design changes.
 * TODO [#C] Early Bird pill shows at ~E = 0~, unlike the Night Owl at ~N = 0~
 :PROPERTIES:
 :CREATED:  [2026-10-05 Mon 13:49]

@@ -28,3 +28,39 @@ Minutes are active time (idle gaps over 10 min excluded). Verifier is dispatch c
 - The gate found one chain gap the per-story passes missed: D162 reversed effort-multiplier's D118 without a supersession notice; repaired at the gate as D164 on the human's ruling.
 
 ** Retro
+
+Rulings recorded 2026-10-10. Each names where the follow-up lands; nothing here is actioned by this file.
+
+*** The driver's second run
+
+Six stories in 34 minutes of wall clock against 34 active (20 implementation, 9 close-out, 5 update-design): no stop, no human turn outside the driver's prompts, no stage run twice, no self-triggered close-out, and the lost-connection retry still unexercised. The batch wrote more code and tests than any since effort-multiplier (855 and 1073 lines) in the same wall clock as bonus-countdown.
+
+Ruling: evidence, no change. No second addendum on the kit's batch-driver design, which asked only for the first run; the orchestrator revisit stays closed until someone names the cost of running the loop outside a session.
+
+*** Rulings in the story files, three D-entries in five minutes
+
+D161, D162 and D163 with their Advisories were minted by Stories 02 and 05's update-design passes in about a minute each, against 10 minutes for weather's session-decided D144 and 7 for bonus-countdown's pre-ruled D153. The rulings rode in the story files as handoff comments that named the expected output, and the passes transcribed them.
+
+Ruling: evidence, no change. The next heading is the cost of transcription.
+
+*** D162 reversed D118 without naming it
+
+The Story 05 pass cited D117, the entry the handoff ruling named, and never read D118, the next entry in the log, titled "supersedes D117 in part" and about exactly the ~--kid~ property the ruling reinstated. update-design and org-conventions already require the supersession notice. The gate's shared-log pass found it on its first real exercise, and D164 is the notice.
+
+Ruling: parked. The backstop worked, and one instance is not the bar. The candidate, if it recurs: before minting an entry that cites Dm, read the entries that cite Dm. Lands here only.
+
+*** The pointer range rotted, second time
+
+The promote wrote =(D154–D160)= after the Decision Log pointer; three entries later the gate repaired it to D154–D164. The weather retro ruled the first instance a hand edit and nothing in the kit; bonus-countdown's promote wrote no range, so the template was right and the session added one.
+
+Ruling: second appearance, so the kit. The template comment now says the pointer is the bare link (workflow-kit 0.9.3), and this DESIGN's pointer drops its range by hand; D164's explanation lives in D164 and the gate record.
+
+*** The TDD skill on three of six stories
+
+Stories 01, 02 and 06, the pure-logic modules, invoked the skill; 03, 04 and 05 did not. The transcripts show Story 04 edited its test file before any ~lib/~ file, Story 05 ran the suite first and then edited tests and code together, and Story 03 wrote the scenario before its tests.
+
+Ruling: evidence only. Skill invocation is a weak signal; order held on two of three and every story's DoD test item passed its verifier. Nothing in the driver changes.
+
+*** Small things
+
+Story 06's 16 test runs are edit-and-run compound commands under the TDD skill, red-green cycles in five minutes, not a stall. Story 05's two end commits appear as one timeline event; both are counted in Δ. The closeout-cost checks held (one dispatch on 02–06, close-out 1–3 minutes, no tick without a pass) and Story 01's entry names the finding its fix loop answered. The gate's observation that the dashed flame fills about a third of its 108 px box and reads smaller than the 🔥 it replaces goes to ~docs/backlog.org~ as a [#C] entry.
