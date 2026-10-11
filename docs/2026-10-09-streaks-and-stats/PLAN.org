@@ -52,4 +52,4 @@ Design: [[file:DESIGN.org]]
 
 * Deferred
 
-# Out-of-scope discoveries land here during implementation instead of being fixed inline. Promoted to v2 candidates at initiative close.
+# Out-of-scope discoveries land here during implementation instead of being fixed inline. Swept into the repo-level docs/backlog.org at the batch gate, copied forward with their file pointers and act-only-if conditions; this section stays as written.

@@ -48,6 +48,9 @@ Closed / historical — record for each initiative's era, superseded wherever a 
 - `docs/2026-09-05-good-standing/` — Good-standing band and ring; decisions in `docs/decisions.org`
 - `docs/2026-09-20-effort-multiplier/` — Counted chores (base + rate × count, frozen at creation); decisions in `docs/decisions.org`
 - `docs/2026-10-04-routine-schedule/` — Append-only `schedule_versions`, each points term priced by the version in force at its instant, admin Schedule page; decisions in `docs/decisions.org`
+- `docs/2026-10-05-night-owl-bonus/` — Night Owl evening bonus: per-kid, per-weekday cutoffs on the schedule version, a second timeliness term beside the Early Bird, moon badge and pill; decisions in `docs/decisions.org`
+- `docs/2026-10-07-weather-indicator/` — Morning weather on the Get dressed row: one in-memory forecast fetch, two emoji from parent-set thresholds, nothing rendered on failure; decisions in `docs/decisions.org`
+- `docs/2026-10-08-bonus-countdown/` — Per-kid countdown to the bonus cutoff in the banner slot (minutes, then ticking seconds, quiet fade at the cutoff), the evening bonus displayed as Sleepy Bear, reward pill rebuilt; decisions in `docs/decisions.org`
 
 When code and these docs disagree, the docs win. DESIGN.org is amendable per the org-conventions two-log rules: a body edit surfacing new information pairs with a new D-entry in the `* Decision Log` and, post-canon, an Advisory — normally via /workflow-kit:update-design. PRD.org is locked: it is never edited by agents (the prd-lock hook enforces this); anything that conflicts with its FRs or success criteria is surfaced to me as Amendment questions, not fixed.
 
