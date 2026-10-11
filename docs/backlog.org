@@ -45,14 +45,6 @@ Triage [2026-09-06 Sun]: oneshot, #B — today an extra's ~+N~ chip (~lib/bear_c
 :END:
 
 Triage [2026-09-06 Sun]: promote — not a clean oneshot. ~Points.balance/2~ is ~Chores.earnings + Rewards.spend_total~ (D42, D57); an ad hoc award is neither — it's a third signed-input source with no completion row and no redemption behind it, so it needs its own ruling on where it lives (a new context, or a new signed-event table under an existing one), an admin surface (amount + reason, at minimum), and how it composes into ~balance/2~ and the grouped ~balances/1~ without breaking the D72-style pointwise-agreement requirement between the per-kid and grouped derivations. Candidate for its own brainstorm rather than absorption into an existing initiative.
-* TODO [#B] Ollie idea: "Streaks" like completing your Morning Routine every day :promote:
-:PROPERTIES:
-:CREATED:  [2026-07-25 Sat 20:44]
-:END:
-
-e.g. "You've completed your morning routine 7 days in a row!"
-
-Triage [2026-09-06 Sun]: promote — a streak is a consecutive-day scan over ~routine_day_status/3~ (D94) rather than a single derived value, with its own edge-case set (does an empty roster's vacuous D92 pass count toward a streak? does a failed-then-redone day? where does it reset — midnight, or the window boundary ~Routines.next_boundary/2~ already tracks?) and a kiosk display surface of its own. Same brainstorm-first shape as the skip-chore and points-stats ideas below; consider claiming together if one initiative ends up covering "things Ollie asked for about the points/routine surface."
 * TODO [#B] admin "quick add" extra chore from Today view :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-24 Fri 15:06]
@@ -77,13 +69,6 @@ Retriage [2026-09-06 Sun]: the condition landed — rewards/redemption shipped a
 Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — not a clean oneshot because it needs a points-semantics ruling first (does a skipped chore earn its points? count toward the routine bonus? interacts with D10 derived day state and the D40/D41 contribution shapes). Settle the ruling in the rewards/redemption brainstorm, then size.
 
 Retriage [2026-09-06 Sun]: that brainstorm concluded without it — rewards/redemption's DESIGN.org names this explicitly: "not claimed, and not designed for. Neither is precluded: ... nothing in the redemption derivation constrains what a 'skipped' chore could contribute, since redemptions sum into the signed-inputs term independently of how earnings are derived." Still deliberately untagged, still needs the same points-semantics ruling — just needs a fresh brainstorm to settle it, not the one that already passed on it.
-* TODO [#B] Ollie idea: tapping on the points should show you daily points progress and stats on your points
-:PROPERTIES:
-:CREATED:  [2026-07-17 Fri 07:02]
-:END:
-Triage [2026-07-24 Fri]: rewards-brainstorm candidate, deliberately untagged — same points-UI theme as the rewards/redemption initiative; a stats view would also make ~points_total/2~'s N+1 shape (entry above) load-bearing, so consider claiming both together.
-
-Retriage [2026-09-06 Sun]: rewards/redemption shipped without claiming this — DESIGN.org: "A points-stats view for the kids ... not claimed, and not designed for. Neither is precluded: the points badge's own tap gesture stays unbound." Points did become load-bearing (balances are spent against, D57), but through ~earnings_by_kid/1~'s grouped rewrite rather than through this surface, so the N+1 entry above is now only about the kiosk's per-kid live badge, not this one. Still open, still untagged — the tap gesture is free and waiting.
 * TODO [#B] Need a default emoji for extra chores -- parents may not have time or desire to pick one. :oneshot:
 :PROPERTIES:
 :CREATED:  [2026-07-12 Sun 23:06]
