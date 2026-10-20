@@ -1,6 +1,6 @@
-# NixOS module for Bear Cub. Ships with the app repo; the consuming
-# machine config pins a rev of this repo, imports this file, and sets
-# option values (design §7).
+# NixOS module for Bear Cub. Ships with the app repo as the flake's
+# nixosModules.default; the consuming host takes this repo as a flake
+# input, imports the module, and sets option values (design §7, D165).
 { config, lib, pkgs, ... }:
 
 let
