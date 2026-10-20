@@ -49,9 +49,10 @@ beamPackages.mixRelease {
     src = ../.;
     filter = path: type:
       let name = baseNameOf path; in
-      # flake.nix/flake.lock are packaging, like nix/: keeping them out of
-      # src means editing them never rebuilds the release.
-      !(builtins.elem name [ ".git" "_build" "deps" "node_modules" ".dexter" "_work" "docs" "nix" "flake.nix" "flake.lock" ])
+      # flake.nix/flake.lock are packaging, like nix/, and CLAUDE.md/README.md
+      # are prose, like docs/: keeping them out of src means editing them
+      # never rebuilds the release.
+      !(builtins.elem name [ ".git" "_build" "deps" "node_modules" ".dexter" "_work" "docs" "nix" "flake.nix" "flake.lock" "CLAUDE.md" "README.md" ])
       && !(lib.hasSuffix ".db" name)
       && !(lib.hasSuffix ".db-shm" name)
       && !(lib.hasSuffix ".db-wal" name);
